@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Photos — Sol Index</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  .page-head { display: flex; gap: var(--s3); align-items: baseline; flex-wrap: wrap; margin-bottom: var(--s4); }
+  .page-head h1 { margin: 0; }
+  .rover-tabs { display: flex; gap: var(--s1); flex-wrap: wrap; margin-bottom: var(--s4); }
+  .rover-tabs a {
+    padding: 6px 12px; border-radius: 999px; text-decoration: none; font-size: var(--fs-sm); font-weight: 500;
+    color: var(--text-muted); border: 1px solid var(--border);
+  }
+  .rover-tabs a[aria-current="page"] { background: var(--text); color: var(--bg); border-color: var(--text); }
+  .rover-tabs a.disabled { opacity: .5; pointer-events: none; }
+
+  .filters { padding: var(--s4); display: grid; gap: var(--s4); }
+  .when { display: flex; gap: var(--s3); flex-wrap: wrap; align-items: flex-end; }
+  .when .field input { width: 140px; }
+  @media (max-width: 640px) { .when .field input { width: 110px; } .when .field input[type=date] { width: 160px; } }
+  .sol-step { display: flex; gap: var(--s1); }
+  .filter-block { display: grid; gap: var(--s2); }
+  .filter-block > .segmented { justify-self: start; max-width: 100%; overflow-x: auto; overflow-y: hidden; }
+  .filter-block > .label { font-size: var(--fs-xs); font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+  details.more summary { cursor: pointer; font-size: var(--fs-sm); color: var(--accent); margin-top: var(--s2); }
+  details.more .chips { margin-top: var(--s2); }
+
+  .result-head { display: flex; gap: var(--s3); flex-wrap: wrap; align-items: center; margin: var(--s5) 0 var(--s3); }
+  .result-head h2 { margin: 0; }
+  .result-head .spacer { flex: 1; }
+
+  .tile { display: flex; flex-direction: column; gap: 6px; text-decoration: none; color: var(--text); min-width: 0; }
+  .tile:hover .ph { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .tile-meta { display: flex; justify-content: space-between; gap: var(--s1); font-size: var(--fs-xs); align-items: center; }
+  .tile-meta .cam { font-family: var(--mono); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tile-credit { font-size: 11px; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .st { font-size: 10px; padding: 1px 6px; border-radius: 4px; background: var(--surface-2); color: var(--text-muted); white-space: nowrap; }
+  .st.other { background: var(--warn-soft); color: var(--warn); }
+
+  .pager { display: flex; gap: var(--s2); align-items: center; justify-content: center; flex-wrap: wrap; margin-top: var(--s5); }
+  .pager .btn[aria-current="page"] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+
+  .empty { text-align: center; padding: var(--s7) var(--s4); }
+  .empty svg { color: var(--text-faint); }
+  .empty .row { justify-content: center; margin-top: var(--s4); }
+  pre.raw { margin: var(--s2) 0 0; padding: var(--s3); background: var(--surface-2); border-radius: var(--radius-sm); overflow-x: auto; overflow-y: hidden; font: var(--fs-xs)/1.5 var(--mono); }
+  .api-line { font-size: var(--fs-xs); color: var(--text-muted); margin-top: var(--s4); word-break: break-all; }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container">
+    <a class="brand" href="index.html" aria-label="Sol Index home">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="8" fill="var(--accent)"/><ellipse cx="13" cy="13" rx="12" ry="4.5" fill="none" stroke="var(--text-muted)" stroke-width="1.4" transform="rotate(-20 13 13)"/></svg>
+      Sol Index <small>unofficial</small>
+    </a>
+    <nav class="nav" aria-label="Main">
+      <a href="index.html">Rovers</a>
+      <a href="photos.html?rover=perseverance" aria-current="page" title="Latest sol">Photos</a>
+      <a href="manifest.html">Timeline</a>
+      <a href="index.html#api">API</a>
+    </nav>
+    <button class="theme-toggle" type="button" aria-label="Toggle colour theme">Theme</button>
+  </div>
+</header>
+
+<main>
+  <div class="container">
+
+    <div class="mock-bar" role="group" aria-label="Mockup state switcher (not part of the product)">
+      <strong>Mockup</strong> state:
+      <button class="btn btn-sm" data-state="data">Data</button>
+      <button class="btn btn-sm" data-state="loading">Loading</button>
+      <button class="btn btn-sm" data-state="empty">Empty sol</button>
+      <button class="btn btn-sm" data-state="error">422 error</button>
+      <span>· sample data: Perseverance sol 2031 (= latest); Curiosity uses sol 1000 photos in place of its latest sol 5066</span>
+    </div>
+
+    <nav class="rover-tabs" aria-label="Rover">
+      <a href="photos.html?rover=perseverance" data-rover="perseverance" title="Opens the latest sol">Perseverance</a>
+      <a href="photos.html?rover=curiosity" data-rover="curiosity" title="Opens the latest sol">Curiosity</a>
+    </nav>
+
+    <div class="page-head">
+      <h1 id="title">Perseverance photos</h1>
+      <span class="badge badge-active" id="status">Active</span>
+      <span class="small muted" id="range">Sols 0 – 2031</span>
+    </div>
+
+    <!-- Filters -->
+    <form class="card filters" aria-label="Photo filters" onsubmit="return false">
+      <div class="when">
+        <div class="field">
+          <span class="label" id="mode-label">Find by</span>
+          <div class="segmented" role="radiogroup" aria-labelledby="mode-label">
+            <input type="radio" name="mode" id="mode-sol" value="sol" checked><label for="mode-sol">Sol</label>
+            <input type="radio" name="mode" id="mode-date" value="date"><label for="mode-date">Earth date</label>
+          </div>
+        </div>
+        <div class="field">
+          <label for="sol">Sol</label>
+          <div class="sol-step">
+            <button class="btn btn-sm" type="button" id="sol-prev" aria-label="Previous sol with photos">‹</button>
+            <input id="sol" type="number" inputmode="numeric" min="0" value="2031" aria-describedby="sol-hint">
+            <button class="btn btn-sm" type="button" id="sol-next" aria-label="Next sol with photos" disabled>›</button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="earth-date">Earth date (UTC)</label>
+          <input id="earth-date" type="date" value="2026-11-06" disabled>
+        </div>
+        <button class="btn btn-primary" type="button" id="latest">Latest sol</button>
+        <span class="hint" id="sol-hint">Sol and Earth date can’t be combined — pick one.</span>
+      </div>
+
+      <div class="filter-block" role="group" aria-labelledby="cam-label">
+        <span class="label" id="cam-label">Camera <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· counts are across all sols</span></span>
+        <div class="chips" id="cams-sol"></div>
+        <details class="more">
+          <summary id="cams-more-sum">Other cameras (no photos on this sol)</summary>
+          <div class="chips" id="cams-other"></div>
+        </details>
+      </div>
+
+      <div class="filter-block">
+        <span class="label" id="st-label">Sample type</span>
+        <div class="segmented" role="radiogroup" aria-labelledby="st-label" id="st">
+          <input type="radio" name="st" id="st-all" value="" checked><label for="st-all">All</label>
+          <input type="radio" name="st" id="st-full" value="full"><label for="st-full">Full</label>
+          <input type="radio" name="st" id="st-sub" value="subframe"><label for="st-sub">Subframe</label>
+          <input type="radio" name="st" id="st-down" value="downsampled"><label for="st-down">Downsampled</label>
+        </div>
+      </div>
+    </form>
+
+    <!-- Results -->
+    <section aria-labelledby="result-title" aria-live="polite" aria-busy="false" id="results">
+      <div class="result-head">
+        <h2 id="result-title">Sol 2031</h2>
+        <span class="muted small" id="result-sub"></span>
+        <span class="spacer"></span>
+        <div class="field" style="flex-direction:row;align-items:center;gap:8px">
+          <label for="per-page" style="text-transform:none;letter-spacing:0">Per page</label>
+          <select id="per-page"><option>24</option><option>48</option><option>96</option></select>
+        </div>
+      </div>
+      <div id="body"></div>
+      <nav class="pager" aria-label="Pagination" id="pager"></nav>
+      <p class="api-line">API: <code id="api-url"></code></p>
+    </section>
+
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="container">Sol Index is an independent, unofficial project, not affiliated with or endorsed by NASA or JPL. Image credit is shown next to every photo.</div>
+</footer>
+
+<script>
+/* ===== Sample data shaped exactly like API v2 =====
+   Rover        ← GET /api/v2/rovers/{rover}
+   cameras      ← GET /api/v2/rovers/{rover}/cameras   (sorted by code)
+   manifestSol  ← one entry of GET /api/v2/rovers/{rover}/manifest  .sols[]
+   photos       ← GET /api/v2/rovers/{rover}/photos?sol=…  .items (generated below) */
+const DATA = {
+  perseverance: {
+    rover: {"id":"perseverance","name":"Perseverance","mission":"mars2020","launch_date":"2020-07-30","landing_date":"2021-02-18","status":"active","max_sol":2031,"max_date":"2026-11-06","total_photos":579518,"cameras_count":23,"last_synced_at":"2026-11-17T06:00:12Z"},
+    cameras: [
+      {"code":"CACHECAM","name":"CacheCam","total_photos":6120},
+      {"code":"EDL_DDCAM","name":"Descent Stage Down-Look Camera","total_photos":1103},
+      {"code":"EDL_PUCAM1","name":"Parachute Up-Look Camera A","total_photos":731},
+      {"code":"EDL_PUCAM2","name":"Parachute Up-Look Camera B","total_photos":702},
+      {"code":"EDL_RDCAM","name":"Rover Down-Look Camera","total_photos":2114},
+      {"code":"EDL_RUCAM","name":"Rover Up-Look Camera","total_photos":1879},
+      {"code":"FRONT_HAZCAM_LEFT_A","name":"Front Hazard Avoidance Camera - Left","total_photos":41877},
+      {"code":"FRONT_HAZCAM_LEFT_B","name":"Front Hazard Avoidance Camera - Left (B)","total_photos":512},
+      {"code":"FRONT_HAZCAM_RIGHT_A","name":"Front Hazard Avoidance Camera - Right","total_photos":40215},
+      {"code":"FRONT_HAZCAM_RIGHT_B","name":"Front Hazard Avoidance Camera - Right (B)","total_photos":498},
+      {"code":"LCAM","name":"Lander Vision System Camera","total_photos":88},
+      {"code":"MCZ_LEFT","name":"Mastcam-Z Left","total_photos":118342},
+      {"code":"MCZ_RIGHT","name":"Mastcam-Z Right","total_photos":109877},
+      {"code":"NAVCAM_LEFT","name":"Left Navigation Camera (Navcam)","total_photos":96210},
+      {"code":"NAVCAM_RIGHT","name":"Right Navigation Camera (Navcam)","total_photos":71433},
+      {"code":"PIXL_MCC","name":"PIXL Micro Context Camera","total_photos":10544},
+      {"code":"REAR_HAZCAM_LEFT","name":"Rear Hazard Avoidance Camera - Left","total_photos":16202},
+      {"code":"REAR_HAZCAM_RIGHT","name":"Rear Hazard Avoidance Camera - Right","total_photos":15987},
+      {"code":"SHERLOC_ACI","name":"SHERLOC Autofocus and Context Imager","total_photos":9311},
+      {"code":"SHERLOC_WATSON","name":"SHERLOC WATSON Camera","total_photos":14270},
+      {"code":"SKYCAM","name":"MEDA Skycam","total_photos":7820},
+      {"code":"SUPERCAM_RMI","name":"SuperCam Remote Micro Imager","total_photos":13087}
+    ],
+    manifestSol: {"sol":2031,"earth_date":"2026-11-06","total_photos":52,"cameras":["FRONT_HAZCAM_LEFT_A","FRONT_HAZCAM_RIGHT_A","MCZ_LEFT","MCZ_RIGHT","NAVCAM_LEFT","NAVCAM_RIGHT","SHERLOC_WATSON","SUPERCAM_RMI"]},
+    prevSol: 2030, nextSol: null,
+    // [camera, count, first taken_at (UTC time), step seconds, sample types cycle, source prefix, credit]
+    blocks: [
+      ["SHERLOC_WATSON",2,"09:30:10",50,["full"],"SIF","NASA/JPL-Caltech/MSSS"],
+      ["FRONT_HAZCAM_LEFT_A",4,"10:02:40",60,["full","downsampled"],"FLF","NASA/JPL-Caltech"],
+      ["FRONT_HAZCAM_RIGHT_A",4,"10:02:41",60,["full","downsampled"],"FRF","NASA/JPL-Caltech"],
+      ["MCZ_LEFT",6,"11:35:00",44,["full","full","subframe"],"ZLF","NASA/JPL-Caltech/ASU"],
+      ["MCZ_RIGHT",6,"11:35:02",44,["full","full","subframe"],"ZRF","NASA/JPL-Caltech/ASU"],
+      ["NAVCAM_LEFT",12,"11:48:10",52,["full","subframe","downsampled"],"NLF","NASA/JPL-Caltech"],
+      ["NAVCAM_RIGHT",12,"11:48:11",52,["full","subframe","downsampled"],"NRF","NASA/JPL-Caltech"],
+      ["SUPERCAM_RMI",6,"12:10:05",76,["full"],"LRF","NASA/JPL-Caltech/LANL/CNES/IRAP"]
+    ],
+    topId: 81234
+  },
+  curiosity: {
+    rover: {"id":"curiosity","name":"Curiosity","mission":"msl","launch_date":"2011-11-26","landing_date":"2012-08-06","status":"active","max_sol":5066,"max_date":"2026-11-07","total_photos":1184530,"cameras_count":17,"last_synced_at":"2026-11-17T06:00:08Z"},
+    cameras: [
+      {"code":"CHEMCAM_RMI","name":"Chemistry and Camera Complex","total_photos":71230},
+      {"code":"FHAZ_LEFT_A","name":"Front Hazard Avoidance Camera - Left A","total_photos":9877},
+      {"code":"FHAZ_LEFT_B","name":"Front Hazard Avoidance Camera - Left B","total_photos":24102},
+      {"code":"FHAZ_RIGHT_A","name":"Front Hazard Avoidance Camera - Right A","total_photos":9640},
+      {"code":"FHAZ_RIGHT_B","name":"Front Hazard Avoidance Camera - Right B","total_photos":23988},
+      {"code":"MAHLI","name":"Mars Hand Lens Imager","total_photos":88431},
+      {"code":"MARDI","name":"Mars Descent Imager","total_photos":21115},
+      {"code":"MAST_LEFT","name":"Mast Camera - Left","total_photos":402554},
+      {"code":"MAST_RIGHT","name":"Mast Camera - Right","total_photos":318760},
+      {"code":"NAV_LEFT_A","name":"Navigation Camera - Left A","total_photos":31220},
+      {"code":"NAV_LEFT_B","name":"Navigation Camera - Left B","total_photos":96513},
+      {"code":"NAV_RIGHT_A","name":"Navigation Camera - Right A","total_photos":12007},
+      {"code":"NAV_RIGHT_B","name":"Navigation Camera - Right B","total_photos":41389},
+      {"code":"RHAZ_LEFT_A","name":"Rear Hazard Avoidance Camera - Left A","total_photos":5902},
+      {"code":"RHAZ_LEFT_B","name":"Rear Hazard Avoidance Camera - Left B","total_photos":13350},
+      {"code":"RHAZ_RIGHT_A","name":"Rear Hazard Avoidance Camera - Right A","total_photos":5811},
+      {"code":"RHAZ_RIGHT_B","name":"Rear Hazard Avoidance Camera - Right B","total_photos":13241}
+    ],
+    manifestSol: {"sol":1000,"earth_date":"2015-05-30","total_photos":856,"cameras":["CHEMCAM_RMI","FHAZ_LEFT_B","FHAZ_RIGHT_B","MAHLI","MAST_LEFT","MAST_RIGHT","NAV_LEFT_B","NAV_RIGHT_B","RHAZ_LEFT_B","RHAZ_RIGHT_B"]},
+    prevSol: 999, nextSol: 1001,
+    blocks: [
+      ["FHAZ_LEFT_B",2,"02:21:10",30,["full"],"FLB_486265257EDR_F0481570FHAZ","NASA/JPL-Caltech"],
+      ["FHAZ_RIGHT_B",2,"02:21:11",30,["full"],"FRB_486265257EDR_F0481570FHAZ","NASA/JPL-Caltech"],
+      ["RHAZ_LEFT_B",2,"02:23:40",30,["full"],"RLB_486265400EDR_F0481570RHAZ","NASA/JPL-Caltech"],
+      ["RHAZ_RIGHT_B",2,"02:23:41",30,["full"],"RRB_486265400EDR_F0481570RHAZ","NASA/JPL-Caltech"],
+      ["MAHLI",26,"03:10:00",20,["full","full","subframe"],"1000MH0004060000400420","NASA/JPL-Caltech/MSSS"],
+      ["CHEMCAM_RMI",30,"03:40:00",25,["chemcam prc","full"],"CR0_486271212PRC_F0481570CCAM","NASA/JPL-Caltech/LANL"],
+      ["MAST_LEFT",410,"04:00:00",8,["full","subframe","downsampled","mixed"],"1000ML0044630000","NASA/JPL-Caltech/MSSS"],
+      ["MAST_RIGHT",350,"04:00:04",8,["full","subframe","downsampled"],"1000MR0044630000","NASA/JPL-Caltech/MSSS"],
+      ["NAV_LEFT_B",24,"06:12:00",30,["full","subframe","downsampled"],"NLB_486276017EDR_F0481570NCAM","NASA/JPL-Caltech"],
+      ["NAV_RIGHT_B",8,"06:12:01",30,["full","subframe"],"NRB_486276017EDR_F0481570NCAM","NASA/JPL-Caltech"]
+    ],
+    topId: 103548
+  }
+};
+
+/* Build Photo objects (exact v2 shape) from the compact blocks above. */
+function buildPhotos(key) {
+  const d = DATA[key], r = d.rover, ms = d.manifestSol, cams = Object.fromEntries(d.cameras.map(c => [c.code, c.name]));
+  const shots = [];
+  for (const [code, n, t0, step, types, prefix, credit] of d.blocks) {
+    const base = new Date(ms.earth_date + 'T' + t0 + 'Z').getTime();
+    for (let i = 0; i < n; i++) shots.push({ code, t: base + i * step * 1000, st: types[i % types.length], prefix, credit, i });
+  }
+  // API order: sol DESC, taken_at DESC, id DESC
+  shots.sort((a, b) => b.t - a.t);
+  return shots.map((s, idx) => {
+    const id = d.topId - idx;
+    const sol5 = String(ms.sol).padStart(5, '0');
+    const srcId = key === 'perseverance'
+      ? `${s.prefix}_${ms.sol}_${String(847237865 - idx * 37).padStart(10, '0')}_${String(241 + s.i).padStart(3,'0')}EBY_N0930000${s.code.slice(0,4)}01031_0100I4J`
+      : `${s.prefix}${String(323 + s.i).padStart(5,'0')}M_`;
+    const full = key === 'perseverance'
+      ? `https://mars.nasa.gov/mars2020-raw-images/pub/ods/surface/sol/${sol5}/ids/edr/browse/${srcId}.png`
+      : `https://mars.jpl.nasa.gov/msl-raw-images/proj/msl/redops/ods/surface/sol/${sol5}/opgs/edr/${srcId}.JPG`;
+    const images = key === 'perseverance'
+      ? { small: full.replace('.png', '_320.jpg'), medium: full.replace('.png', '_800.jpg'), large: full.replace('.png', '_1200.jpg'), full }
+      : { small: null, medium: null, large: null, full };
+    return {
+      id, rover: key, sol: ms.sol, earth_date: ms.earth_date,
+      taken_at: new Date(s.t).toISOString().replace('.000Z', 'Z'),
+      camera: { code: s.code, name: cams[s.code] },
+      sample_type: s.st,
+      title: `Mars ${r.name} Sol ${ms.sol}: ${cams[s.code]}`,
+      img_src: full, images, credit: s.credit,
+      source: { id: srcId, link: key === 'perseverance'
+        ? `https://mars.nasa.gov/mars2020/multimedia/raw-images/${srcId}`
+        : `https://mars.nasa.gov/msl/multimedia/raw-images/?id=${id}` }
+    };
+  });
+}
+
+/* ===== Rendering (mockup only, mimics what the app would do) ===== */
+const qs = new URLSearchParams(location.search);
+let roverKey = (qs.get('rover') || 'perseverance').toLowerCase();
+if (!DATA[roverKey]) roverKey = 'perseverance'; // rovers with max_sol = null are hidden, unknown slug → default rover
+const D = DATA[roverKey];
+const ALL = buildPhotos(roverKey);
+const state = { camera: (qs.get('camera') || '').toUpperCase(), sample_type: '', page: +(qs.get('page') || 1), per_page: 24, mode: 'sol', view: qs.get('state') || 'data' };
+
+const $ = s => document.querySelector(s);
+const fmt = n => n.toLocaleString('en-US');
+const short = n => n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'k' : String(n);
+const phClass = code =>
+  /RMI/.test(code) ? 'ph ph-rmi' : /NAV/.test(code) ? 'ph ph-gray' : /HAZ/.test(code) ? 'ph ph-haz' :
+  /WATSON|MAHLI|ACI|PIXL/.test(code) ? 'ph ph-close' : /SKY/.test(code) ? 'ph ph-sky' : 'ph';
+const FILTERABLE = ['full', 'subframe', 'downsampled'];
+
+document.querySelectorAll('.rover-tabs a[data-rover]').forEach(a => { if (a.dataset.rover === roverKey) a.setAttribute('aria-current', 'page'); });
+$('#title').textContent = D.rover.name + ' photos';
+$('#range').textContent = `Sols 0 – ${D.rover.max_sol} · ${fmt(D.rover.total_photos)} photos`;
+$('#sol').max = D.rover.max_sol; $('#sol').value = D.manifestSol.sol;
+$('#earth-date').value = D.manifestSol.earth_date;
+$('#sol-next').disabled = D.nextSol == null;
+
+function chip(c, onSol) {
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'chip' + (onSol ? '' : ' dim');
+  b.setAttribute('aria-pressed', String(state.camera === c.code));
+  b.title = `${c.name} — ${fmt(c.total_photos)} photos across all sols`;
+  b.innerHTML = `<span class="mono">${c.code}</span><span class="count">${short(c.total_photos)}</span>`;
+  b.onclick = () => { state.camera = state.camera === c.code ? '' : c.code; state.page = 1; renderChips(); render(); };
+  return b;
+}
+function renderChips() {
+  const onSol = new Set(D.manifestSol.cameras);
+  const a = $('#cams-sol'), o = $('#cams-other'); a.innerHTML = ''; o.innerHTML = '';
+  const all = document.createElement('button');
+  all.type = 'button'; all.className = 'chip'; all.setAttribute('aria-pressed', String(!state.camera));
+  all.innerHTML = `All cameras <span class="count">${D.manifestSol.total_photos} on this sol</span>`;
+  all.onclick = () => { state.camera = ''; state.page = 1; renderChips(); render(); };
+  a.append(all);
+  D.cameras.forEach(c => (onSol.has(c.code) ? a : o).append(chip(c, onSol.has(c.code))));
+  $('#cams-more-sum').textContent = `Other cameras (${o.children.length}, no photos on this sol)`;
+}
+
+function tile(p) {
+  const thumb = p.images.small || p.images.medium || p.images.full; // Curiosity: full only
+  const st = FILTERABLE.includes(p.sample_type) ? 'st' : 'st other';
+  const time = p.taken_at.slice(11, 19);
+  return `<a class="tile" href="photo.html?id=${p.id}&rover=${p.rover}" data-src="${thumb}">
+    <div class="${phClass(p.camera.code)}" role="img" aria-label="${p.camera.name}, sol ${p.sol}, ${time} UTC"></div>
+    <div class="tile-meta"><span class="cam" title="${p.camera.name}">${p.camera.code}</span><span class="${st}">${p.sample_type}</span></div>
+    <div class="tile-meta muted"><time datetime="${p.taken_at}">${time} UTC</time><span>#${p.id}</span></div>
+    <div class="tile-credit" title="Credit: ${p.credit}">${p.credit}</div>
+  </a>`;
+}
+
+function apiUrl() {
+  const p = new URLSearchParams();
+  if (state.mode === 'sol') p.set('sol', $('#sol').value); else p.set('earth_date', $('#earth-date').value);
+  if (state.camera) p.set('camera', state.camera);
+  if (state.sample_type) p.set('sample_type', state.sample_type);
+  p.set('page', state.page); p.set('per_page', state.per_page);
+  return `/api/v2/rovers/${roverKey}/photos?${p}`;
+}
+
+function render() {
+  const body = $('#body'), pager = $('#pager');
+  const ms = D.manifestSol;
+  $('#result-title').textContent = state.mode === 'sol' ? `Sol ${ms.sol}` : ms.earth_date;
+  $('#api-url').textContent = 'GET ' + apiUrl();
+  $('#results').setAttribute('aria-busy', String(state.view === 'loading'));
+  pager.innerHTML = '';
+
+  if (state.view === 'loading') {
+    $('#result-sub').textContent = 'Loading…';
+    body.innerHTML = `<div class="photo-grid">${Array.from({ length: 12 }, () =>
+      `<div><div class="skeleton" style="aspect-ratio:4/3"></div><div class="skeleton" style="height:10px;margin-top:8px;width:70%"></div><div class="skeleton" style="height:10px;margin-top:6px;width:45%"></div></div>`).join('')}</div>`;
+    return;
+  }
+  if (state.view === 'error') {
+    const resp = {"error":{"code":"validation_error","message":"Invalid query parameters","details":[{"field":"sol","message":"Input should be less than or equal to 2147483647"}]}};
+    $('#result-sub').textContent = '';
+    body.innerHTML = `<div class="alert alert-error" role="alert">
+      <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" style="flex:none;color:var(--err)"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7v6M12 16.5v.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+      <div><div class="alert-title">We couldn’t run this search</div>
+      <p style="margin:0 0 8px"><strong>Sol</strong>: must be a whole number from 0 to 2,147,483,647. ${D.rover.name}’s latest sol is ${D.rover.max_sol}.</p>
+      <div class="row" style="align-items:center"><button class="btn btn-sm" type="button" onclick="state.view='data';render()">Go to latest sol</button><span class="xsmall muted">Error code: <code>validation_error</code> (HTTP 422)</span></div>
+      <details style="margin-top:8px"><summary class="small">Response details</summary><pre class="raw">${JSON.stringify(resp, null, 2)}</pre></details></div></div>`;
+    return;
+  }
+  if (state.view === 'empty') {
+    const emptySol = roverKey === 'perseverance' ? 2029 : 1003;
+    $('#result-title').textContent = `Sol ${emptySol}`;
+    $('#result-sub').textContent = '0 photos';
+    $('#api-url').textContent = `GET /api/v2/rovers/${roverKey}/photos?sol=${emptySol}&page=1&per_page=24  →  {"items": [], "page": 1, "per_page": 24, "total": 0}`;
+    body.innerHTML = `<div class="card empty">
+      <svg width="48" height="48" viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="14" fill="none" stroke="currentColor" stroke-width="2"/><path d="M6 30c10-6 26-6 36 0" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+      <h3>No photos on sol ${emptySol}</h3>
+      <p class="muted small">The rover may not have taken or sent images that day, or they haven’t reached the public feed yet.</p>
+      <div class="row"><a class="btn btn-sm" href="#">‹ Sol ${emptySol - 1}</a><a class="btn btn-sm" href="#">Sol ${emptySol + 1} ›</a><a class="btn btn-sm" href="manifest.html?rover=${roverKey}">Open timeline</a></div></div>`;
+    return;
+  }
+
+  let items = ALL.filter(p => (!state.camera || p.camera.code === state.camera) && (!state.sample_type || p.sample_type === state.sample_type));
+  const total = items.length, pages = Math.max(1, Math.ceil(total / state.per_page));
+  state.page = Math.min(state.page, pages);
+  const from = (state.page - 1) * state.per_page;
+  items = items.slice(from, from + state.per_page);
+  $('#result-sub').textContent = total
+    ? `${state.mode === 'sol' ? ms.earth_date : 'sol ' + ms.sol} · ${from + 1}–${from + items.length} of ${fmt(total)} photos`
+    : '0 photos';
+
+  if (!total) {
+    body.innerHTML = `<div class="card empty"><h3>No photos match these filters</h3><p class="muted small">Sol ${ms.sol} has ${ms.total_photos} photos in total. Try another camera or sample type.</p>
+      <div class="row"><button class="btn btn-sm" type="button" id="reset">Reset filters</button></div></div>`;
+    $('#reset').onclick = () => { state.camera = ''; state.sample_type = ''; $('#st-all').checked = true; renderChips(); render(); };
+    return;
+  }
+  body.innerHTML = `<div class="photo-grid">${items.map(tile).join('')}</div>`;
+
+  // pagination: first, prev, window of pages, next, last
+  const btn = (label, page, opts = {}) => `<a class="btn btn-sm" href="#" data-page="${page}" ${opts.cur ? 'aria-current="page"' : ''} ${opts.dis ? 'aria-disabled="true" tabindex="-1"' : ''} ${opts.aria ? `aria-label="${opts.aria}"` : ''}>${label}</a>`;
+  let html = btn('‹ Prev', state.page - 1, { dis: state.page === 1, aria: 'Previous page' });
+  const win = new Set([1, pages, state.page - 1, state.page, state.page + 1].filter(n => n >= 1 && n <= pages));
+  let last = 0;
+  [...win].sort((a, b) => a - b).forEach(n => { if (n - last > 1) html += '<span class="muted">…</span>'; html += btn(n, n, { cur: n === state.page, aria: `Page ${n}` }); last = n; });
+  html += btn('Next ›', state.page + 1, { dis: state.page === pages, aria: 'Next page' });
+  html += `<span class="xsmall muted">Page ${state.page} of ${pages}</span>`;
+  pager.innerHTML = html;
+  pager.querySelectorAll('[data-page]').forEach(a => a.onclick = e => {
+    e.preventDefault(); if (a.getAttribute('aria-disabled')) return;
+    state.page = +a.dataset.page; render(); $('#results').scrollIntoView({ behavior: 'smooth' });
+  });
+}
+
+// Sol / Earth date are mutually exclusive (API: both → 422), so only one input is enabled.
+document.querySelectorAll('input[name=mode]').forEach(r => r.onchange = () => {
+  state.mode = r.value; const bySol = r.value === 'sol';
+  $('#sol').disabled = !bySol; $('#sol-prev').disabled = !bySol; $('#sol-next').disabled = !bySol || D.nextSol == null;
+  $('#earth-date').disabled = bySol; state.page = 1; render();
+});
+document.querySelectorAll('input[name=st]').forEach(r => r.onchange = () => { state.sample_type = r.value; state.page = 1; render(); });
+$('#per-page').onchange = e => { state.per_page = +e.target.value; state.page = 1; render(); };
+$('#latest').onclick = () => { $('#mode-sol').click(); $('#sol').value = D.rover.max_sol; state.view = 'data'; render(); };
+document.querySelectorAll('[data-state]').forEach(b => b.onclick = () => { state.view = b.dataset.state; render(); });
+$('.theme-toggle').onclick = () => {
+  const r = document.documentElement;
+  const dark = r.dataset.theme ? r.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  r.dataset.theme = dark ? 'light' : 'dark';
+};
+
+renderChips(); render();
+</script>
+</body>
+</html>

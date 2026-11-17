@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Photo 81234 — Sol Index</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  .layout { display: grid; gap: var(--s5); grid-template-columns: 1fr; }
+  @media (min-width: 960px) { .layout { grid-template-columns: minmax(0, 1fr) 360px; align-items: start; } }
+
+  .viewer { padding: var(--s3); }
+  .stage {
+    background: #0b0a09; border-radius: var(--radius-sm); display: grid; place-items: center;
+    padding: var(--s4); min-height: 280px;
+  }
+  .stage .ph { aspect-ratio: 1 / 1; max-width: var(--w, 800px); transition: max-width .2s; }
+  @media (prefers-reduced-motion: reduce) { .stage .ph { transition: none; } }
+  .size-label { position: absolute; right: 8px; top: 8px; z-index: 1; font: 600 11px/1 var(--mono); color: #fff; background: rgb(0 0 0 / .6); padding: 4px 6px; border-radius: 4px; }
+  .viewer-bar { display: flex; gap: var(--s3); flex-wrap: wrap; align-items: center; margin-top: var(--s3); }
+  .viewer-bar .spacer { flex: 1; }
+  .credit-line { margin-top: var(--s3); font-size: var(--fs-sm); }
+  .credit-line strong { font-weight: 600; }
+
+  .seq { display: flex; gap: var(--s2); align-items: center; justify-content: space-between; margin-top: var(--s4); flex-wrap: wrap; }
+  .seq .pos { font-size: var(--fs-sm); color: var(--text-muted); }
+
+  .meta h1 { font-size: var(--fs-lg); }
+  .meta dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 6px var(--s4); font-size: var(--fs-sm); }
+  .meta dt { color: var(--text-muted); }
+  .meta dd { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .meta section + section { border-top: 1px solid var(--border); padding-top: var(--s4); margin-top: var(--s4); }
+  .meta h2 { font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }
+  pre.raw { margin: var(--s2) 0 0; padding: var(--s3); background: var(--surface-2); border-radius: var(--radius-sm); overflow-x: auto; overflow-y: hidden; font: var(--fs-xs)/1.5 var(--mono); }
+  .strip { display: grid; grid-template-columns: repeat(6, 1fr); gap: var(--s2); margin-top: var(--s3); }
+  .strip a[aria-current] .ph { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .note { font-size: var(--fs-xs); color: var(--text-muted); }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container">
+    <a class="brand" href="index.html" aria-label="Sol Index home">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="8" fill="var(--accent)"/><ellipse cx="13" cy="13" rx="12" ry="4.5" fill="none" stroke="var(--text-muted)" stroke-width="1.4" transform="rotate(-20 13 13)"/></svg>
+      Sol Index <small>unofficial</small>
+    </a>
+    <nav class="nav" aria-label="Main">
+      <a href="index.html">Rovers</a>
+      <a href="photos.html?rover=perseverance" aria-current="page" title="Latest sol">Photos</a>
+      <a href="manifest.html">Timeline</a>
+      <a href="index.html#api">API</a>
+    </nav>
+    <button class="theme-toggle" type="button" aria-label="Toggle colour theme">Theme</button>
+  </div>
+</header>
+
+<!-- Data: GET /api/v2/photos/81234 → PhotoDetail
+{"id":81234,"rover":"perseverance","sol":2031,"earth_date":"2026-11-06","taken_at":"2026-11-06T12:16:25Z",
+ "camera":{"code":"SUPERCAM_RMI","name":"SuperCam Remote Micro Imager"},"sample_type":"full",
+ "title":"Mars Perseverance Sol 2031: SuperCam Camera",
+ "img_src":"https://mars.nasa.gov/.../LRF_2031_0847237865_241EBY_N0930000SCAM01031_0100I4J01.png",
+ "images":{"small":"…_320.jpg","medium":"…_800.jpg","large":"…_1200.jpg","full":"…01.png"},
+ "credit":"NASA/JPL-Caltech/LANL/CNES/IRAP",
+ "source":{"id":"LRF_2031_0847237865_241EBY_N0930000SCAM01031_0100I4J","link":"https://mars.nasa.gov/mars2020/multimedia/raw-images/LRF_2031_0847237865_241EBY_N0930000SCAM01031_0100I4J"},
+ "caption":"NASA's Mars Perseverance rover acquired this image using its SuperCam camera, located on the rover's mast. …",
+ "received_at":"2026-11-07T03:41:09Z","site":112,"drive":1874,
+ "extra":{"sclk":"847237865.0","lmst":"Sol-02031M14:22:51.112","mast_az":"151.71","mast_el":"-11.36","dimension":"(2048,2048)","filter_name":"UNK","scale_factor":"1"}}
+-->
+
+<main>
+  <div class="container">
+
+    <div class="mock-bar" role="group" aria-label="Mockup switcher (not part of the product)">
+      <strong>Mockup</strong>
+      <button class="btn btn-sm" type="button" id="variant">Show Curiosity variant (full size only)</button>
+      <span>· sizes are drawn to scale of their pixel width</span>
+    </div>
+
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="index.html">Rovers</a> ›
+      <a href="photos.html?rover=perseverance">Perseverance</a> ›
+      <a href="photos.html?rover=perseverance&amp;sol=2031">Sol 2031</a> ›
+      <a href="photos.html?rover=perseverance&amp;sol=2031&amp;camera=SUPERCAM_RMI">SUPERCAM_RMI</a> ›
+      <span aria-current="page">#81234</span>
+    </nav>
+
+    <div class="layout">
+      <!-- Image -->
+      <div>
+        <div class="card viewer">
+          <div class="stage">
+            <div class="ph ph-rmi" id="img" style="--w:800px" role="img"
+                 aria-label="SuperCam Remote Micro Imager frame from Perseverance, sol 2031, 12:16 UTC (placeholder)">
+              <span class="size-label" id="size-label">medium · 800 px</span>
+            </div>
+          </div>
+
+          <div class="viewer-bar">
+            <div class="field" style="flex-direction:row;align-items:center;gap:8px">
+              <span class="label" id="size-l">Size</span>
+              <div class="segmented" role="radiogroup" aria-labelledby="size-l">
+                <input type="radio" name="size" id="sz-s" value="small" data-w="320"><label for="sz-s">Small</label>
+                <input type="radio" name="size" id="sz-m" value="medium" data-w="800" checked><label for="sz-m">Medium</label>
+                <input type="radio" name="size" id="sz-l" value="large" data-w="1200"><label for="sz-l">Large</label>
+                <input type="radio" name="size" id="sz-f" value="full" data-w="2048"><label for="sz-f">Full</label>
+              </div>
+            </div>
+            <span class="spacer"></span>
+            <a class="btn btn-sm" id="open" href="#" title="GET /api/v2/photos/81234/image?size=medium">Open image ↗</a>
+          </div>
+          <p class="note" id="size-note" style="margin:8px 0 0">Full is the original file as published by the source (PNG for Perseverance).</p>
+
+          <p class="credit-line"><span class="muted">Credit:</span> <strong>NASA/JPL-Caltech/LANL/CNES/IRAP</strong></p>
+        </div>
+
+        <!-- prev / next inside the sol (API order: taken_at DESC) -->
+        <nav class="seq" aria-label="Photos on sol 2031">
+          <a class="btn" aria-disabled="true" tabindex="-1">← Newer</a>
+          <span class="pos">1 of 52 on sol 2031 · all cameras</span>
+          <a class="btn" href="photo.html?id=81233" rel="next">Older →</a>
+        </nav>
+
+        <section style="margin-top:var(--s5)" aria-labelledby="same-cam">
+          <h2 id="same-cam" style="font-size:var(--fs-md)">SUPERCAM_RMI on sol 2031 <span class="muted small">· 6 photos</span></h2>
+          <div class="strip">
+            <a href="photo.html?id=81234" aria-current="true"><div class="ph ph-rmi" role="img" aria-label="12:16:25 UTC (this photo)"></div></a>
+            <a href="photo.html?id=81233"><div class="ph ph-rmi" role="img" aria-label="12:15:09 UTC"></div></a>
+            <a href="photo.html?id=81232"><div class="ph ph-rmi" role="img" aria-label="12:13:53 UTC"></div></a>
+            <a href="photo.html?id=81231"><div class="ph ph-rmi" role="img" aria-label="12:12:37 UTC"></div></a>
+            <a href="photo.html?id=81230"><div class="ph ph-rmi" role="img" aria-label="12:11:21 UTC"></div></a>
+            <a href="photo.html?id=81229"><div class="ph ph-rmi" role="img" aria-label="12:10:05 UTC"></div></a>
+          </div>
+        </section>
+      </div>
+
+      <!-- Metadata -->
+      <aside class="card panel meta" aria-labelledby="ph-title">
+        <section>
+          <h1 id="ph-title">Mars Perseverance Sol 2031: SuperCam Camera</h1>
+          <div class="row" style="gap:8px;margin-bottom:var(--s3)">
+            <span class="badge no-dot">full</span>
+            <span class="badge no-dot mono">#81234</span>
+          </div>
+          <dl>
+            <dt>Rover</dt><dd><a href="photos.html?rover=perseverance">Perseverance</a></dd>
+            <dt>Sol</dt><dd><a href="photos.html?rover=perseverance&amp;sol=2031">2031</a></dd>
+            <dt>Earth date</dt><dd>2026-11-06</dd>
+            <dt>Taken at</dt><dd><time datetime="2026-11-06T12:16:25Z">2026-11-06 12:16:25 UTC</time></dd>
+            <dt>Camera</dt><dd><span class="mono">SUPERCAM_RMI</span><br><span class="muted">SuperCam Remote Micro Imager</span></dd>
+            <dt>Sample type</dt><dd>full</dd>
+            <dt>Site / drive</dt><dd>112 / 1874</dd>
+            <dt>Received</dt><dd><time datetime="2026-11-07T03:41:09Z">2026-11-07 03:41:09 UTC</time> <span class="muted">(15 h after capture)</span></dd>
+          </dl>
+        </section>
+
+        <section>
+          <h2>Caption</h2>
+          <p class="small">NASA's Mars Perseverance rover acquired this image using its SuperCam camera, located on the rover's mast. The camera's Remote Micro-Imager takes close-up images of rocks and soil from a distance. This image was acquired on Nov. 6, 2026 (Sol 2031) at the local mean solar time of 14:22:51.</p>
+        </section>
+
+        <section>
+          <h2>Credit &amp; source</h2>
+          <dl>
+            <dt>Credit</dt><dd>NASA/JPL-Caltech/LANL/CNES/IRAP</dd>
+            <dt>Source ID</dt><dd class="mono xsmall">LRF_2031_0847237865_241EBY_N0930000SCAM01031_0100I4J</dd>
+          </dl>
+          <p style="margin-top:var(--s3)"><a href="#" title="source.link — opens the raw image page on the mission website">View on the mission’s raw-image page ↗</a></p>
+          <p class="note">Sol Index is unofficial; the source page is the authority for this image.</p>
+        </section>
+
+        <section>
+          <details>
+            <summary class="small">Technical fields (<code>extra</code>)</summary>
+            <pre class="raw">{
+  "sclk": "847237865.0",
+  "lmst": "Sol-02031M14:22:51.112",
+  "mast_az": "151.71",
+  "mast_el": "-11.36",
+  "dimension": "(2048,2048)",
+  "filter_name": "UNK",
+  "scale_factor": "1"
+}</pre>
+          </details>
+          <details style="margin-top:8px">
+            <summary class="small">Use via API</summary>
+            <pre class="raw">GET /api/v2/photos/81234
+GET /api/v2/photos/81234/image?size=large</pre>
+          </details>
+        </section>
+      </aside>
+    </div>
+
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="container">Sol Index is an independent, unofficial project, not affiliated with or endorsed by NASA or JPL. Image credit is shown next to every photo.</div>
+</footer>
+
+<script>
+  // Mockup only: size switcher scales the placeholder to show the idea.
+  const img = document.getElementById('img'), label = document.getElementById('size-label'), open = document.getElementById('open');
+  function apply(r) {
+    img.style.setProperty('--w', Math.min(+r.dataset.w, 1200) + 'px');
+    label.textContent = r.value + ' · ' + (r.value === 'full' ? 'original' : r.dataset.w + ' px');
+    open.title = 'GET /api/v2/photos/81234/image?size=' + r.value;
+  }
+  document.querySelectorAll('input[name=size]').forEach(r => r.addEventListener('change', () => apply(r)));
+
+  // Curiosity: images.small/medium/large are null → only Full is available.
+  let curiosity = false;
+  document.getElementById('variant').onclick = e => {
+    curiosity = !curiosity;
+    ['sz-s', 'sz-m', 'sz-l'].forEach(id => {
+      const r = document.getElementById(id); r.disabled = curiosity;
+      r.nextElementSibling.title = curiosity ? 'Not published for this rover' : '';
+    });
+    const f = document.getElementById('sz-f'); if (curiosity) { f.checked = true; apply(f); }
+    else { const m = document.getElementById('sz-m'); m.checked = true; apply(m); }
+    document.getElementById('size-note').textContent = curiosity
+      ? 'Curiosity raw images are published in one size only, so Small/Medium/Large are unavailable.'
+      : 'Full is the original file as published by the source (PNG for Perseverance).';
+    e.target.textContent = curiosity ? 'Back to Perseverance' : 'Show Curiosity variant (full size only)';
+  };
+
+  document.querySelector('.theme-toggle').onclick = () => {
+    const r = document.documentElement;
+    const dark = r.dataset.theme ? r.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+    r.dataset.theme = dark ? 'light' : 'dark';
+  };
+</script>
+</body>
+</html>

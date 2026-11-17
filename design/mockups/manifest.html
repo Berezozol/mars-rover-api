@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mission timeline — Sol Index</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  .rover-tabs { display: flex; gap: var(--s1); flex-wrap: wrap; margin-bottom: var(--s4); }
+  .rover-tabs a { padding: 6px 12px; border-radius: 999px; text-decoration: none; font-size: var(--fs-sm); font-weight: 500; color: var(--text-muted); border: 1px solid var(--border); }
+  .rover-tabs a[aria-current="page"] { background: var(--text); color: var(--bg); border-color: var(--text); }
+  .rover-tabs a.disabled { opacity: .5; pointer-events: none; }
+
+  .summary { display: grid; gap: var(--s3); grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: var(--s5); }
+  @media (min-width: 800px) { .summary { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+  .tile-stat { padding: var(--s3) var(--s4); }
+  .tile-stat .k { font-size: var(--fs-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+  .tile-stat .v { font-size: var(--fs-lg); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+  .chart-card { padding: var(--s4); margin-bottom: var(--s5); }
+  .chart-head { display: flex; gap: var(--s3); flex-wrap: wrap; align-items: flex-end; margin-bottom: var(--s4); }
+  .chart-head h2 { margin: 0; }
+  .chart-head .spacer { flex: 1; }
+
+  /* Overview heat strip: one cell = 10 sols, one row = 500 sols */
+  .heat { display: grid; gap: 4px; }
+  .heat-row { display: grid; grid-template-columns: 76px 1fr; gap: var(--s2); align-items: center; }
+  .heat-row .lbl { font: var(--fs-xs)/1 var(--mono); color: var(--text-muted); text-align: right; }
+  .heat-cells { display: grid; grid-template-columns: repeat(50, 1fr); gap: 2px; }
+  .heat-cells button { all: unset; height: 18px; border-radius: 2px; cursor: pointer; background: var(--seq-0); }
+  .heat-cells button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+  .heat-cells button.in-range { box-shadow: inset 0 0 0 2px var(--text); }
+  @media (max-width: 560px) { .heat-cells button { height: 14px; } .heat-row { grid-template-columns: 52px 1fr; } }
+  .legend { display: flex; align-items: center; gap: var(--s2); font-size: var(--fs-xs); color: var(--text-muted); margin-top: var(--s3); flex-wrap: wrap; }
+  .legend .sw { width: 14px; height: 14px; border-radius: 2px; display: inline-block; }
+
+  /* Detail bars: one bar = one sol */
+  .bars-wrap { overflow-x: auto; overflow-y: hidden; padding: 12px 0 var(--s2); } /* horizontal only, never traps the wheel */
+  .bars-plot { position: relative; height: 220px; min-width: 560px; border-bottom: 1px solid var(--border-strong); margin-left: 44px; }
+  .gridline { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--border); }
+  .gridline span { position: absolute; left: -44px; top: -8px; width: 38px; text-align: right; font: 11px/1 var(--mono); color: var(--text-faint); }
+  .bars { position: absolute; inset: 0; display: flex; align-items: flex-end; gap: 2px; }
+  .bars a { flex: 1 1 0; min-width: 2px; background: var(--accent); border-radius: 4px 4px 0 0; position: relative; }
+  .bars a::before { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 220px; } /* tall hit target */
+  .bars a.zero { background: transparent; }
+  .bars a:hover, .bars a:focus-visible { background: var(--accent-hover); outline: none; }
+  .bars a:focus-visible::after { content: ""; position: absolute; inset: -3px; border: 2px solid var(--focus); border-radius: 4px; }
+  .x-axis { position: relative; height: 18px; min-width: 560px; margin-left: 44px; font: 11px/1 var(--mono); color: var(--text-faint); }
+  .x-axis span { position: absolute; top: 4px; transform: translateX(-50%); }
+  .tip {
+    position: fixed; z-index: 20; pointer-events: none; display: none;
+    background: var(--text); color: var(--bg); border-radius: var(--radius-sm); padding: 8px 10px; font-size: var(--fs-xs); line-height: 1.4; max-width: 260px;
+    box-shadow: var(--shadow);
+  }
+  .tip strong { font-size: var(--fs-sm); }
+
+  .range-err { margin-top: var(--s3); }
+  table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+  th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font-size: var(--fs-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td .mono { font-size: 11px; color: var(--text-muted); }
+  td:nth-child(2) { white-space: nowrap; }
+  td .cam-n { display: none; color: var(--text-muted); }
+  @media (max-width: 560px) { th, td { padding: 8px 4px; } td .cam-list { display: none; } td .cam-n { display: inline; } }
+  /* sticky header row sits right under the sticky site header (--header-h is measured in JS) */
+  #tbl-title { scroll-margin-top: calc(var(--header-h, 57px) + 8px); }
+  thead th { position: sticky; top: var(--header-h, 57px); background: var(--surface); z-index: 1; box-shadow: inset 0 -1px 0 var(--border); }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container">
+    <a class="brand" href="index.html" aria-label="Sol Index home">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="8" fill="var(--accent)"/><ellipse cx="13" cy="13" rx="12" ry="4.5" fill="none" stroke="var(--text-muted)" stroke-width="1.4" transform="rotate(-20 13 13)"/></svg>
+      Sol Index <small>unofficial</small>
+    </a>
+    <nav class="nav" aria-label="Main">
+      <a href="index.html">Rovers</a>
+      <a href="photos.html?rover=perseverance" title="Latest sol">Photos</a>
+      <a href="manifest.html" aria-current="page">Timeline</a>
+      <a href="index.html#api">API</a>
+    </nav>
+    <button class="theme-toggle" type="button" aria-label="Toggle colour theme">Theme</button>
+  </div>
+</header>
+
+<main>
+  <div class="container">
+
+    <div class="mock-bar"><strong>Mockup</strong> sol counts are synthetic but shaped like <code>GET /api/v2/rovers/{rover}/manifest</code>; gaps imitate solar conjunctions.</div>
+
+    <nav class="rover-tabs" aria-label="Rover">
+      <a href="manifest.html?rover=perseverance" data-rover="perseverance">Perseverance</a>
+      <a href="manifest.html?rover=curiosity" data-rover="curiosity">Curiosity</a>
+    </nav>
+
+    <h1 id="title">Perseverance mission timeline</h1>
+    <p class="muted" id="lede">Photos received per sol since landing. Click a sol to browse its photos.</p>
+
+    <div class="summary" id="summary"></div>
+
+    <!-- Overview -->
+    <section class="card chart-card" aria-labelledby="ov-title">
+      <div class="chart-head">
+        <div>
+          <h2 id="ov-title">Whole mission</h2>
+          <p class="small muted" style="margin:0">Each cell is 10 sols; stronger colour = more photos. Select a cell to zoom the chart below.</p>
+        </div>
+      </div>
+      <div class="heat" id="heat" role="group" aria-label="Photos per 10 sols, whole mission"></div>
+      <div class="legend" aria-hidden="true">
+        <span class="sw" style="background:var(--seq-0)"></span> none
+        <span style="margin-left:8px">fewer</span>
+        <span class="sw" style="background:var(--seq-1)"></span><span class="sw" style="background:var(--seq-2)"></span><span class="sw" style="background:var(--seq-3)"></span><span class="sw" style="background:var(--seq-4)"></span>
+        <span>more</span>
+        <span style="margin-left:8px"><span class="sw" style="box-shadow:inset 0 0 0 2px var(--text);vertical-align:middle"></span> selected range</span>
+      </div>
+    </section>
+
+    <!-- Detail -->
+    <section class="card chart-card" aria-labelledby="det-title">
+      <div class="chart-head">
+        <div>
+          <h2 id="det-title">Photos per sol</h2>
+          <p class="small muted" style="margin:0" id="det-sub"></p>
+        </div>
+        <span class="spacer"></span>
+        <div class="field"><label for="from">From sol</label><input id="from" type="number" min="0" style="width:110px"></div>
+        <div class="field"><label for="to">To sol</label><input id="to" type="number" min="0" style="width:110px"></div>
+        <button class="btn" type="button" id="apply">Apply</button>
+        <div class="segmented" role="group" aria-label="Quick ranges">
+          <input type="radio" name="preset" id="p30" value="30"><label for="p30">30</label>
+          <input type="radio" name="preset" id="p100" value="100" checked><label for="p100">100</label>
+          <input type="radio" name="preset" id="p200" value="200"><label for="p200">200 sols</label>
+        </div>
+      </div>
+
+      <div id="range-err"></div>
+
+      <div class="bars-wrap">
+        <div class="bars-plot" id="plot"></div>
+        <div class="x-axis" id="xaxis" aria-hidden="true"></div>
+      </div>
+
+      <!-- Table flows with the page (no inner scroll box). 20 newest sols first, then "Show all". -->
+      <h3 style="margin:var(--s5) 0 var(--s2)" id="tbl-title">Sols in range</h3>
+      <table aria-labelledby="tbl-title">
+        <thead><tr><th scope="col">Sol</th><th scope="col">Earth date</th><th scope="col" class="num">Photos</th><th scope="col">Cameras</th></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+      <div class="row" style="margin-top:var(--s3);align-items:center">
+        <button class="btn btn-sm" type="button" id="tbl-more" aria-controls="tbody"></button>
+        <span class="xsmall muted" id="tbl-count"></span>
+      </div>
+      <p class="xsmall muted" style="margin:var(--s3) 0 0">API: <code id="api-url"></code></p>
+    </section>
+
+  </div>
+</main>
+
+<div class="tip" id="tip" role="tooltip"></div>
+
+<footer class="site-footer">
+  <div class="container">Sol Index is an independent, unofficial project, not affiliated with or endorsed by NASA or JPL.</div>
+</footer>
+
+<script>
+/* ===== Sample manifest (shape = GET /api/v2/rovers/{rover}/manifest) =====
+   {"rover": Rover, "sols": [{"sol", "earth_date", "total_photos", "cameras": [...]}, ...]}  sorted sol DESC.
+   Sols without photos are simply absent from "sols". Values are synthetic (seeded PRNG). */
+const ROVERS = {
+  perseverance: {
+    rover: {"id":"perseverance","name":"Perseverance","mission":"mars2020","launch_date":"2020-07-30","landing_date":"2021-02-18","status":"active","max_sol":2031,"max_date":"2026-11-06","total_photos":579518,"cameras_count":23,"last_synced_at":"2026-11-17T06:00:12Z"},
+    cams: ["NAVCAM_LEFT","NAVCAM_RIGHT","FRONT_HAZCAM_LEFT_A","FRONT_HAZCAM_RIGHT_A","REAR_HAZCAM_LEFT","REAR_HAZCAM_RIGHT","MCZ_LEFT","MCZ_RIGHT","SUPERCAM_RMI","SHERLOC_WATSON","SKYCAM","CACHECAM","PIXL_MCC"],
+    gaps: [[199, 216], [940, 958], [1388, 1404]], mean: 285, seed: 7,
+    fixed: {2031: {"total_photos":52,"cameras":["FRONT_HAZCAM_LEFT_A","FRONT_HAZCAM_RIGHT_A","MCZ_LEFT","MCZ_RIGHT","NAVCAM_LEFT","NAVCAM_RIGHT","SHERLOC_WATSON","SUPERCAM_RMI"]}, 2029: null}
+  },
+  curiosity: {
+    rover: {"id":"curiosity","name":"Curiosity","mission":"msl","launch_date":"2011-11-26","landing_date":"2012-08-06","status":"active","max_sol":5066,"max_date":"2026-11-07","total_photos":1184530,"cameras_count":17,"last_synced_at":"2026-11-17T06:00:08Z"},
+    cams: ["FHAZ_LEFT_B","FHAZ_RIGHT_B","RHAZ_LEFT_B","RHAZ_RIGHT_B","NAV_LEFT_B","NAV_RIGHT_B","MAST_LEFT","MAST_RIGHT","CHEMCAM_RMI","MAHLI","MARDI"],
+    gaps: [[230, 256], [1003, 1003], [1557, 1582], [2309, 2333], [3066, 3088], [3833, 3854], [4597, 4615]], mean: 234, seed: 11,
+    fixed: {1000: {"total_photos":856,"cameras":["CHEMCAM_RMI","FHAZ_LEFT_B","FHAZ_RIGHT_B","MAHLI","MAST_LEFT","MAST_RIGHT","NAV_LEFT_B","NAV_RIGHT_B","RHAZ_LEFT_B","RHAZ_RIGHT_B"]}}
+  }
+};
+
+const qs = new URLSearchParams(location.search);
+let key = (qs.get('rover') || 'perseverance').toLowerCase();
+if (!ROVERS[key]) key = 'perseverance';
+const R = ROVERS[key], rover = R.rover;
+
+function rng(seed) { return () => (seed = (seed * 16807) % 2147483647) / 2147483647; }
+function earthDate(sol) { // anchored on max_date; 1 sol = 1.02749125 days
+  const t = Date.parse(rover.max_date + 'T00:00:00Z') - (rover.max_sol - sol) * 1.02749125 * 864e5;
+  return new Date(t).toISOString().slice(0, 10);
+}
+function buildManifest() {
+  const rand = rng(R.seed), sols = [];
+  for (let s = 0; s <= rover.max_sol; s++) {
+    const r = rand(), r2 = rand();
+    if (s in R.fixed) { if (R.fixed[s]) sols.push({ sol: s, earth_date: earthDate(s), ...R.fixed[s] }); continue; }
+    if (R.gaps.some(([a, b]) => s >= a && s <= b)) continue;
+    if (r < 0.06) continue; // occasional empty sol
+    const n = Math.max(2, Math.round(R.mean * Math.exp((r2 - 0.5) * 2.2) * (s < 30 ? 2.5 : 1)));
+    const cams = R.cams.filter(() => rand() < 0.45);
+    sols.push({ sol: s, earth_date: earthDate(s), total_photos: n, cameras: cams.length ? cams : [R.cams[0]] });
+  }
+  return { rover, sols: sols.reverse() }; // API order: sol DESC
+}
+const manifest = buildManifest();
+const bySol = new Map(manifest.sols.map(x => [x.sol, x]));
+
+const $ = s => document.querySelector(s);
+const fmt = n => n.toLocaleString('en-US');
+document.querySelectorAll('.rover-tabs a[data-rover]').forEach(a => { if (a.dataset.rover === key) a.setAttribute('aria-current', 'page'); });
+$('#title').textContent = `${rover.name} mission timeline`;
+
+// Summary (from manifest.rover + sols)
+const withPhotos = manifest.sols.length;
+const busiest = manifest.sols.reduce((a, b) => b.total_photos > a.total_photos ? b : a);
+$('#summary').innerHTML = [
+  ['Sols with photos', `${fmt(withPhotos)} <span class="small muted">of ${fmt(rover.max_sol + 1)}</span>`],
+  ['Total photos', fmt(rover.total_photos)],
+  ['Latest sol', `<a href="photos.html?rover=${key}&sol=${rover.max_sol}">${rover.max_sol}</a> <span class="small muted">${rover.max_date}</span>`],
+  ['Busiest sol', `<a href="photos.html?rover=${key}&sol=${busiest.sol}">${busiest.sol}</a> <span class="small muted">${fmt(busiest.total_photos)}</span>`],
+  ['Cameras', rover.cameras_count]
+].map(([k, v]) => `<div class="card tile-stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
+
+// Range state
+let from = Math.max(0, rover.max_sol - 99), to = rover.max_sol;
+if (qs.has('from_sol')) from = +qs.get('from_sol');
+if (qs.has('to_sol')) to = +qs.get('to_sol');
+
+// Overview heat strip
+function buildHeat() {
+  const bins = [];
+  for (let b = 0; b * 10 <= rover.max_sol; b++) {
+    let sum = 0; for (let s = b * 10; s < b * 10 + 10; s++) sum += bySol.get(s)?.total_photos || 0;
+    bins.push(sum);
+  }
+  const sorted = bins.filter(Boolean).sort((a, b) => a - b), q = p => sorted[Math.floor(p * (sorted.length - 1))];
+  const cuts = [q(.25), q(.5), q(.75)];
+  const level = v => !v ? 0 : v <= cuts[0] ? 1 : v <= cuts[1] ? 2 : v <= cuts[2] ? 3 : 4;
+  let html = '';
+  for (let row = 0; row * 50 < bins.length; row++) {
+    const a = row * 500, b = Math.min(rover.max_sol, a + 499);
+    html += `<div class="heat-row"><span class="lbl">${a}–${b}</span><div class="heat-cells">`;
+    for (let i = row * 50; i < Math.min(bins.length, row * 50 + 50); i++) {
+      const s0 = i * 10, s1 = Math.min(rover.max_sol, s0 + 9);
+      html += `<button type="button" data-bin="${i}" style="background:var(--seq-${level(bins[i])})" aria-label="Sols ${s0}–${s1}: ${fmt(bins[i])} photos" data-tip="<strong>Sols ${s0}–${s1}</strong><br>${earthDate(s0)} – ${earthDate(s1)}<br>${fmt(bins[i])} photos"></button>`;
+    }
+    html += '</div></div>';
+  }
+  $('#heat').innerHTML = html;
+  $('#heat').querySelectorAll('button').forEach(b => b.onclick = () => {
+    const c = +b.dataset.bin * 10 + 5; // centre a 100-sol window on the cell
+    setRange(Math.max(0, Math.min(c - 50, rover.max_sol - 99)), Math.min(rover.max_sol, Math.max(c + 49, 99)));
+  });
+}
+function markHeat() {
+  $('#heat').querySelectorAll('button').forEach(b => {
+    const s0 = +b.dataset.bin * 10; b.classList.toggle('in-range', s0 + 9 >= from && s0 <= to);
+  });
+}
+
+// Detail bar chart
+function renderBars() {
+  $('#from').value = from; $('#to').value = to;
+  $('#api-url').textContent = `GET /api/v2/rovers/${key}/manifest?from_sol=${from}&to_sol=${to}`;
+  if (from > to) {
+    $('#range-err').innerHTML = `<div class="alert alert-error range-err" role="alert"><div><div class="alert-title">Invalid range</div>
+      <p style="margin:0">“From sol” must not be greater than “To sol”. <span class="xsmall muted">(<code>validation_error</code>, HTTP 422)</span></p></div></div>`;
+    return;
+  }
+  $('#range-err').innerHTML = '';
+  const sols = []; for (let s = from; s <= to; s++) sols.push(bySol.get(s) || { sol: s, earth_date: earthDate(s), total_photos: 0, cameras: [] });
+  const max = Math.max(1, ...sols.map(x => x.total_photos));
+  const step = max > 1000 ? 500 : max > 400 ? 200 : 100, top = Math.ceil(max / step) * step;
+  const sum = sols.reduce((a, x) => a + x.total_photos, 0);
+  $('#det-sub').textContent = `Sols ${from}–${to} · ${sols[0].earth_date} – ${sols[sols.length - 1].earth_date} · ${fmt(sum)} photos`;
+
+  let grid = '';
+  for (let v = step; v <= top; v += step) grid += `<div class="gridline" style="bottom:${v / top * 100}%"><span>${fmt(v)}</span></div>`;
+  const bars = sols.map(x => `<a href="photos.html?rover=${key}&sol=${x.sol}" class="${x.total_photos ? '' : 'zero'}" style="height:${x.total_photos / top * 100}%"
+      aria-label="Sol ${x.sol}, ${x.earth_date}: ${x.total_photos ? fmt(x.total_photos) + ' photos' : 'no photos'}"
+      data-tip="<strong>Sol ${x.sol}</strong> · ${x.earth_date}<br>${x.total_photos ? fmt(x.total_photos) + ' photos · ' + x.cameras.length + ' cameras' : 'No photos'}${x.total_photos ? '<br>Click to browse' : ''}"></a>`).join('');
+  $('#plot').innerHTML = grid + `<div class="bars">${bars}</div>`;
+
+  const n = sols.length, every = n <= 30 ? 5 : n <= 100 ? 10 : 25;
+  $('#xaxis').innerHTML = sols.map((x, i) => x.sol % every === 0 ? `<span style="left:${(i + .5) / n * 100}%">${x.sol}</span>` : '').join('');
+
+  tableRows = [...sols].reverse().filter(x => x.total_photos); showAll = false; renderTable();
+  markHeat(); bindTips();
+}
+const TABLE_ROWS = 20;
+let tableRows = [], showAll = false;
+function renderTable() {
+  const rows = showAll ? tableRows : tableRows.slice(0, TABLE_ROWS);
+  $('#tbody').innerHTML = rows.map(x =>
+    `<tr><td><a href="photos.html?rover=${key}&sol=${x.sol}">${x.sol}</a></td><td>${x.earth_date}</td><td class="num">${fmt(x.total_photos)}</td><td><span class="mono cam-list">${x.cameras.join(', ')}</span><span class="cam-n" title="${x.cameras.join(', ')}">${x.cameras.length}</span></td></tr>`).join('');
+  const more = $('#tbl-more'), n = tableRows.length;
+  more.hidden = n <= TABLE_ROWS;
+  more.textContent = showAll ? `Show first ${TABLE_ROWS}` : `Show all ${fmt(n)} sols`;
+  more.setAttribute('aria-expanded', String(showAll));
+  $('#tbl-count').textContent = `${fmt(rows.length)} of ${fmt(n)} sols with photos, newest first`;
+}
+function setRange(a, b) { from = a; to = b; document.querySelectorAll('input[name=preset]').forEach(r => r.checked = false); renderBars(); }
+
+// Tooltip on hover and keyboard focus
+const tip = $('#tip');
+function bindTips() {
+  document.querySelectorAll('[data-tip]').forEach(el => {
+    const show = e => {
+      tip.innerHTML = el.dataset.tip; tip.style.display = 'block';
+      const r = el.getBoundingClientRect(), x = e && e.clientX ? e.clientX : r.left + r.width / 2;
+      tip.style.left = Math.min(innerWidth - tip.offsetWidth - 8, Math.max(8, x - tip.offsetWidth / 2)) + 'px';
+      tip.style.top = Math.max(8, (e && e.clientY ? e.clientY : r.top) - tip.offsetHeight - 12) + 'px';
+    };
+    el.onmousemove = show; el.onfocus = () => show(); el.onmouseleave = el.onblur = () => tip.style.display = 'none';
+  });
+}
+
+$('#tbl-more').onclick = () => {
+  const wasAll = showAll; showAll = !showAll; renderTable();
+  if (wasAll) $('#tbl-title').scrollIntoView({ block: 'start' });
+};
+// keep the sticky table header under the sticky site header (its height changes on phones)
+const setHeaderH = () => document.documentElement.style.setProperty('--header-h', document.querySelector('.site-header').offsetHeight + 'px');
+addEventListener('resize', setHeaderH); setHeaderH();
+$('#apply').onclick = () => setRange(+$('#from').value, +$('#to').value);
+document.querySelectorAll('input[name=preset]').forEach(r => r.onchange = () => { to = rover.max_sol; from = Math.max(0, to - +r.value + 1); renderBars(); });
+$('.theme-toggle').onclick = () => {
+  const r = document.documentElement;
+  const dark = r.dataset.theme ? r.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  r.dataset.theme = dark ? 'light' : 'dark';
+};
+
+buildHeat(); renderBars();
+</script>
+</body>
+</html>

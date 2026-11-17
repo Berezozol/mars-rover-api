@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sol Index — Mars rover raw images</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  .hero { padding: var(--s5) 0 var(--s4); }
+  .hero h1 { font-size: var(--fs-2xl); max-width: 22ch; }
+  .hero p { max-width: 62ch; color: var(--text-muted); }
+  .quick { display: flex; gap: var(--s3); flex-wrap: wrap; align-items: flex-end; padding: var(--s4); margin-top: var(--s4); }
+  .quick .field { min-width: 140px; }
+
+  .rover { display: flex; flex-direction: column; overflow: hidden; }
+  .rover-art { aspect-ratio: 16 / 7; border-radius: 0; }
+  .rover-body { padding: var(--s4); display: flex; flex-direction: column; gap: var(--s3); flex: 1; }
+  .rover-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s2); }
+  .rover-head h2 { margin: 0; }
+  .rover-mission { font-size: var(--fs-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; }
+  .rover-actions { display: flex; gap: var(--s2); flex-wrap: wrap; margin-top: auto; }
+  .synced { font-size: var(--fs-xs); color: var(--text-faint); }
+
+  .latest-strip { display: grid; gap: var(--s2); grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  @media (min-width: 720px) { .latest-strip { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+  .latest-strip a { text-decoration: none; color: var(--text); font-size: var(--fs-xs); }
+  .latest-strip .credit { color: var(--text-faint); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .section-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s3); margin: var(--s6) 0 var(--s3); flex-wrap: wrap; }
+  .section-head h2 { margin: 0; }
+  .dev { display: grid; gap: var(--s4); grid-template-columns: 1fr; }
+  @media (min-width: 800px) { .dev { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+  pre { margin: 0; padding: var(--s3); background: var(--surface-2); border-radius: var(--radius-sm); overflow-x: auto; overflow-y: hidden; font: var(--fs-xs)/1.5 var(--mono); }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container">
+    <a class="brand" href="index.html" aria-label="Sol Index home">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="8" fill="var(--accent)"/><ellipse cx="13" cy="13" rx="12" ry="4.5" fill="none" stroke="var(--text-muted)" stroke-width="1.4" transform="rotate(-20 13 13)"/></svg>
+      Sol Index <small>unofficial</small>
+    </a>
+    <nav class="nav" aria-label="Main">
+      <a href="index.html" aria-current="page">Rovers</a>
+      <a href="photos.html?rover=perseverance" title="Latest sol">Photos</a>
+      <a href="manifest.html">Timeline</a>
+      <a href="#api">API</a>
+    </nav>
+    <button class="theme-toggle" type="button" aria-label="Toggle colour theme">Theme</button>
+  </div>
+</header>
+
+<main>
+  <div class="container">
+
+    <section class="hero" aria-labelledby="hero-title">
+      <h1 id="hero-title">Every raw image from the Mars rovers, sol by sol.</h1>
+      <p>Browse unprocessed frames from Perseverance and Curiosity by Martian day, Earth date and camera. An open, community-run replacement for the archived Mars Rover Photos API.</p>
+
+      <form class="card quick" action="photos.html" role="search" aria-label="Jump to a sol">
+        <div class="field">
+          <label for="q-rover">Rover</label>
+          <select id="q-rover" name="rover">
+            <option value="perseverance">Perseverance</option>
+            <option value="curiosity">Curiosity</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="q-sol">Sol</label>
+          <input id="q-sol" name="sol" type="number" inputmode="numeric" min="0" max="2031" placeholder="0 – 2031">
+        </div>
+        <button class="btn btn-primary" type="submit">Open sol</button>
+        <a class="btn" href="photos.html?rover=perseverance">Latest photos</a>
+        <span class="hint">Sol = a Martian day counted from landing (sol 0).</span>
+      </form>
+    </section>
+
+    <!-- Data: GET /api/v2/rovers → {"items":[Rover,…]}. UI hides rovers with max_sol = null (owner decision 2026-11-17),
+         then orders active first, newest landing first. Spirit and Opportunity are hidden until their archives are imported. -->
+    <section aria-labelledby="rovers-title">
+      <div class="section-head">
+        <h2 id="rovers-title">Rovers</h2>
+        <span class="small muted">Data refreshed every 6 h</span>
+      </div>
+
+      <div class="grid-rovers">
+
+        <!-- Perseverance -->
+        <article class="card rover" aria-labelledby="r-perseverance">
+          <div class="ph rover-art" role="img" aria-label="Placeholder landscape for Perseverance"></div>
+          <div class="rover-body">
+            <div class="rover-head">
+              <h2 id="r-perseverance"><a href="photos.html?rover=perseverance" style="color:inherit;text-decoration:none">Perseverance</a></h2>
+              <span class="badge badge-active">Active</span>
+            </div>
+            <div class="rover-mission">Mission mars2020 · landed 2021-02-18</div>
+            <dl class="stats">
+              <div><dt>Latest sol</dt><dd>2031</dd></div>
+              <div><dt>Latest date</dt><dd>2026-11-06</dd></div>
+              <div><dt>Photos</dt><dd>579,518</dd></div>
+              <div><dt>Cameras</dt><dd>23</dd></div>
+            </dl>
+            <div class="synced">Synced <time datetime="2026-11-17T06:00:12Z">today, 06:00 UTC</time></div>
+            <div class="rover-actions">
+              <a class="btn btn-primary btn-sm" href="photos.html?rover=perseverance">Latest sol 2031</a>
+              <a class="btn btn-sm" href="manifest.html?rover=perseverance">Timeline</a>
+            </div>
+          </div>
+        </article>
+
+        <!-- Curiosity -->
+        <article class="card rover" aria-labelledby="r-curiosity">
+          <div class="ph ph-close rover-art" role="img" aria-label="Placeholder landscape for Curiosity"></div>
+          <div class="rover-body">
+            <div class="rover-head">
+              <h2 id="r-curiosity"><a href="photos.html?rover=curiosity" style="color:inherit;text-decoration:none">Curiosity</a></h2>
+              <span class="badge badge-active">Active</span>
+            </div>
+            <div class="rover-mission">Mission msl · landed 2012-08-06</div>
+            <dl class="stats">
+              <div><dt>Latest sol</dt><dd>5066</dd></div>
+              <div><dt>Latest date</dt><dd>2026-11-07</dd></div>
+              <div><dt>Photos</dt><dd>1,184,530</dd></div>
+              <div><dt>Cameras</dt><dd>17</dd></div>
+            </dl>
+            <div class="synced">Synced <time datetime="2026-11-17T06:00:08Z">today, 06:00 UTC</time></div>
+            <div class="rover-actions">
+              <a class="btn btn-primary btn-sm" href="photos.html?rover=curiosity">Latest sol 5066</a>
+              <a class="btn btn-sm" href="manifest.html?rover=curiosity">Timeline</a>
+            </div>
+          </div>
+        </article>
+
+      </div>
+      <p class="small muted" style="margin-top:var(--s3)">More rovers appear when their archives are imported.</p>
+    </section>
+
+    <!-- Data: GET /api/v2/rovers/perseverance/photos/latest?per_page=6 -->
+    <section aria-labelledby="latest-title">
+      <div class="section-head">
+        <h2 id="latest-title">Latest from Perseverance · sol 2031</h2>
+        <a href="photos.html?rover=perseverance" class="small">All 52 photos of sol 2031 →</a>
+      </div>
+      <div class="latest-strip">
+        <a href="photo.html?id=81234"><div class="ph ph-rmi" role="img" aria-label="SuperCam RMI, sol 2031, 12:16 UTC"><span class="ph-label">SUPERCAM_RMI</span></div><span class="credit">NASA/JPL-Caltech/LANL/CNES/IRAP</span></a>
+        <a href="photo.html?id=81233"><div class="ph ph-gray" role="img" aria-label="Navcam left, sol 2031, 11:58 UTC"><span class="ph-label">NAVCAM_LEFT</span></div><span class="credit">NASA/JPL-Caltech</span></a>
+        <a href="photo.html?id=81232"><div class="ph ph-gray" role="img" aria-label="Navcam right, sol 2031, 11:58 UTC"><span class="ph-label">NAVCAM_RIGHT</span></div><span class="credit">NASA/JPL-Caltech</span></a>
+        <a href="photo.html?id=81229"><div class="ph" role="img" aria-label="Mastcam-Z left, sol 2031, 11:40 UTC"><span class="ph-label">MCZ_LEFT</span></div><span class="credit">NASA/JPL-Caltech/ASU</span></a>
+        <a href="photo.html?id=81226"><div class="ph ph-haz" role="img" aria-label="Front Hazcam left, sol 2031, 10:05 UTC"><span class="ph-label">FRONT_HAZCAM_LEFT_A</span></div><span class="credit">NASA/JPL-Caltech</span></a>
+        <a href="photo.html?id=81221"><div class="ph ph-close" role="img" aria-label="SHERLOC WATSON, sol 2031, 09:31 UTC"><span class="ph-label">SHERLOC_WATSON</span></div><span class="credit">NASA/JPL-Caltech/MSSS</span></a>
+      </div>
+    </section>
+
+    <section id="api" aria-labelledby="api-title">
+      <div class="section-head"><h2 id="api-title">For developers</h2></div>
+      <div class="dev">
+        <div class="card panel">
+          <h3>Moving from the old API?</h3>
+          <p class="small muted">Change the host and keep your <code>/mars-photos/api/v1/…</code> calls. v1 mirrors the archived API’s responses.</p>
+          <pre>GET /mars-photos/api/v1/rovers/curiosity/photos?sol=1000</pre>
+        </div>
+        <div class="card panel">
+          <h3>API v2</h3>
+          <p class="small muted">All sample types, image sizes, real capture time and one error format. This site is built on v2 only.</p>
+          <pre>GET /api/v2/rovers/perseverance/photos?sol=2031&amp;camera=SUPERCAM_RMI</pre>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="container">
+    Sol Index is an independent, unofficial project and is not affiliated with or endorsed by NASA or JPL. Image credit is shown next to every photo.
+  </div>
+</footer>
+
+<script>
+  // Mockup only: manual theme override on top of prefers-color-scheme.
+  document.querySelector('.theme-toggle').addEventListener('click', () => {
+    const r = document.documentElement;
+    const dark = r.dataset.theme ? r.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+    r.dataset.theme = dark ? 'light' : 'dark';
+  });
+</script>
+</body>
+</html>
