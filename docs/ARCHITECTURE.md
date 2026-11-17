@@ -48,6 +48,7 @@ app/
   repositories/        rovers.py, photos.py, sync_runs.py — только SQL, без логики
   sources/
     base.py            протокол SourceAdapter + dataclass PhotoRecord
+    normalize.py       общие правила нормализации: "UNK"/null → None, числа-строки, время в UTC
     http.py            общий httpx-клиент: таймауты, ретраи, лимит частоты, User-Agent
     m2020.py           адаптер Perseverance
     msl.py             адаптер Curiosity
@@ -84,6 +85,11 @@ docs/
 - `sync_runs` — журнал: `id`, `rover_id`, `mode` (`incremental` / `backfill`), `from_sol`, `to_sol`, `status` (`running` / `success` / `partial` / `failed`), `started_at`, `finished_at`, `photos_upserted`, `error`.
 
 ## Синхронизация
+
+- **Протокол адаптера** (`app/sources/base.py`): `latest_sol()` и `fetch_sols(from_sol, to_sol)` — асинхронный итератор пар `(sol, list[PhotoRecord])` по убыванию сола, только для солов, где есть снимки. M20 забирает диапазон одним фильтром `condition_*:sol:gte/lte` постранично, MSL — по солу со всеми страницами (`DATA-SOURCES.md`). Синхронизация работает с диапазонами, а не с отдельными солами.
+  - Если источник прислал солы не по порядку, один сол может прийти повторно с дополнительными снимками — потребитель сливает (upsert), а не заменяет.
+  - Упор в `UPSTREAM_MAX_PAGES` — исключение `PageLimitExceeded`: недокачанный сол не отдаётся, уже отданные остаются верными. Для синхронизации это сбой сола → статус `partial`. Лимит у M20 общий на диапазон (200 страниц × 100 ≈ 20 000 снимков), поэтому backfill режется на куски.
+  - Лимит частоты действует на экземпляр `UpstreamClient`: в процессе (планировщик, CLI) — один общий клиент.
 
 - **Инкремент:** узнать последний сол у источника и пройти солы от `last_synced_sol − SYNC_OVERLAP_SOLS` до последнего. Перекрытие нужно, потому что снимки за сол доходят до Земли несколько дней.
 - **Backfill:** CLI-команда с диапазоном солов и паузами между запросами. Полная история — это миллионы записей, её грузим постепенно.

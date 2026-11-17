@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -26,9 +26,18 @@ class Settings(BaseSettings):
     sync_interval_minutes: int = 360
     sync_overlap_sols: int = 7
 
-    upstream_timeout_seconds: float = 30.0
+    upstream_timeout_seconds: float = Field(default=30.0, gt=0)
     upstream_max_rps: float = 1.0
     upstream_user_agent: str = "mars-rover-api/0.1 (personal project)"
+    upstream_max_retries: int = Field(default=4, ge=0)
+    upstream_retry_base_seconds: float = 1.0
+    upstream_max_pages: int = Field(default=200, ge=1)
+
+    m2020_feed_url: str = "https://mars.nasa.gov/rss/api/"
+    msl_feed_url: str = "https://mars.nasa.gov/api/v1/raw_image_items/"
+    # The Perseverance feed caps `num` at 100.
+    m2020_page_size: int = Field(default=100, ge=1, le=100)
+    msl_page_size: int = Field(default=200, ge=1)
 
     admin_token: SecretStr | None = None
     cors_origins: list[str] = ["*"]

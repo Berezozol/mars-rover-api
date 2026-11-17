@@ -8,6 +8,9 @@
   test: repository code may flush (and commit to a savepoint), nothing survives the test.
 - `make_record` builds `PhotoRecord` objects with sensible defaults.
 - `app` / `client` give an application instance and an HTTP client without a real server.
+- `upstream_router` (autouse) blocks real outgoing HTTP for every test: it is a respx router
+  with `assert_all_mocked=True`; tests add routes to it to mock upstream feeds. In-process
+  `httpx.ASGITransport` clients are not affected.
 """
 
 import itertools
@@ -18,6 +21,7 @@ from typing import Any
 
 import httpx
 import pytest
+import respx
 from alembic import command
 from alembic.config import Config as AlembicConfig
 from fastapi import FastAPI
@@ -105,6 +109,13 @@ async def db_session(migrated_db: str) -> AsyncIterator[AsyncSession]:
                     await outer.rollback()
     finally:
         await engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def upstream_router() -> Iterator[respx.MockRouter]:
+    """Network guard: any httpx request that is not explicitly mocked fails the test."""
+    with respx.mock(assert_all_mocked=True, assert_all_called=False) as router:
+        yield router
 
 
 _record_counter = itertools.count(1)

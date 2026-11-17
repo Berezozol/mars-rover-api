@@ -1,0 +1,49 @@
+{
+  "items": [
+    {
+      "id": 1654785,
+      "camera_vector": null,
+      "site": null,
+      "imageid": "5073ML1102690981307212C00_DXXX",
+      "subframe_rect": null,
+      "sol": 5073,
+      "scale_factor": null,
+      "camera_model_component_list": null,
+      "instrument": "MAST_LEFT",
+      "url": "https://mars.nasa.gov/msl-raw-images/msss/05073/mcam/5073ML1102690981307212C00_DXXX.jpg",
+      "spacecraft_clock": null,
+      "attitude": null,
+      "camera_position": null,
+      "camera_model_type": null,
+      "drive": null,
+      "xyz": null,
+      "created_at": "2026-11-16T19:06:51.614Z",
+      "updated_at": "2026-11-16T19:06:51.614Z",
+      "mission": "msl",
+      "extended": {
+        "lmst": null,
+        "bucket": "msl-raws",
+        "mast_az": null,
+        "mast_el": null,
+        "url_list": "https://mars.nasa.gov/msl-raw-images/msss/05073/mcam/5073ML1102690981307212C00_DXXX.jpg",
+        "contributor": "MSSS",
+        "filter_name": null,
+        "sample_type": "full"
+      },
+      "date_taken": "2026-11-13T17:28:56.000Z",
+      "date_received": "2026-11-16T19:01:12.000Z",
+      "instrument_sort": 1,
+      "sample_type_sort": 1,
+      "is_thumbnail": false,
+      "title": "Sol 5073: Mast Camera (Mastcam)",
+      "description": "This image was taken by Mast Camera (Mastcam) onboard NASA's Mars rover Curiosity on Sol 5073 (2026-11-13 17:28:56 UTC).",
+      "link": "/raw_images/1654785",
+      "image_credit": "NASA/JPL-Caltech/MSSS",
+      "https_url": "https://mars.nasa.gov/msl-raw-images/msss/05073/mcam/5073ML1102690981307212C00_DXXX.jpg"
+    }
+  ],
+  "more": true,
+  "total": 1519997,
+  "page": 0,
+  "per_page": 1
+}

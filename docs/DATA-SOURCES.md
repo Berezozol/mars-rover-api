@@ -25,9 +25,9 @@
 ```
 
 ### Список изображений [проверено]
-`...&num=<на странице>&page=<с 0>&order=sol+desc`
+`...&num=<на странице>&page=<с 0>&order=sol+desc`. Размер страницы по умолчанию 25, **максимум 100**: на `num=200` фид отдаёт `per_page: "100"` [проверено 2026-11-17].
 
-Верхний уровень: `type`, `page` (**число**), `per_page` (**строка**), `total_results` (**строка**), `total_images` (число), `mission`, `images` (массив).
+Верхний уровень: `type`, `page` (страница 0 — число `0`, ненулевая — **строка**: `"1"` в `m2020/sol_2029_page1.json`, `"3"` в `m2020/range_1000_page3.json`), `per_page` (**строка**), `total_results` (**число**; без фильтра — 579518 при `total_images` 1055868; в сводке `latest=true` вместо него `total: 1055868`), `total_images` (число), `mission`, `images` (массив). `sample_type` в 80 полученных снимках — только `"Full"`; миниатюр в списке не встретилось.
 
 Поля изображения:
 | Поле | Пример / тип |
@@ -49,8 +49,10 @@
 | `attitude` | строка-кортеж |
 | `extended.mastAz/mastEl/sclk/scaleFactor/xyz/subframeRect/dimension` | всё строки, бывает `"UNK"` |
 
-### Фильтр по солу [старый код]
-`...&feedtype=json&sol=<N>` — так старый скрапер забирал каждый сол. Проверить на этапе 2: отдаёт ли все снимки сола одним ответом или нужны `num` и `page`. Если фильтр перестал работать — идти страницами по `order=sol desc` и останавливаться, когда сол стал меньше нужного.
+### Фильтр по солу [проверено]
+`&sol=<N>` (как в старом скрапере) **больше не работает — параметр игнорируется**: в `m2020/sol_2029.json` снимки солов 2031 и 2024, `total_results` тот же, что без фильтра.
+
+Работает фильтр по диапазону: `...&order=sol+desc&num=100&page=<k>&condition_2=<from>:sol:gte&condition_3=<to>:sol:lte`. Сол 1000 → `total_results: 385`, все снимки сола 1000, страницы 0–3 по 100/100/100/85 (разбивка по страницам — проба; `page`/`total_results` — в `m2020/range_1000_page0.json`, `range_1000_page3.json`); сол 2024 → 316 (проба, без фикстуры). Страницы идут, пока число полученных снимков меньше `total_results` и страница не пустая. Второго ключа сортировки внутри сола нет, поэтому стабильность порядка между страницами не гарантирована — адаптер убирает повторы `imageid` внутри сола. Проверить на живом фиде, не теряются ли снимки на стыке страниц, — открытый вопрос. Так адаптер и забирает как один сол, так и диапазон солов. В фиде бывают пропуски солов: на 2026-11-17 после 2031 сразу идёт 2024.
 
 ## Curiosity (MSL)
 
@@ -75,22 +77,28 @@
 | `url`, `https_url` | полный URL изображения; уменьшенных версий нет |
 | `date_taken` | `"2024-10-08T06:50:23.000Z"` |
 | `date_received` | `"2024-10-09T21:30:32.000Z"` |
-| `extended.sample_type` | `"subframe"`, также `full`, `thumbnail`, `downsampled` |
+| `extended.sample_type` | `"subframe"`, `full`, `thumbnail`, `downsampled`, а также `chemcam prc` и `mixed` (`msl/sol_4327_page1.json`, `page2`) — сохраняем как есть в нижнем регистре |
 | `extended.contributor`, `extended.bucket`, `extended.url_list` | строки |
 | `is_thumbnail` | bool |
 | `title`, `description`, `image_credit` | строки |
 | `link` | **относительный**: `"/raw_images/1387954"` |
-| `site`, `drive`, `xyz`, `attitude`, `camera_*`, `extended.mast_az/mast_el/lmst` | часто `null` |
+| `site`, `drive`, `xyz`, `attitude`, `camera_*`, `extended.mast_az/mast_el/lmst` | часто `null`; `site`, `drive` — числа или `null` |
 | `mission` | `"msl"`; поля с названием марсохода **нет** |
+| `created_at`, `updated_at`, `instrument_sort`, `sample_type_sort`, `scale_factor`, `spacecraft_clock`, `subframe_rect`, `extended.filter_name` | служебные поля фида, в документе раньше не было; в модель не переносим |
 
-### Последний сол [старый код]
+### Последний сол [проверено]
 Аналога `latest=true` нет. `order=sol desc,...&per_page=1&page=0&condition_1=msl:mission` → `items[0].sol` — так делал старый скрапер.
 
 ### Пагинация внутри сола [проверено]
 В одном соле бывает больше 200 снимков (сол 4327 — 508). Старый скрапер брал только `page=0` и терял остальное. Мы идём по страницам, пока `more == true`.
 
-### Исключить миниатюры [не проверено]
-Встречается параметр `extended=thumbnail::sample_type::noteq`. Пока надёжнее отбрасывать `is_thumbnail: true` в адаптере.
+### Исключить миниатюры [проверено]
+`extended=thumbnail::sample_type::noteq` работает: сол 4327 → `total: 280` вместо 508 (проба, без фикстуры; записанные фикстуры сола 4327 — без этого параметра) (508 − 228 миниатюр). Адаптер передаёт этот параметр и всё равно отбрасывает `is_thumbnail: true`. `is_thumbnail` истинно ровно тогда, когда `extended.sample_type == "thumbnail"` (1192 снимка солов 4327 и 5073).
+
+### Камеры (`instrument`) [проверено]
+Солы 4327 и 5073: `MAST_LEFT`, `MAST_RIGHT`, `NAV_LEFT_B`, `NAV_RIGHT_B`, `FHAZ_LEFT_B`, `FHAZ_RIGHT_B`, `RHAZ_LEFT_B`, `RHAZ_RIGHT_B`, `CHEMCAM_RMI`, `MAHLI`, `MARDI`. Легаси-коды `FHAZ`, `RHAZ`, `MAST`, `CHEMCAM`, `NAVCAM` в свежем фиде не встречаются — группы для v1 (`LEGACY-API.md`) делаются на этапе 4.
+
+Последний сол на 2026-11-17 — 5073 (`msl/latest.json`); в нём 684 снимка на 4 страницах.
 
 ## Сопоставление с нашей моделью
 
@@ -108,7 +116,7 @@
 | `title` | `title` | `title` |
 | `caption` | `caption` | `description` |
 | `credit` | `credit` | `image_credit` |
-| `source_link` | `link` | `https://mars.nasa.gov` + `link` [не проверено] |
+| `source_link` | `link` | `https://mars.nasa.gov` + `link` (проверено: 301 → `.../raw_images/<id>/` → 200) |
 | `site`, `drive` | `site`, `int(drive)` | `site`, `drive` |
 | `extra` (jsonb) | `extended`, `attitude`, `camera` без `instrument` | `imageid`, `extended`, `attitude`, `xyz`, `camera_*` |
 
