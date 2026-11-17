@@ -1,17 +1,202 @@
+"""Alembic migrations: head revision, schema shape, no model/migration drift.
+
+Downgrade/upgrade round trips live in test_migrations_roundtrip.py.
+"""
+
+from typing import Any
+
 import pytest
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import create_async_engine
+from alembic.autogenerate import compare_metadata
+from alembic.config import Config as AlembicConfig
+from alembic.runtime.migration import MigrationContext
+from alembic.script import ScriptDirectory
+from sqlalchemy import inspect, text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 pytestmark = pytest.mark.integration
 
+EXPECTED_COLUMNS = {
+    "rovers": {
+        "id", "legacy_id", "name", "mission", "launch_date", "landing_date", "status",
+        "max_sol", "max_date", "total_photos", "last_synced_at",
+        "full_max_sol", "full_max_date", "full_total_photos",
+    },
+    "cameras": {"id", "rover_id", "code", "name", "sort_order"},
+    "photos": {
+        "id", "rover_id", "camera_id", "source_id", "sol", "earth_date", "taken_at",
+        "received_at", "sample_type", "img_full", "img_small", "img_medium", "img_large",
+        "title", "caption", "credit", "source_link", "site", "drive", "extra",
+        "created_at", "updated_at",
+    },
+    "sol_summaries": {
+        "rover_id", "sol", "earth_date", "total_photos", "cameras", "full_photos", "full_cameras",
+    },
+    "sync_runs": {
+        "id", "rover_id", "mode", "from_sol", "to_sol", "status", "started_at", "finished_at",
+        "photos_upserted", "error",
+    },
+}  # fmt: skip
 
-async def test_migrations_reach_head_revision(migrated_db: str) -> None:
-    engine = create_async_engine(migrated_db)
-    try:
-        async with engine.connect() as connection:
-            result = await connection.execute(text("SELECT version_num FROM alembic_version"))
-            version = result.scalar_one()
-    finally:
-        await engine.dispose()
 
-    assert version == "0001"
+def _head(alembic_cfg: AlembicConfig) -> str:
+    head = ScriptDirectory.from_config(alembic_cfg).get_current_head()
+    assert head is not None
+    return head
+
+
+def test_migrations_head_revision_is_0002(alembic_cfg: AlembicConfig) -> None:
+    assert _head(alembic_cfg) == "0002"
+
+
+def test_migrations_single_head(alembic_cfg: AlembicConfig) -> None:
+    assert len(ScriptDirectory.from_config(alembic_cfg).get_heads()) == 1
+
+
+async def test_migrations_database_is_at_head_revision(
+    db_session: AsyncSession, alembic_cfg: AlembicConfig
+) -> None:
+    result = await db_session.execute(text("SELECT version_num FROM alembic_version"))
+    assert result.scalars().all() == [_head(alembic_cfg)]
+
+
+@pytest.mark.parametrize("table", sorted(EXPECTED_COLUMNS))
+async def test_schema_table_has_contract_columns(db_session: AsyncSession, table: str) -> None:
+    result = await db_session.execute(
+        text(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND table_name = :table"
+        ),
+        {"table": table},
+    )
+    assert set(result.scalars()) == EXPECTED_COLUMNS[table]
+
+
+@pytest.mark.parametrize(
+    ("table", "column", "data_type"),
+    [
+        ("rovers", "id", "text"),
+        ("rovers", "legacy_id", "smallint"),
+        ("rovers", "launch_date", "date"),
+        ("rovers", "landing_date", "date"),
+        ("photos", "id", "bigint"),
+        ("photos", "earth_date", "date"),
+        ("photos", "taken_at", "timestamp with time zone"),
+        ("photos", "received_at", "timestamp with time zone"),
+        ("photos", "created_at", "timestamp with time zone"),
+        ("photos", "updated_at", "timestamp with time zone"),
+        ("photos", "extra", "jsonb"),
+        ("sol_summaries", "earth_date", "date"),
+        ("sol_summaries", "cameras", "ARRAY"),
+        ("sol_summaries", "full_cameras", "ARRAY"),
+    ],
+    ids=lambda v: str(v),
+)
+async def test_schema_column_type_matches_contract(
+    db_session: AsyncSession, table: str, column: str, data_type: str
+) -> None:
+    result = await db_session.execute(
+        text(
+            "SELECT data_type FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND table_name = :table AND column_name = :column"
+        ),
+        {"table": table, "column": column},
+    )
+    assert result.scalar_one() == data_type
+
+
+@pytest.mark.parametrize(
+    ("table", "column"),
+    [("rovers", "legacy_id"), ("rovers", "name"), ("rovers", "landing_date"),
+     ("cameras", "code"), ("cameras", "sort_order"), ("photos", "source_id"),
+     ("photos", "sol"), ("photos", "earth_date"), ("photos", "taken_at"),
+     ("photos", "sample_type"), ("photos", "img_full"), ("photos", "created_at"),
+     ("photos", "updated_at")],
+    ids=lambda v: str(v),
+)  # fmt: skip
+async def test_schema_required_column_is_not_null(
+    db_session: AsyncSession, table: str, column: str
+) -> None:
+    result = await db_session.execute(
+        text(
+            "SELECT is_nullable FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND table_name = :table AND column_name = :column"
+        ),
+        {"table": table, "column": column},
+    )
+    assert result.scalar_one() == "NO"
+
+
+async def _unique_column_sets(session: AsyncSession, table: str) -> set[tuple[str, ...]]:
+    """Unique constraints, unique indexes and the primary key, as column tuples."""
+    conn = await session.connection()
+
+    def collect(sync_conn: Any) -> set[tuple[str, ...]]:
+        insp = inspect(sync_conn)
+        sets = {tuple(uc["column_names"]) for uc in insp.get_unique_constraints(table)}
+        sets |= {tuple(ix["column_names"]) for ix in insp.get_indexes(table) if ix["unique"]}
+        sets.add(tuple(insp.get_pk_constraint(table)["constrained_columns"]))
+        return sets
+
+    return await conn.run_sync(collect)
+
+
+@pytest.mark.parametrize(
+    ("table", "columns"),
+    [
+        ("rovers", ("id",)),
+        ("rovers", ("legacy_id",)),
+        ("cameras", ("rover_id", "code")),
+        ("photos", ("rover_id", "source_id")),
+        ("sol_summaries", ("rover_id", "sol")),
+    ],
+    ids=lambda v: str(v),
+)
+async def test_schema_uniqueness_matches_contract(
+    db_session: AsyncSession, table: str, columns: tuple[str, ...]
+) -> None:
+    assert columns in await _unique_column_sets(db_session, table)
+
+
+async def _photo_indexdefs(session: AsyncSession) -> list[str]:
+    result = await session.execute(
+        text("SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'photos'")
+    )
+    return list(result.scalars())
+
+
+@pytest.mark.parametrize(
+    "columns",
+    [
+        "(rover_id, sol DESC, taken_at DESC, id DESC)",
+        "(rover_id, earth_date)",
+        "(rover_id, camera_id, sol)",
+    ],
+    ids=["sol_taken_at_desc", "earth_date", "camera_sol"],
+)
+async def test_schema_photos_index_exists(db_session: AsyncSession, columns: str) -> None:
+    defs = await _photo_indexdefs(db_session)
+    assert any(columns in d and "WHERE" not in d for d in defs), defs
+
+
+async def test_schema_photos_partial_full_frame_index_exists(db_session: AsyncSession) -> None:
+    defs = await _photo_indexdefs(db_session)
+    partial = [d for d in defs if "(rover_id, sol, camera_id, id)" in d]
+    assert len(partial) == 1, defs
+    assert "WHERE" in partial[0]
+    assert "sample_type" in partial[0]
+    assert "'full'" in partial[0]
+
+
+async def test_schema_models_match_migrations_no_autogenerate_diff(
+    db_session: AsyncSession,
+) -> None:
+    from app.db import models  # noqa: F401  (registers models on Base.metadata)
+    from app.db.base import Base
+
+    conn = await db_session.connection()
+
+    def diff(sync_conn: Any) -> list[Any]:
+        context = MigrationContext.configure(sync_conn, opts={"compare_type": True})
+        return compare_metadata(context, Base.metadata)
+
+    assert await conn.run_sync(diff) == []

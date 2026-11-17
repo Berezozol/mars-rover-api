@@ -41,6 +41,7 @@ app/
     logging.py         структурные логи
     errors.py          доменные исключения; обработчики отдают их в формате v1 или v2
     legacy_dates.py    earth_date по солу по формуле старого API и обратный перевод дата → сол
+    cameras.py         справочник полных имён камер (код → имя)
   db/
     session.py         async engine, фабрика сессий, зависимость get_session
     models.py          ORM-модели SQLAlchemy 2.0
@@ -73,11 +74,11 @@ docs/
 
 ## Модель данных
 
-- `rovers` — `id` (slug: `curiosity`, `perseverance`, `opportunity`, `spirit`), `name`, `mission` (`msl`, `mars2020`, `mer`), `launch_date`, `landing_date`, `status`, кэш-поля `max_sol`, `max_date`, `total_photos`, `last_synced_at` и те же счётчики только по полнокадровым снимкам (для v1).
+- `rovers` — `id` (slug: `curiosity`, `perseverance`, `opportunity`, `spirit`), `legacy_id` (smallint, уникальный; числовой `id` для v1, где `rover.id` и `camera.rover_id` — числа: Curiosity 5, Opportunity 6, Spirit 7, Perseverance 8), `name`, `mission` (`msl`, `mars2020`, `mer`), `launch_date`, `landing_date`, `status`, кэш-поля `max_sol`, `max_date`, `total_photos`, `last_synced_at` и те же счётчики только по полнокадровым снимкам для v1: `full_max_sol`, `full_max_date`, `full_total_photos`.
 - `cameras` — `id`, `rover_id`, `code` (как в источнике, верхний регистр), `name` (полное имя из справочника в коде, иначе = code), `sort_order` (порядок оригинала — по нему сортирует v1). Уникальность `(rover_id, code)`. Неизвестная камера создаётся автоматически в конце порядка.
 - `photos` — `id` (bigserial), `rover_id`, `camera_id`, `source_id`, `sol`, `earth_date`, `taken_at`, `received_at`, `sample_type`, `img_full`, `img_small`, `img_medium`, `img_large`, `title`, `caption`, `credit`, `source_link`, `site`, `drive`, `extra` (jsonb), `created_at`, `updated_at`.
   Уникальность `(rover_id, source_id)`. Индексы под запросы API: `(rover_id, sol DESC, taken_at DESC)`, `(rover_id, earth_date)`, `(rover_id, camera_id, sol)`, частичный `(rover_id, sol, camera_id, id) WHERE sample_type = 'full'` — под v1.
-- `sol_summaries` — `(rover_id, sol)` PK, `earth_date`, `total_photos`, `cameras` (массив кодов), `full_photos`, `full_cameras` (только полнокадровые — для манифеста v1). Пересчитывается синхронизацией для затронутых солов — манифест читается без тяжёлых агрегатов.
+- `sol_summaries` — `(rover_id, sol)` PK, `earth_date`, `total_photos`, `cameras` (массив кодов), `full_photos`, `full_cameras` (только полнокадровые — для манифеста v1). `earth_date` — самая ранняя реальная дата съёмки за сол; массивы камер — уникальные коды по алфавиту. Пересчитывается синхронизацией для затронутых солов — манифест читается без тяжёлых агрегатов.
 
 **Две разные `earth_date`.** В таблице `photos.earth_date` — реальная дата съёмки по UTC (её отдаёт v2). Легаси-дата v1 не хранится: она однозначно вычисляется из сола и даты посадки (`app/core/legacy_dates.py`), а фильтр v1 по дате переводится в фильтр по солу.
 - `sync_runs` — журнал: `id`, `rover_id`, `mode` (`incremental` / `backfill`), `from_sol`, `to_sol`, `status` (`running` / `success` / `partial` / `failed`), `started_at`, `finished_at`, `photos_upserted`, `error`.
