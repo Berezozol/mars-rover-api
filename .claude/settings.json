@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv run pytest)",
+      "Bash(uv run pytest *)",
+      "Bash(uv run ruff *)",
+      "Bash(uv run alembic *)",
+      "Bash(uv run python -c *)",
+      "Bash(uv sync)",
+      "Bash(docker compose ps)",
+      "Bash(docker compose up -d db)",
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git rev-parse *)"
+    ]
+  }
+}
