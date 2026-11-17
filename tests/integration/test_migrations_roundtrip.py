@@ -107,3 +107,57 @@ def test_migrations_step_down_and_up_each_revision(
     finally:
         command.upgrade(alembic_cfg, "head")
     assert asyncio.run(_db_state(migrated_db))["versions"] == [revisions[0]]
+
+
+async def _sync_run_columns_and_rows(url: str) -> tuple[set[str], list[Any]]:
+    engine = create_async_engine(url, poolclass=NullPool)
+    try:
+        async with engine.connect() as conn:
+            columns = set(
+                (
+                    await conn.execute(
+                        text(
+                            "SELECT column_name FROM information_schema.columns "
+                            "WHERE table_schema = 'public' AND table_name = 'sync_runs'"
+                        )
+                    )
+                ).scalars()
+            )
+            rows = list((await conn.execute(text("SELECT * FROM sync_runs"))).mappings())
+            return columns, [dict(row) for row in rows]
+    finally:
+        await engine.dispose()
+
+
+async def _execute(url: str, sql: str) -> None:
+    engine = create_async_engine(url, poolclass=NullPool)
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text(sql))
+    finally:
+        await engine.dispose()
+
+
+def test_migration_0003_failed_sols_down_and_up_keeps_existing_runs(
+    migrated_db: str, alembic_cfg: AlembicConfig
+) -> None:
+    try:
+        command.downgrade(alembic_cfg, "0002")
+        columns, _ = asyncio.run(_sync_run_columns_and_rows(migrated_db))
+        assert "failed_sols" not in columns
+        # A run written before 0003 gets an empty failed_sols array after the upgrade.
+        asyncio.run(
+            _execute(
+                migrated_db,
+                "INSERT INTO sync_runs (rover_id, mode, status, error) "
+                "VALUES ('curiosity', 'backfill', 'partial', 'pre-0003')",
+            )
+        )
+        command.upgrade(alembic_cfg, "0003")
+        columns, rows = asyncio.run(_sync_run_columns_and_rows(migrated_db))
+        assert "failed_sols" in columns
+        [row] = [r for r in rows if r["error"] == "pre-0003"]
+        assert row["failed_sols"] == []
+    finally:
+        command.upgrade(alembic_cfg, "head")
+        asyncio.run(_execute(migrated_db, "DELETE FROM sync_runs WHERE error = 'pre-0003'"))

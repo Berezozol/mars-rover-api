@@ -58,7 +58,9 @@ class SourceAdapter(Protocol):
 
         Raises ``ValueError`` (on first iteration) if the range is negative or reversed.
         Raises ``PageLimitExceeded`` when ``upstream_max_pages`` is reached and more pages
-        remain; the incomplete sol is not yielded, sols yielded before stay valid.
+        remain, and ``IncompleteResponse`` when the upstream returns fewer items than it
+        announced; in both cases the incomplete sol is not yielded, sols yielded before
+        stay valid.
         """
         ...
 

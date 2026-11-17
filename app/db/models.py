@@ -150,3 +150,7 @@ class SyncRun(Base):
     finished_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ)
     photos_upserted: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     error: Mapped[str | None] = mapped_column(Text)
+    # Sols this run could not sync; the next incremental run starts low enough to retry them.
+    failed_sols: Mapped[list[int]] = mapped_column(
+        ARRAY(Integer), server_default=text("'{}'::integer[]")
+    )

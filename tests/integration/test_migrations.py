@@ -33,7 +33,7 @@ EXPECTED_COLUMNS = {
     },
     "sync_runs": {
         "id", "rover_id", "mode", "from_sol", "to_sol", "status", "started_at", "finished_at",
-        "photos_upserted", "error",
+        "photos_upserted", "error", "failed_sols",
     },
 }  # fmt: skip
 
@@ -44,8 +44,8 @@ def _head(alembic_cfg: AlembicConfig) -> str:
     return head
 
 
-def test_migrations_head_revision_is_0002(alembic_cfg: AlembicConfig) -> None:
-    assert _head(alembic_cfg) == "0002"
+def test_migrations_head_revision_is_0003(alembic_cfg: AlembicConfig) -> None:
+    assert _head(alembic_cfg) == "0003"
 
 
 def test_migrations_single_head(alembic_cfg: AlembicConfig) -> None:
@@ -88,6 +88,7 @@ async def test_schema_table_has_contract_columns(db_session: AsyncSession, table
         ("sol_summaries", "earth_date", "date"),
         ("sol_summaries", "cameras", "ARRAY"),
         ("sol_summaries", "full_cameras", "ARRAY"),
+        ("sync_runs", "failed_sols", "ARRAY"),
     ],
     ids=lambda v: str(v),
 )
@@ -110,7 +111,7 @@ async def test_schema_column_type_matches_contract(
      ("cameras", "code"), ("cameras", "sort_order"), ("photos", "source_id"),
      ("photos", "sol"), ("photos", "earth_date"), ("photos", "taken_at"),
      ("photos", "sample_type"), ("photos", "img_full"), ("photos", "created_at"),
-     ("photos", "updated_at")],
+     ("photos", "updated_at"), ("sync_runs", "failed_sols")],
     ids=lambda v: str(v),
 )  # fmt: skip
 async def test_schema_required_column_is_not_null(
@@ -200,3 +201,30 @@ async def test_schema_models_match_migrations_no_autogenerate_diff(
         return compare_metadata(context, Base.metadata)
 
     assert await conn.run_sync(diff) == []
+
+
+async def test_schema_sync_runs_failed_sols_is_integer_array_default_empty(
+    db_session: AsyncSession,
+) -> None:
+    element_type = await db_session.scalar(
+        text(
+            "SELECT e.data_type FROM information_schema.columns c "
+            "JOIN information_schema.element_types e "
+            "ON e.object_catalog = c.table_catalog AND e.object_schema = c.table_schema "
+            "AND e.object_name = c.table_name AND e.object_type = 'TABLE' "
+            "AND e.collection_type_identifier = c.dtd_identifier "
+            "WHERE c.table_schema = 'public' AND c.table_name = 'sync_runs' "
+            "AND c.column_name = 'failed_sols'"
+        )
+    )
+    assert element_type == "integer"
+    run_id = await db_session.scalar(
+        text(
+            "INSERT INTO sync_runs (rover_id, mode, status) "
+            "VALUES ('curiosity', 'backfill', 'running') RETURNING id"
+        )
+    )
+    stored = await db_session.scalar(
+        text("SELECT failed_sols FROM sync_runs WHERE id = :id"), {"id": run_id}
+    )
+    assert stored == []

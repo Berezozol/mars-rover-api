@@ -382,32 +382,53 @@ async def test_fetch_sols_empty_result_yields_nothing(
     assert route.call_count == 1
 
 
-async def test_fetch_sols_empty_page_before_total_stops_yields_collected_and_warns(
-    upstream_router: respx.MockRouter,
-    make_adapter: Callable[..., Any],
-    caplog: pytest.LogCaptureFixture,
+def _mentions(message: str, number: int) -> bool:
+    return re.search(rf"(?<!\d){number}(?!\d)", message) is not None
+
+
+async def test_fetch_sols_empty_page_before_total_raises_incomplete_and_drops_open_sol(
+    upstream_router: respx.MockRouter, make_adapter: Callable[..., Any]
 ) -> None:
-    caplog.set_level(logging.WARNING)
+    """Stage 3 contract: an empty page before total_results is a failure, not a warning."""
+    pages = {
+        0: _page([_image(1001, "A"), _image(1000, "B")], total=1234, per_page=2),
+        1: _page([], total=1234, page="1", per_page=2),
+    }
+    route = upstream_router.get(M2020_URL).mock(side_effect=paged_responder(pages))
+    yielded: list[tuple[int, list[str]]] = []
+
+    with pytest.raises(http.IncompleteResponse) as exc_info:
+        async for sol, records in make_adapter(m2020_page_size=2).fetch_sols(1000, 1001):
+            yielded.append((sol, [r.source_id for r in records]))
+
+    assert route.call_count == 2
+    # Sol 1001 was complete before the gap; sol 1000 may be missing images -> not yielded.
+    assert yielded == [(1001, ["A"])]
+    message = str(exc_info.value)
+    # Range 1000..1001, empty page 1, fetched 2 of total 1234.
+    for number in (1000, 1001, 1, 2, 1234):
+        assert _mentions(message, number), (number, message)
+
+
+async def test_fetch_sols_empty_page_before_total_single_sol_yields_nothing(
+    upstream_router: respx.MockRouter, make_adapter: Callable[..., Any]
+) -> None:
     pages = {
         0: _page([_image(1000, "A"), _image(1000, "B")], total=1234, per_page=2),
         1: _page([], total=1234, page="1", per_page=2),
     }
-    route = upstream_router.get(M2020_URL).mock(side_effect=paged_responder(pages))
+    upstream_router.get(M2020_URL).mock(side_effect=paged_responder(pages))
+    yielded: list[int] = []
 
-    result = await _collect(make_adapter(m2020_page_size=2).fetch_sols(1000, 1000))
+    with pytest.raises(http.IncompleteResponse):
+        async for sol, _ in make_adapter(m2020_page_size=2).fetch_sols(1000, 1000):
+            yielded.append(sol)
 
-    assert route.call_count == 2
-    assert [(sol, [r.source_id for r in recs]) for sol, recs in result] == [(1000, ["A", "B"])]
-    warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert yielded == []
 
-    def mentions(message: str, number: int) -> bool:
-        return re.search(rf"(?<!\d){number}(?!\d)", message) is not None
 
-    # Range 1000..1000, empty page 1, fetched 2 of total 1234.
-    assert any(
-        mentions(m, 1000) and mentions(m, 1) and mentions(m, 2) and mentions(m, 1234)
-        for m in warnings
-    ), warnings
+def test_incomplete_response_is_an_upstream_error() -> None:
+    assert issubclass(http.IncompleteResponse, http.UpstreamError)
 
 
 async def test_fetch_sols_groups_sol_spanning_pages_and_yields_descending(

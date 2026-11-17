@@ -11,7 +11,12 @@ from app.sources.base import (
     dedupe_by_source_id,
     validate_sol_range,
 )
-from app.sources.http import PageLimitExceeded, UpstreamClient, UpstreamError
+from app.sources.http import (
+    IncompleteResponse,
+    PageLimitExceeded,
+    UpstreamClient,
+    UpstreamError,
+)
 from app.sources.normalize import clean, compact, parse_datetime_utc, to_int
 
 logger = logging.getLogger(__name__)
@@ -120,7 +125,10 @@ class M2020Adapter:
         return dedupe_by_source_id(records, label=f"perseverance sol {sol}")
 
     async def _iter_records(self, from_sol: int, to_sol: int) -> AsyncIterator[PhotoRecord]:
-        """Yield records page by page; stop when all ``total_results`` raw images arrived."""
+        """Yield records page by page; stop when all ``total_results`` raw images arrived.
+
+        An empty page before that raises ``IncompleteResponse``.
+        """
         page = 0
         fetched = 0
         while True:
@@ -133,16 +141,13 @@ class M2020Adapter:
             if fetched >= total:
                 return
             if raw_count == 0:
-                # The feed total can shift while paging; keep what was collected.
-                logger.warning(
-                    "Perseverance sols %d..%d: page %d is empty with %d of %d images fetched",
-                    from_sol,
-                    to_sol,
-                    page,
-                    fetched,
-                    total,
+                # Treated as a failure: the sol being collected may be incomplete.
+                raise IncompleteResponse(
+                    self._url,
+                    None,
+                    f"perseverance sols {from_sol}..{to_sol}: page {page} is empty with "
+                    f"{fetched} of {total} images fetched",
                 )
-                return
             if raw_count < self._page_size:
                 logger.warning(
                     "Perseverance sols %d..%d: page %d returned %d of %d images",

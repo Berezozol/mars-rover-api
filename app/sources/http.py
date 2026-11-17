@@ -39,6 +39,10 @@ class PageLimitExceeded(UpstreamError):
     """More pages remain after ``upstream_max_pages``; the incomplete sol is not yielded."""
 
 
+class IncompleteResponse(UpstreamError):
+    """The upstream returned fewer items than it announced; the incomplete sol is not yielded."""
+
+
 class _RetryableStatusError(Exception):
     """Internal marker for a response status worth retrying (429, 5xx)."""
 

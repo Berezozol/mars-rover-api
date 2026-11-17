@@ -46,12 +46,8 @@ MAX_KEEP = 5
 MIN_KEEP = 3
 MAX_MSL_PAGES = 5
 
-# Feed URLs come from Settings (same source as the application).
-_SETTINGS = Settings()
-M20_BASE = _SETTINGS.m2020_feed_url
 M20_COMMON = {"feed": "raw_images", "category": "mars2020", "feedtype": "json"}
 
-MSL_BASE = _SETTINGS.msl_feed_url
 MSL_ORDER = "sol desc,instrument_sort asc,sample_type_sort asc, date_taken desc"
 MSL_SOL = 4327
 # Pinned so that re-runs overwrite the same fixture files (&sol= is ignored by the feed).
@@ -62,9 +58,14 @@ SITE_ROOT = "https://mars.nasa.gov"
 class Recorder:
     """Thin rate-limited HTTP wrapper that also keeps raw dumps."""
 
-    def __init__(self, client: httpx.Client, raw_dir: Path | None) -> None:
+    def __init__(
+        self, client: httpx.Client, raw_dir: Path | None, *, m20_url: str, msl_url: str
+    ) -> None:
         self.client = client
         self.raw_dir = raw_dir
+        # Feed URLs come from Settings (same source as the application).
+        self.m20_url = m20_url
+        self.msl_url = msl_url
         self.request_count = 0
         self._last_request = 0.0
 
@@ -199,12 +200,12 @@ def msl_counts(items: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def record_m20(rec: Recorder, summary: dict[str, Any]) -> None:
-    latest = rec.get_json(M20_BASE, {**M20_COMMON, "latest": "true"}, "m2020_latest.json")
+    latest = rec.get_json(rec.m20_url, {**M20_COMMON, "latest": "true"}, "m2020_latest.json")
     write_json(M20_DIR / "latest.json", latest)
     summary["m2020_latest"] = latest
 
     page0 = rec.get_json(
-        M20_BASE,
+        rec.m20_url,
         {**M20_COMMON, "num": 5, "page": 0, "order": "sol desc"},
         "m2020_list_page0.json",
     )
@@ -212,7 +213,7 @@ def record_m20(rec: Recorder, summary: dict[str, Any]) -> None:
     summary["m2020_list_page0"] = describe_m20(page0)
 
     sol = M20_SOL
-    by_sol = rec.get_json(M20_BASE, {**M20_COMMON, "sol": sol}, f"m2020_sol_{sol}.json")
+    by_sol = rec.get_json(rec.m20_url, {**M20_COMMON, "sol": sol}, f"m2020_sol_{sol}.json")
     write_json(M20_DIR / f"sol_{sol}.json", trim(by_sol, "images", M20_KEYS))
     summary["m2020_sol"] = {"sol": sol, **describe_m20(by_sol)}
 
@@ -221,7 +222,7 @@ def record_m20(rec: Recorder, summary: dict[str, Any]) -> None:
         summary["m2020_sol_page1"] = "skipped: sol response already contained all images"
         return
     page1 = rec.get_json(
-        M20_BASE,
+        rec.m20_url,
         {**M20_COMMON, "sol": sol, "num": 50, "page": 1},
         f"m2020_sol_{sol}_page1.json",
     )
@@ -249,7 +250,7 @@ def record_m20_range(rec: Recorder, summary: dict[str, Any]) -> None:
             "condition_2": f"{sol}:sol:gte",
             "condition_3": f"{sol}:sol:lte",
         }
-        data = rec.get_json(M20_BASE, params, f"m2020_range_{sol}_page{page}.json")
+        data = rec.get_json(rec.m20_url, params, f"m2020_range_{sol}_page{page}.json")
         write_json(M20_DIR / f"range_{sol}_page{page}.json", trim(data, "images", M20_KEYS))
         summary[f"m2020_range_{sol}_page{page}"] = describe_m20(data)
 
@@ -273,7 +274,9 @@ def record_msl_sol(
     items: list[dict[str, Any]] = []
     pages: list[dict[str, Any]] = []
     for page in range(MAX_MSL_PAGES):
-        data = rec.get_json(MSL_BASE, msl_params(page, 200, sol), f"msl_{prefix}_page{page}.json")
+        data = rec.get_json(
+            rec.msl_url, msl_params(page, 200, sol), f"msl_{prefix}_page{page}.json"
+        )
         if save:
             write_json(MSL_DIR / f"{prefix}_page{page}.json", trim(data, "items", MSL_KEYS))
         items.extend(data.get("items") or [])
@@ -284,7 +287,7 @@ def record_msl_sol(
 
 
 def record_msl(rec: Recorder, summary: dict[str, Any]) -> None:
-    latest = rec.get_json(MSL_BASE, msl_params(0, 1), "msl_latest.json")
+    latest = rec.get_json(rec.msl_url, msl_params(0, 1), "msl_latest.json")
     write_json(MSL_DIR / "latest.json", trim(latest, "items", MSL_KEYS))
     latest_sol = int(latest["items"][0]["sol"])
     summary["msl_latest"] = {"latest_sol": latest_sol, **describe_msl(latest)}
@@ -304,7 +307,7 @@ def record_msl(rec: Recorder, summary: dict[str, Any]) -> None:
 
     params = msl_params(0, 200, MSL_SOL)
     params["extended"] = "thumbnail::sample_type::noteq"
-    no_thumbs = rec.get_json(MSL_BASE, params, "msl_sol_4327_no_thumbnails.json")
+    no_thumbs = rec.get_json(rec.msl_url, params, "msl_sol_4327_no_thumbnails.json")
     summary["msl_extended_filter"] = {
         "top_level": {k: v for k, v in no_thumbs.items() if k != "items"},
         "counts": msl_counts(no_thumbs.get("items") or []),
@@ -331,11 +334,17 @@ def main() -> None:
     )
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    settings = Settings()
 
     summary: dict[str, Any] = {}
     headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
     with httpx.Client(headers=headers, timeout=TIMEOUT_S, follow_redirects=True) as client:
-        rec = Recorder(client, args.raw_dir)
+        rec = Recorder(
+            client,
+            args.raw_dir,
+            m20_url=settings.m2020_feed_url,
+            msl_url=settings.msl_feed_url,
+        )
         if args.part in ("all", "base"):
             record_m20(rec, summary)
             record_msl(rec, summary)

@@ -69,6 +69,24 @@ class ServiceUnavailableError(AppError):
     code = "service_unavailable"
 
 
+class SyncInProgress(ConflictError):
+    """A sync of this rover is already running (the advisory lock is held)."""
+
+    code = "sync_in_progress"
+
+    def __init__(self, rover_id: str) -> None:
+        super().__init__(f"Sync of rover {rover_id} is already in progress")
+        self.rover_id = rover_id
+
+
+class NoSourceForRover(ValidationAppError):
+    """The rover has no upstream source that can be synced (e.g. Spirit, Opportunity)."""
+
+    def __init__(self, rover_id: str) -> None:
+        super().__init__(f"Rover {rover_id} has no upstream source to sync")
+        self.rover_id = rover_id
+
+
 def is_legacy_path(path: str) -> bool:
     return any(path == prefix or path.startswith(prefix + "/") for prefix in LEGACY_PREFIXES)
 

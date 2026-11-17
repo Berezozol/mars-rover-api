@@ -114,6 +114,7 @@
 ### `POST /api/v2/admin/sync`
 Тело: `{"rover": "perseverance", "from_sol": 2025, "to_sol": 2031}`. `from_sol` и `to_sol` необязательны: без них — инкремент.
 `202 {"run_id": 17, "status": "running"}` · `401` · `404 rover_not_found` · `409 sync_in_progress` · `422`
+`422 validation_error` также для `spirit` и `opportunity`: миссии завершены (Spirit — 2011, Opportunity — 2019), синхронизация не поддерживается, их снимки загружаются разовым импортом (этап 8).
 
 ### `GET /api/v2/admin/sync/runs?rover=&page=&per_page=`
 `200` список:

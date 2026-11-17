@@ -6,6 +6,10 @@
   Use it in every test that needs the database (integration and most api tests).
 - `db_session` is an AsyncSession inside an outer transaction that is rolled back after the
   test: repository code may flush (and commit to a savepoint), nothing survives the test.
+- `session_factory` is an `async_sessionmaker` bound to the test database for code that
+  COMMITS (the sync service). Such tests must also use `clean_db`.
+- `clean_db` empties photos, sol_summaries and sync_runs, removes non-seed cameras and resets
+  the rovers cache fields before and after the test; seed rows survive.
 - `make_record` builds `PhotoRecord` objects with sensible defaults.
 - `app` / `client` give an application instance and an HTTP client without a real server.
 - `upstream_router` (autouse) blocks real outgoing HTTP for every test: it is a respx router
@@ -25,8 +29,9 @@ import respx
 from alembic import command
 from alembic.config import Config as AlembicConfig
 from fastapi import FastAPI
+from sqlalchemy import text
 from sqlalchemy.engine import make_url
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app.core.config import Settings, get_settings
@@ -109,6 +114,52 @@ async def db_session(migrated_db: str) -> AsyncIterator[AsyncSession]:
                     await outer.rollback()
     finally:
         await engine.dispose()
+
+
+@pytest.fixture
+async def session_factory(migrated_db: str) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+    """Session factory on the test database; whatever it commits stays (use `clean_db`)."""
+    engine = create_async_engine(migrated_db, poolclass=NullPool)
+    try:
+        yield async_sessionmaker(engine, expire_on_commit=False)
+    finally:
+        await engine.dispose()
+
+
+# Number of seed cameras per rover (migration 0002); sort_order starts at 1.
+SEED_CAMERA_COUNTS = {"perseverance": 17, "curiosity": 7, "opportunity": 6, "spirit": 6}
+
+_CLEAN_STATEMENTS = [
+    "TRUNCATE photos, sol_summaries, sync_runs RESTART IDENTITY",
+    "DELETE FROM cameras WHERE sort_order > CASE rover_id "
+    + " ".join(f"WHEN '{rover}' THEN {count}" for rover, count in SEED_CAMERA_COUNTS.items())
+    + " ELSE 0 END",
+    "UPDATE rovers SET max_sol = NULL, max_date = NULL, total_photos = 0, "
+    "last_synced_at = NULL, full_max_sol = NULL, full_max_date = NULL, full_total_photos = 0",
+]
+
+
+async def _clean_database(factory: async_sessionmaker[AsyncSession]) -> None:
+    async with factory() as session:
+        for statement in _CLEAN_STATEMENTS:
+            await session.execute(text(statement))
+        await session.commit()
+
+
+@pytest.fixture
+async def clean_db(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+    """Committed-data isolation: wipe sync data before and after the test, keep the seed.
+
+    NOT xdist-safe: it TRUNCATEs tables of the shared mars_test database, so tests using it
+    must not run in parallel with any other process using TEST_DATABASE_URL.
+    """
+    await _clean_database(session_factory)
+    try:
+        yield session_factory
+    finally:
+        await _clean_database(session_factory)
 
 
 @pytest.fixture(autouse=True)
