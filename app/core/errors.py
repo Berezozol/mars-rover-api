@@ -87,6 +87,31 @@ class NoSourceForRover(ValidationAppError):
         self.rover_id = rover_id
 
 
+class LegacyBadRequest(AppError):
+    """v1 bad request: 400 with the message as the legacy "errors" text."""
+
+    status_code = 400
+    code = "bad_request"
+
+
+class InvalidRoverName(LegacyBadRequest):
+    def __init__(self) -> None:
+        super().__init__("Invalid Rover Name")
+
+
+class LegacyParamError(LegacyBadRequest):
+    """A v1 query parameter has an invalid value: {"errors": "Invalid <param>"}."""
+
+    def __init__(self, param: str) -> None:
+        super().__init__(f"Invalid {param}")
+        self.param = param
+
+
+class PhotoNotFound(NotFoundError):
+    def __init__(self) -> None:
+        super().__init__("Photo not found")
+
+
 def is_legacy_path(path: str) -> bool:
     return any(path == prefix or path.startswith(prefix + "/") for prefix in LEGACY_PREFIXES)
 

@@ -27,6 +27,12 @@ async def list_cameras(session: AsyncSession, rover_id: str) -> list[Camera]:
     return list(await session.scalars(stmt, execution_options=FRESH))
 
 
+async def list_all_cameras(session: AsyncSession) -> list[Camera]:
+    """Cameras of every rover, ordered by rover and then by sort_order (one query)."""
+    stmt = select(Camera).order_by(Camera.rover_id, Camera.sort_order)
+    return list(await session.scalars(stmt, execution_options=FRESH))
+
+
 async def get_or_create_cameras(
     session: AsyncSession, rover_id: str, codes: Iterable[str]
 ) -> dict[str, Camera]:

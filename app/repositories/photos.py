@@ -234,8 +234,12 @@ async def list_sol_summaries(
     *,
     from_sol: int | None = None,
     to_sol: int | None = None,
+    full_only: bool = False,
 ) -> list[SolSummary]:
+    """Summaries by sol ascending; ``full_only`` keeps sols with full-frame photos."""
     stmt = select(SolSummary).where(SolSummary.rover_id == rover_id)
+    if full_only:
+        stmt = stmt.where(SolSummary.full_photos > 0)
     if from_sol is not None:
         stmt = stmt.where(SolSummary.sol >= from_sol)
     if to_sol is not None:

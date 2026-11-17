@@ -3,6 +3,8 @@
 Unknown codes fall back to the code itself (see ``camera_full_name``).
 """
 
+from collections.abc import Iterable
+
 CAMERA_NAMES: dict[str, str] = {
     # Legacy short codes (Curiosity, Opportunity, Spirit)
     "FHAZ": "Front Hazard Avoidance Camera",
@@ -56,3 +58,29 @@ def camera_full_name(code: str) -> str:
     """Return the full camera name, or the upper-case code when it is unknown."""
     normalized = code.upper()
     return CAMERA_NAMES.get(normalized, normalized)
+
+
+# v1 only: a legacy short code of a Curiosity camera also selects the instrument codes of the
+# current feed that start with the prefix (docs/LEGACY-API.md, "Камеры"). Other rovers and
+# other codes match exactly.
+LEGACY_CAMERA_GROUPS: dict[str, dict[str, str]] = {
+    "curiosity": {
+        "FHAZ": "FHAZ_",
+        "RHAZ": "RHAZ_",
+        "NAVCAM": "NAV_",
+        "MAST": "MAST_",
+        "CHEMCAM": "CHEMCAM_",
+    },
+}
+
+
+def legacy_camera_codes(rover_id: str, camera: str, known_codes: Iterable[str]) -> list[str]:
+    """Camera codes (upper case, sorted) out of ``known_codes`` that the v1 ``camera`` selects."""
+    wanted = camera.upper()
+    prefix = LEGACY_CAMERA_GROUPS.get(rover_id.lower(), {}).get(wanted)
+    selected = {
+        code
+        for code in (known.upper() for known in known_codes)
+        if code == wanted or (prefix is not None and code.startswith(prefix))
+    }
+    return sorted(selected)

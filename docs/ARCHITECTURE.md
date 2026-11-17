@@ -41,7 +41,8 @@ app/
     logging.py         структурные логи
     errors.py          доменные исключения; обработчики отдают их в формате v1 или v2
     legacy_dates.py    earth_date по солу по формуле старого API и обратный перевод дата → сол
-    cameras.py         справочник полных имён камер (код → имя)
+    cameras.py         справочник полных имён камер (код → имя) и группы камер Curiosity для v1
+    legacy_params.py   разбор параметров v1: дата YYYY-M-D, целые, окно пагинации
   db/
     session.py         async engine, фабрика сессий, зависимость get_session
     models.py          ORM-модели SQLAlchemy 2.0
@@ -54,8 +55,9 @@ app/
     msl.py             адаптер Curiosity
   services/
     sync.py            синхронизация марсохода
-    photos.py          выборки фото и последнего сола
-    manifest.py        манифест по солам
+    scheduler.py       APScheduler: периодический инкремент по всем марсоходам
+    legacy.py          логика чтения v1: фото, latest, манифест, группы камер, только полнокадровые
+    (v2 — этап 5)      выборки и манифест для v2
   api/
     legacy/            v1: rovers.py, photos.py, manifests.py, schemas.py — по LEGACY-API.md;
                        один роутер подключён дважды: /api/v1 и /mars-photos/api/v1
