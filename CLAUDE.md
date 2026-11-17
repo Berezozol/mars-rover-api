@@ -46,13 +46,15 @@ Python 3.12+, FastAPI, SQLAlchemy 2.0 (async) + asyncpg, Alembic, httpx + tenaci
 
 ## Команда ролей
 - `/stage <N>` — провести этап из `docs/PLAN.md`: план → моё «ок» → `backend-dev` и `qa-engineer` параллельно → прогон → `reviewer` → итог.
-- Роли по отдельности: `@agent-backend-dev`, `@agent-qa-engineer`, `@agent-reviewer`, `@agent-designer` (наброски фронтенда).
+- Роли по отдельности: `@agent-backend-dev`, `@agent-qa-engineer`, `@agent-reviewer`, `@agent-designer` (наброски фронтенда), `@agent-devops` (CI, образ, развёртывание), `@agent-frontend-dev` (фронтенд).
 
 Владение файлами, чтобы параллельная работа не конфликтовала:
 - `backend-dev` — `app/`, `migrations/`, `pyproject.toml`, `uv.lock`, `docker-compose.yml`, `.env.example`, `alembic.ini`;
 - `qa-engineer` — `tests/`, `scripts/record_fixtures.py`;
 - тимлид (основная сессия) — `docs/`, `README.md`, `CLAUDE.md`;
 - `designer` — `design/` (HTML-макеты будущего фронтенда на данных v2);
+- `devops` — `Dockerfile`, `.dockerignore`, `.github/`, `deploy/` (образ, CI, продакшен-развёртывание, бэкапы, мониторинг);
+- `frontend-dev` — `frontend/` (веб-интерфейс Sol Index на API v2 по макетам из `design/`);
 - `reviewer` — ничего не меняет.
 
 ## Git
