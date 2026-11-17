@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.cameras import camera_full_name
 from app.core.legacy_dates import legacy_earth_date
-from app.db.models import Camera, Rover, SolSummary
+from app.db.models import Camera, Photo, Rover, SolSummary
 from app.repositories._common import FRESH
 
 
@@ -31,6 +31,35 @@ async def list_all_cameras(session: AsyncSession) -> list[Camera]:
     """Cameras of every rover, ordered by rover and then by sort_order (one query)."""
     stmt = select(Camera).order_by(Camera.rover_id, Camera.sort_order)
     return list(await session.scalars(stmt, execution_options=FRESH))
+
+
+async def count_cameras(session: AsyncSession, rover_id: str | None = None) -> dict[str, int]:
+    """Number of cameras per rover (one grouped query); rovers without cameras are absent."""
+    stmt = select(Camera.rover_id, func.count(Camera.id)).group_by(Camera.rover_id)
+    if rover_id is not None:
+        stmt = stmt.where(Camera.rover_id == rover_id)
+    rows = await session.execute(stmt)
+    return {row_rover_id: count for row_rover_id, count in rows}
+
+
+async def list_cameras_with_counts(
+    session: AsyncSession, rover_id: str
+) -> list[tuple[Camera, int]]:
+    """The rover's cameras ordered by code, each with its photo count over all sample types."""
+    counts = (
+        select(Photo.camera_id, func.count(Photo.id).label("total"))
+        .where(Photo.rover_id == rover_id)
+        .group_by(Photo.camera_id)
+        .subquery()
+    )
+    stmt = (
+        select(Camera, func.coalesce(counts.c.total, 0))
+        .outerjoin(counts, counts.c.camera_id == Camera.id)
+        .where(Camera.rover_id == rover_id)
+        .order_by(Camera.code)
+    )
+    rows = await session.execute(stmt, execution_options=FRESH)
+    return [(camera, int(total)) for camera, total in rows]
 
 
 async def get_or_create_cameras(

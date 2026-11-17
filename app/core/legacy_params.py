@@ -7,6 +7,7 @@ import re
 from datetime import date
 
 from app.core.errors import LegacyParamError
+from app.core.params import parse_strict_int
 
 __all__ = [
     "DEFAULT_PER_PAGE",
@@ -20,12 +21,6 @@ __all__ = [
 DEFAULT_PER_PAGE = 25
 MAX_PER_PAGE = 200
 
-# No overlapping quantifiers: fullmatch stays linear on long non-matching input.
-_INT_RE = re.compile(r"-?[0-9]+")
-# More significant digits than int64 can hold: saturate instead of calling int(), which
-# refuses strings over 4300 digits. Callers treat such values as out of range.
-_MAX_DIGITS = 19
-_SATURATED = 2**63
 _DATE_RE = re.compile(r"([0-9]{4})-([0-9]{1,2})-([0-9]{1,2})")
 
 
@@ -34,12 +29,10 @@ def parse_legacy_int(value: str, param: str) -> int:
 
     Integers with more than 19 significant digits saturate to ±2**63 without int().
     """
-    if _INT_RE.fullmatch(value) is None:
-        raise LegacyParamError(param)
-    negative = value.startswith("-")
-    digits = value.lstrip("-").lstrip("0") or "0"
-    number = _SATURATED if len(digits) > _MAX_DIGITS else int(digits)
-    return -number if negative else number
+    try:
+        return parse_strict_int(value)
+    except ValueError:
+        raise LegacyParamError(param) from None
 
 
 def parse_legacy_date(value: str) -> date | None:

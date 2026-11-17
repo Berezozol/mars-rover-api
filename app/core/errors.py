@@ -11,14 +11,33 @@ for both API versions.
 import logging
 from typing import Any
 
+from asyncpg.exceptions import PostgresConnectionError
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import DBAPIError, InterfaceError, OperationalError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 logger = logging.getLogger(__name__)
 
 LEGACY_PREFIXES: tuple[str, ...] = ("/api/v1", "/mars-photos/api/v1")
+
+VALIDATION_MESSAGE = "Request validation failed"
+DB_UNAVAILABLE_MESSAGE = "Database unavailable"
+
+# Echoed user input in error messages is cut to this length.
+_MAX_ECHO = 64
+
+# Errors meaning "the database cannot be reached", not "the query is wrong": SQLAlchemy's
+# connectivity errors, and what asyncpg raises raw while connecting (refused / reset sockets,
+# the connect timeout, server-side connection rejections).
+_DB_UNAVAILABLE_TYPES: tuple[type[BaseException], ...] = (
+    OperationalError,
+    InterfaceError,
+    PostgresConnectionError,
+    OSError,  # includes ConnectionError
+    TimeoutError,  # asyncio.TimeoutError is an alias since Python 3.11
+)
 
 
 class AppError(Exception):
@@ -108,8 +127,28 @@ class LegacyParamError(LegacyBadRequest):
 
 
 class PhotoNotFound(NotFoundError):
+    code = "photo_not_found"
+
     def __init__(self) -> None:
         super().__init__("Photo not found")
+
+
+class RoverNotFound(NotFoundError):
+    """v2: unknown or malformed rover slug."""
+
+    code = "rover_not_found"
+
+    def __init__(self, slug: str) -> None:
+        super().__init__(f"Rover '{slug[:_MAX_ECHO].lower()}' not found")
+        self.slug = slug
+
+
+class InvalidParam(ValidationAppError):
+    """v2: a parameter failed a check made by a service (shaped like request validation)."""
+
+    def __init__(self, field: str, message: str) -> None:
+        super().__init__(VALIDATION_MESSAGE, details=[{"field": field, "message": message}])
+        self.field = field
 
 
 def is_legacy_path(path: str) -> bool:
@@ -137,8 +176,19 @@ def _validation_details(exc: RequestValidationError) -> list[dict[str, str]]:
     for error in exc.errors():
         # loc looks like ("query", "sol") or ("body", "rover"); drop the location kind.
         field = ".".join(str(part) for part in error.get("loc", ())[1:]) or "request"
-        details.append({"field": field, "message": str(error.get("msg", "Invalid value"))})
+        message = str(error.get("msg", "Invalid value"))
+        if error.get("type") == "value_error":
+            # Our validators raise ValueError; pydantic prefixes its message.
+            message = message.removeprefix("Value error, ")
+        details.append({"field": field, "message": message})
     return details
+
+
+def is_db_unavailable(exc: BaseException) -> bool:
+    """True for database connectivity failures; SQL, integrity and other errors are False."""
+    if isinstance(exc, _DB_UNAVAILABLE_TYPES):
+        return True
+    return isinstance(exc, DBAPIError) and exc.connection_invalidated
 
 
 async def _handle_app_error(request: Request, exc: AppError) -> JSONResponse:
@@ -171,7 +221,7 @@ async def _handle_validation_error(request: Request, exc: RequestValidationError
         request,
         status_code=422,
         code="validation_error",
-        message="Request validation failed",
+        message=VALIDATION_MESSAGE,
         details=details,
     )
 
@@ -186,8 +236,24 @@ async def _handle_unexpected_error(request: Request, exc: Exception) -> JSONResp
     )
 
 
+async def _handle_db_error(request: Request, exc: Exception) -> JSONResponse:
+    """503 db_unavailable for connectivity failures; any other DB error stays a 500."""
+    if not is_db_unavailable(exc):
+        return await _handle_unexpected_error(request, exc)
+    logger.warning("Database unavailable path=%s error=%s", request.url.path, type(exc).__name__)
+    return error_response(
+        request,
+        status_code=503,
+        code="db_unavailable",
+        message=DB_UNAVAILABLE_MESSAGE,
+    )
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(AppError, _handle_app_error)  # type: ignore[arg-type]
     app.add_exception_handler(StarletteHTTPException, _handle_http_error)  # type: ignore[arg-type]
     app.add_exception_handler(RequestValidationError, _handle_validation_error)  # type: ignore[arg-type]
+    # DBAPIError covers OperationalError/InterfaceError; the handler checks connection_invalidated.
+    for exc_type in (DBAPIError, *_DB_UNAVAILABLE_TYPES):
+        app.add_exception_handler(exc_type, _handle_db_error)
     app.add_exception_handler(Exception, _handle_unexpected_error)

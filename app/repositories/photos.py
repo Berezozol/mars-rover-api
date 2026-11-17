@@ -162,6 +162,25 @@ async def count_photos(session: AsyncSession, flt: PhotoFilter) -> int:
     return await session.scalar(stmt) or 0
 
 
+async def sol_total_photos(session: AsyncSession, rover_id: str, sol: int) -> int:
+    """Photos of the sol over all sample types, from sol_summaries (0 without a row)."""
+    stmt = select(SolSummary.total_photos).where(
+        SolSummary.rover_id == rover_id, SolSummary.sol == sol
+    )
+    return await session.scalar(stmt) or 0
+
+
+async def rover_total_photos_from_summaries(session: AsyncSession, rover_id: str) -> int:
+    """Photos of the rover over all sample types, summed from sol_summaries.
+
+    Unlike the rovers.total_photos cache, the summaries are committed per sol by the sync.
+    """
+    stmt = select(func.coalesce(func.sum(SolSummary.total_photos), 0)).where(
+        SolSummary.rover_id == rover_id
+    )
+    return int(await session.scalar(stmt) or 0)
+
+
 async def get_photo(session: AsyncSession, photo_id: int) -> Photo | None:
     stmt = select(Photo).where(Photo.id == photo_id).options(selectinload(Photo.camera))
     return await session.scalar(stmt, execution_options=FRESH)
@@ -235,8 +254,10 @@ async def list_sol_summaries(
     from_sol: int | None = None,
     to_sol: int | None = None,
     full_only: bool = False,
+    descending: bool = False,
 ) -> list[SolSummary]:
-    """Summaries by sol ascending; ``full_only`` keeps sols with full-frame photos."""
+    """Summaries by sol (ascending unless ``descending``); ``full_only`` keeps sols with
+    full-frame photos."""
     stmt = select(SolSummary).where(SolSummary.rover_id == rover_id)
     if full_only:
         stmt = stmt.where(SolSummary.full_photos > 0)
@@ -244,4 +265,5 @@ async def list_sol_summaries(
         stmt = stmt.where(SolSummary.sol >= from_sol)
     if to_sol is not None:
         stmt = stmt.where(SolSummary.sol <= to_sol)
-    return list(await session.scalars(stmt.order_by(SolSummary.sol), execution_options=FRESH))
+    order = SolSummary.sol.desc() if descending else SolSummary.sol
+    return list(await session.scalars(stmt.order_by(order), execution_options=FRESH))

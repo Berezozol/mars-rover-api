@@ -42,6 +42,7 @@ app/
     errors.py          доменные исключения; обработчики отдают их в формате v1 или v2
     legacy_dates.py    earth_date по солу по формуле старого API и обратный перевод дата → сол
     cameras.py         справочник полных имён камер (код → имя) и группы камер Curiosity для v1
+    params.py          строгий разбор целых (линейное регулярное выражение, насыщение огромных чисел) — общий для v1 и v2
     legacy_params.py   разбор параметров v1: дата YYYY-M-D, целые, окно пагинации
   db/
     session.py         async engine, фабрика сессий, зависимость get_session
@@ -57,12 +58,12 @@ app/
     sync.py            синхронизация марсохода
     scheduler.py       APScheduler: периодический инкремент по всем марсоходам
     legacy.py          логика чтения v1: фото, latest, манифест, группы камер, только полнокадровые
-    (v2 — этап 5)      выборки и манифест для v2
+    v2.py              логика чтения v2: марсоходы, камеры со счётчиками, фото с фильтрами, latest, манифест
   api/
     legacy/            v1: rovers.py, photos.py, manifests.py, schemas.py — по LEGACY-API.md;
                        один роутер подключён дважды: /api/v1 и /mars-photos/api/v1
-    v2/                rovers.py, photos.py, admin.py, schemas.py — по API.md
-    deps.py            общие зависимости: сессия, admin-токен, пагинация
+    v2/                rovers.py, photos.py, schemas.py, params.py (параметры и пагинация v2) — по API.md; admin.py — этап 6
+                       сессия — зависимость get_session из db/session.py
 migrations/            Alembic
 tests/
   unit/                адаптеры, нормализация, утилиты — без БД и сети
