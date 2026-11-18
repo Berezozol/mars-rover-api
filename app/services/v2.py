@@ -20,6 +20,9 @@ from app.repositories.photos import PhotoFilter
 # Values for the ``sample_type`` filter; other source values are only visible unfiltered.
 SAMPLE_TYPES: tuple[str, ...] = ("full", "subframe", "downsampled")
 
+# Sizes of /photos/{id}/image; a missing size falls back to "full".
+IMAGE_SIZES: tuple[str, ...] = ("full", "large", "medium", "small")
+
 # Photo ids are bigint; anything outside cannot exist and is answered without a query.
 _MAX_INT8 = 2**63 - 1
 
@@ -85,14 +88,14 @@ async def list_rovers(session: AsyncSession) -> list[RoverInfo]:
 
 
 async def get_rover(session: AsyncSession, slug: str) -> RoverInfo:
-    rover = await _find_rover(session, slug)
+    rover = await find_rover(session, slug)
     counts = await rovers_repo.count_cameras(session, rover.id)
     return RoverInfo(rover, counts.get(rover.id, 0))
 
 
 async def list_cameras(session: AsyncSession, slug: str) -> list[CameraInfo]:
     """The rover's cameras ordered by code, with photo counts over all sample types."""
-    rover = await _find_rover(session, slug)
+    rover = await find_rover(session, slug)
     rows = await rovers_repo.list_cameras_with_counts(session, rover.id)
     return [CameraInfo(camera, total) for camera, total in rows]
 
@@ -103,7 +106,7 @@ async def search_photos(
     """Photos by optional sol / real earth_date / camera / sample type, newest first."""
     if query.sol is not None and query.earth_date is not None:
         raise InvalidParam("earth_date", "sol and earth_date cannot be used together")
-    rover = await _find_rover(session, slug)
+    rover = await find_rover(session, slug)
     flt = PhotoFilter(
         rover_id=rover.id,
         sol=query.sol,
@@ -118,7 +121,7 @@ async def latest_photos(
     session: AsyncSession, slug: str, camera: str | None, page: PageRequest
 ) -> LatestPhotos:
     """Photos of the rover's highest sol over all sample types; no data → sol None."""
-    rover = await _find_rover(session, slug)
+    rover = await find_rover(session, slug)
     camera_codes = await _camera_codes(session, rover.id, camera)
     if rover.max_sol is None:
         return LatestPhotos(None, PhotoPage([], page.page, page.per_page, 0))
@@ -134,6 +137,22 @@ async def get_photo(session: AsyncSession, photo_id: int) -> Photo:
     if photo is None:
         raise PhotoNotFound()
     return photo
+
+
+async def photo_image_url(session: AsyncSession, photo_id: int, size: str) -> str:
+    """Stored URL of the photo's image in ``size`` (case-insensitive), else the full one.
+
+    The size is checked before the database; ids out of range → ``PhotoNotFound``.
+    """
+    wanted = _image_size(size)
+    photo = await get_photo(session, photo_id)
+    by_size = {
+        "full": photo.img_full,
+        "large": photo.img_large,
+        "medium": photo.img_medium,
+        "small": photo.img_small,
+    }
+    return by_size[wanted] or photo.img_full
 
 
 async def get_manifest(
@@ -153,7 +172,7 @@ def _slug(rover: Rover) -> str:
     return rover.id
 
 
-async def _find_rover(session: AsyncSession, slug: str) -> Rover:
+async def find_rover(session: AsyncSession, slug: str) -> Rover:
     """Validate the slug before any query; unknown or malformed → ``RoverNotFound``."""
     if not _ROVER_SLUG_RE.fullmatch(slug):
         raise RoverNotFound(slug)
@@ -176,6 +195,13 @@ async def _camera_codes(
         allowed = ", ".join(codes) or "none"
         raise InvalidParam("camera", f"Unknown camera for rover {rover_id}; allowed: {allowed}")
     return [wanted]
+
+
+def _image_size(value: str) -> str:
+    lowered = value.lower() if value.isascii() else ""
+    if lowered not in IMAGE_SIZES:
+        raise InvalidParam("size", f"Must be one of: {', '.join(IMAGE_SIZES)}")
+    return lowered
 
 
 def _sample_type(value: str | None) -> str | None:

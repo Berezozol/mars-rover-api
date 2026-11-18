@@ -111,12 +111,12 @@ CONNECTION_ERRORS = [
     OperationalError("SELECT 1", {}, ConnectionRefusedError("connection refused")),
     ConnectionRefusedError("connection refused"),
     OSError("network is unreachable"),
+    TimeoutError("connect timed out"),
 ]
+CONNECTION_ERROR_IDS = ["operational-error", "connection-refused", "oserror", "timeout"]
 
 
-@pytest.mark.parametrize(
-    "error", CONNECTION_ERRORS, ids=["operational-error", "connection-refused", "oserror"]
-)
+@pytest.mark.parametrize("error", CONNECTION_ERRORS, ids=CONNECTION_ERROR_IDS)
 @pytest.mark.parametrize("url", V2_URLS, ids=["rovers", "photos"])
 async def test_v2_connection_error_from_session_returns_503(
     failing_app: FastAPI, url: str, error: BaseException
@@ -127,9 +127,7 @@ async def test_v2_connection_error_from_session_returns_503(
         assert_db_unavailable_v2(await client.get(url))
 
 
-@pytest.mark.parametrize(
-    "error", CONNECTION_ERRORS, ids=["operational-error", "connection-refused", "oserror"]
-)
+@pytest.mark.parametrize("error", CONNECTION_ERRORS, ids=CONNECTION_ERROR_IDS)
 async def test_v1_connection_error_from_session_returns_503(
     failing_app: FastAPI, error: BaseException
 ) -> None:
@@ -157,3 +155,49 @@ async def test_v2_programming_error_still_returns_500(
 
     assert response.status_code == 500, response.text
     assert response.json()["error"]["code"] == "internal_error"
+
+
+# --- stage 6: 503 only for database errors (docs/PLAN.md, stage 6, last item) ------------
+
+NON_DB_ERRORS = [
+    OSError("disk is full"),
+    ConnectionRefusedError("upstream refused"),
+    TimeoutError("upstream timed out"),
+]
+NON_DB_ERROR_IDS = ["oserror", "connection-refused", "timeout"]
+
+
+def _add_probe(app: FastAPI, path: str, error: BaseException) -> None:
+    """A test-only route that fails outside any database session."""
+
+    async def probe() -> None:
+        raise error
+
+    app.add_api_route(path, probe, methods=["GET"])
+
+
+@pytest.mark.parametrize("error", NON_DB_ERRORS, ids=NON_DB_ERROR_IDS)
+async def test_v2_non_db_oserror_returns_500_not_503(
+    failing_app: FastAPI, error: BaseException
+) -> None:
+    _add_probe(failing_app, "/api/v2/__probe", error)
+
+    async with _client(failing_app) as client:
+        response = await client.get("/api/v2/__probe")
+
+    assert response.status_code == 500, response.text
+    assert response.json()["error"]["code"] == "internal_error"
+
+
+@pytest.mark.parametrize("error", NON_DB_ERRORS, ids=NON_DB_ERROR_IDS)
+@pytest.mark.parametrize("prefix", ["/api/v1", "/mars-photos/api/v1"])
+async def test_v1_non_db_oserror_returns_500_not_503(
+    failing_app: FastAPI, error: BaseException, prefix: str
+) -> None:
+    _add_probe(failing_app, f"{prefix}/__probe", error)
+
+    async with _client(failing_app) as client:
+        response = await client.get(f"{prefix}/__probe")
+
+    assert response.status_code == 500, response.text
+    assert response.json() == {"errors": "Internal server error"}

@@ -5,8 +5,8 @@ See docs/ARCHITECTURE.md, "Синхронизация".
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator, Iterable
-from contextlib import asynccontextmanager, suppress
+from collections.abc import Iterable
+from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -114,6 +114,106 @@ def chunk_ranges(from_sol: int, to_sol: int, size: int) -> list[tuple[int, int]]
     ]
 
 
+class SyncHandle:
+    """A started sync: the lock is held and the run row exists (status ``running``).
+
+    ``wait()`` performs the sync and ALWAYS releases the lock and its connection. Call it
+    exactly once; if it is never going to be called, call ``close()`` instead, which marks
+    the run failed (as a cancelled run) and releases the lock. ``close()`` after ``wait()``
+    has started is a no-op.
+    """
+
+    def __init__(
+        self,
+        service: "SyncService",
+        adapter: SourceAdapter,
+        lock: "_LockLease",
+        plan: "_RunPlan",
+    ) -> None:
+        self._service = service
+        self._adapter = adapter
+        self._lock = lock
+        self._plan = plan
+        self._claimed = False
+
+    @property
+    def run_id(self) -> int:
+        return self._plan.run_id
+
+    @property
+    def rover_id(self) -> str:
+        return self._plan.rover_id
+
+    @property
+    def mode(self) -> str:
+        return self._plan.mode
+
+    @property
+    def started(self) -> bool:
+        """True once ``wait()`` or ``close()`` has taken over the lock."""
+        return self._claimed
+
+    async def wait(self) -> SyncResult:
+        """Run the sync to the end; same result and errors as ``SyncService.run()``."""
+        self._claim()
+        try:
+            return await self._service._execute(self._adapter, self._plan)
+        finally:
+            await self._lock.release()
+
+    async def close(self) -> None:
+        """Give up a handle whose ``wait()`` never ran: run failed, lock released."""
+        if self._claimed:
+            return
+        self._claim()
+        try:
+            await self._service._mark_crashed(
+                self._plan.run_id,
+                self._plan.rover_id,
+                _Progress(),
+                [],
+                asyncio.CancelledError("sync handle closed before wait()"),
+            )
+        finally:
+            await self._lock.release()
+
+    def _claim(self) -> None:
+        if self._claimed:
+            raise RuntimeError(f"Sync run {self._plan.run_id} was already waited for or closed")
+        self._claimed = True
+
+
+@dataclass(frozen=True)
+class _RunPlan:
+    run_id: int
+    rover_id: str
+    mode: Mode
+    from_sol: int | None
+    to_sol: int | None
+
+
+@dataclass
+class _LockLease:
+    """A session-level advisory lock held on a dedicated connection."""
+
+    conn: AsyncConnection
+    params: dict[str, int]
+    released: bool = False
+
+    async def release(self) -> None:
+        """Unlock and close the connection; idempotent, never leaves the lock in the pool."""
+        if self.released:
+            return
+        self.released = True
+        try:
+            await _unlock(self.conn, self.params)
+        finally:
+            try:
+                await self.conn.close()
+            except Exception as exc:
+                logger.warning("Failed to close the sync lock connection: %s", describe_error(exc))
+
+
 class SyncService:
     """Syncs a rover; one sync per rover at a time (Postgres advisory lock)."""
 
@@ -140,10 +240,39 @@ class SyncService:
         ``SyncInProgress`` if a sync of this rover is already running. Upstream
         failures do not raise: they end up in the result status.
         """
+        handle = await self.start(adapter, from_sol=from_sol, to_sol=to_sol)
+        return await handle.wait()
+
+    async def start(
+        self,
+        adapter: SourceAdapter,
+        *,
+        from_sol: int | None = None,
+        to_sol: int | None = None,
+    ) -> SyncHandle:
+        """Validate, take the rover lock and create the run row (committed); sync nothing yet.
+
+        Raises like ``run()``. On success the caller owns the returned handle and must
+        ``await handle.wait()`` (or ``handle.close()``) to release the lock.
+        """
         mode = resolve_mode(from_sol, to_sol)
         rover = await self._load_rover(adapter.rover_id)
-        async with self._advisory_lock(rover):
-            return await self._run_locked(adapter, rover.id, mode, from_sol, to_sol)
+        lock = await self._acquire_lock(rover)
+        created: list[int] = []
+        try:
+            run_id = await self._create_run(rover.id, mode, from_sol, to_sol, created)
+        except BaseException as exc:
+            try:
+                if created:
+                    # The row is committed: it must not stay "running" without a sync.
+                    await self._mark_crashed(
+                        created[0], rover.id, _Progress(), [], _start_error(exc)
+                    )
+            finally:
+                await lock.release()
+            raise
+        plan = _RunPlan(run_id, rover.id, mode, from_sol, to_sol)
+        return SyncHandle(self, adapter, lock, plan)
 
     async def _load_rover(self, rover_id: str) -> Rover:
         async with self._session_factory() as session:
@@ -152,45 +281,59 @@ class SyncService:
             raise ValueError(f"Unknown rover: {rover_id}")
         return rover
 
-    @asynccontextmanager
-    async def _advisory_lock(self, rover: Rover) -> AsyncIterator[None]:
-        """Hold a session-level advisory lock on a dedicated connection."""
+    async def _acquire_lock(self, rover: Rover) -> _LockLease:
+        """Take the session-level advisory lock on a dedicated connection."""
         params = {"ns": SYNC_LOCK_NAMESPACE, "key": rover.legacy_id}
-        async with self._engine.connect() as conn:
+        conn = await self._engine.connect()
+        try:
             acquired = await conn.scalar(text("SELECT pg_try_advisory_lock(:ns, :key)"), params)
             # The lock is session-level; do not keep a transaction open meanwhile.
             await conn.commit()
-            if not acquired:
-                raise SyncInProgress(rover.id)
-            try:
-                yield
-            finally:
-                await _unlock(conn, params)
+        except BaseException:
+            # The lock may be held already: the connection must not return to the pool.
+            with suppress(Exception):
+                await conn.invalidate()
+            with suppress(Exception):
+                await conn.close()
+            raise
+        if not acquired:
+            await conn.close()
+            raise SyncInProgress(rover.id)
+        return _LockLease(conn, params)
 
-    async def _run_locked(
+    async def _create_run(
         self,
-        adapter: SourceAdapter,
         rover_id: str,
         mode: Mode,
         from_sol: int | None,
         to_sol: int | None,
-    ) -> SyncResult:
+        created: list[int],
+    ) -> int:
+        """Insert and commit the run row; its id goes to ``created`` as soon as it is committed."""
+        async with self._session_factory() as session:
+            await _abandon_stale_runs(session, rover_id)
+            run = await runs_repo.create_run(session, rover_id, mode, from_sol, to_sol)
+            run_id = run.id
+            await session.commit()
+            created.append(run_id)
+        logger.info(
+            "Sync started run_id=%d rover=%s mode=%s range=%s..%s",
+            run_id,
+            rover_id,
+            mode,
+            from_sol,
+            to_sol,
+        )
+        return run_id
+
+    async def _execute(self, adapter: SourceAdapter, plan: _RunPlan) -> SyncResult:
+        """The sync itself, under the lock taken by ``start()``."""
+        rover_id, run_id, mode = plan.rover_id, plan.run_id, plan.mode
+        from_sol, to_sol = plan.from_sol, plan.to_sol
         progress = _Progress()
         # Incremental range once it is stored in the run row (known after latest_sol()).
         recorded: tuple[int, int] | None = None
         async with self._session_factory() as session:
-            await _abandon_stale_runs(session, rover_id)
-            run = await runs_repo.create_run(session, rover_id, mode, from_sol, to_sol)
-            await session.commit()
-            run_id = run.id
-            logger.info(
-                "Sync started run_id=%d rover=%s mode=%s range=%s..%s",
-                run_id,
-                rover_id,
-                mode,
-                from_sol,
-                to_sol,
-            )
             try:
                 if mode == "incremental":
                     try:
@@ -266,6 +409,13 @@ class SyncService:
                 await session.commit()
         except Exception:
             logger.exception("Failed to mark sync run %d as failed", run_id)
+
+
+def _start_error(exc: BaseException) -> BaseException:
+    """What a run interrupted inside ``start()`` records as its error."""
+    if isinstance(exc, asyncio.CancelledError):
+        return asyncio.CancelledError("cancelled during start")
+    return exc
 
 
 async def _unlock(conn: AsyncConnection, params: dict[str, int]) -> None:

@@ -16,7 +16,7 @@ def test_settings_defaults_without_env_file_are_safe() -> None:
 
 def test_settings_read_values_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SYNC_OVERLAP_SOLS", "3")
-    monkeypatch.setenv("ADMIN_TOKEN", "secret-token")
+    monkeypatch.setenv("ADMIN_TOKEN", "secret-token-0123456789")
     monkeypatch.setenv("CORS_ORIGINS", '["http://localhost:5173"]')
 
     settings = Settings(_env_file=None)

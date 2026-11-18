@@ -990,6 +990,17 @@ async def advisory_lock_holders(factory: SessionFactory, rover_id: str) -> int:
     )
 
 
+async def assert_lock_released(
+    factory: SessionFactory, rover_id: str, *, deadline: float = 2.0, step: float = 0.05
+) -> None:
+    """Poll pg_locks: after ``conn.invalidate()`` the server frees the lock asynchronously."""
+    loop = asyncio.get_running_loop()
+    until = loop.time() + deadline
+    while (holders := await advisory_lock_holders(factory, rover_id)) != 0:
+        assert loop.time() < until, f"{holders} session(s) still hold the {rover_id} sync lock"
+        await asyncio.sleep(step)
+
+
 @pytest.fixture
 async def pooled_service(
     migrated_db: str, sync_settings: Settings, clean_db: SessionFactory
@@ -1035,10 +1046,10 @@ async def test_run_unlock_error_is_logged_connection_discarded_result_kept(
         for r in caplog.records
         if r.name == "app.services.sync"
     ), [r.getMessage() for r in caplog.records]
-    assert await advisory_lock_holders(session_factory, "curiosity") == 0
+    await assert_lock_released(session_factory, "curiosity")
     again = await pooled_service.run(FakeAdapter("curiosity"), from_sol=0, to_sol=1)
     assert again.status == "success"
-    assert await advisory_lock_holders(session_factory, "curiosity") == 0
+    await assert_lock_released(session_factory, "curiosity")
 
 
 async def test_run_unlock_cancelled_is_reraised_and_connection_discarded(
@@ -1052,10 +1063,10 @@ async def test_run_unlock_cancelled_is_reraised_and_connection_discarded(
         await pooled_service.run(FakeAdapter("curiosity"), from_sol=0, to_sol=1)
 
     monkeypatch.undo()
-    assert await advisory_lock_holders(session_factory, "curiosity") == 0
+    await assert_lock_released(session_factory, "curiosity")
     again = await pooled_service.run(FakeAdapter("curiosity"), from_sol=0, to_sol=1)
     assert again.status == "success"
-    assert await advisory_lock_holders(session_factory, "curiosity") == 0
+    await assert_lock_released(session_factory, "curiosity")
 
 
 async def test_run_cancelled_marks_run_failed_releases_lock_and_reraises(
@@ -1079,7 +1090,7 @@ async def test_run_cancelled_marks_run_failed_releases_lock_and_reraises(
     [run] = await sync_runs(session_factory)
     assert run["status"] == "failed"
     assert run["finished_at"] is not None
-    assert await advisory_lock_holders(session_factory, "curiosity") == 0
+    await assert_lock_released(session_factory, "curiosity")
     assert await lock_is_free(session_factory, "curiosity")
     sync_logs = [r for r in caplog.records if r.name == "app.services.sync"]
     assert any(r.levelno == logging.WARNING for r in sync_logs)

@@ -62,7 +62,8 @@ app/
   api/
     legacy/            v1: rovers.py, photos.py, manifests.py, schemas.py — по LEGACY-API.md;
                        один роутер подключён дважды: /api/v1 и /mars-photos/api/v1
-    v2/                rovers.py, photos.py, schemas.py, params.py (параметры и пагинация v2) — по API.md; admin.py — этап 6
+    v2/                rovers.py, photos.py (в т.ч. редирект /image), admin.py, schemas.py, params.py — по API.md
+    caching.py         ASGI-middleware: ETag, 304, Cache-Control, HEAD для v1 и v2
                        сессия — зависимость get_session из db/session.py
 migrations/            Alembic
 tests/
@@ -122,4 +123,4 @@ docs/
 
 ## Настройки (переменные окружения)
 
-`DATABASE_URL`, `TEST_DATABASE_URL`, `SYNC_ENABLED`, `SYNC_INTERVAL_MINUTES`, `SYNC_OVERLAP_SOLS` (по умолчанию 7), `SYNC_CHUNK_SOLS` (по умолчанию 10), `UPSTREAM_TIMEOUT_SECONDS`, `UPSTREAM_MAX_RPS`, `UPSTREAM_USER_AGENT`, `ADMIN_TOKEN` (не задан → admin-ручки отключены), `CORS_ORIGINS`, `LOG_LEVEL`. Шаблон — `.env.example`, реальный `.env` в git не попадает.
+`DATABASE_URL`, `TEST_DATABASE_URL`, `SYNC_ENABLED`, `SYNC_INTERVAL_MINUTES`, `SYNC_OVERLAP_SOLS` (по умолчанию 7), `SYNC_CHUNK_SOLS` (по умолчанию 10), `UPSTREAM_TIMEOUT_SECONDS`, `UPSTREAM_MAX_RPS`, `UPSTREAM_USER_AGENT`, `ADMIN_TOKEN` (не задан или пуст → admin-ручки отключены; иначе не короче 16 символов, иначе приложение не стартует), `CORS_ORIGINS`, `LOG_LEVEL`. Шаблон — `.env.example`, реальный `.env` в git не попадает.

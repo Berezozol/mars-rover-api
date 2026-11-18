@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,6 +12,8 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
+        # Validation errors must never echo secrets such as ADMIN_TOKEN.
+        hide_input_in_errors=True,
     )
 
     app_name: str = "Mars Rover API"
@@ -43,9 +45,42 @@ class Settings(BaseSettings):
     admin_token: SecretStr | None = None
     cors_origins: list[str] = ["*"]
 
+    @field_validator("admin_token", mode="after")
+    @classmethod
+    def _check_admin_token(cls, value: SecretStr | None) -> SecretStr | None:
+        token = check_admin_token(value)
+        return SecretStr(token) if token else None
+
+    @property
+    def admin_token_value(self) -> str:
+        """The stripped admin token, "" when admin is disabled."""
+        return check_admin_token(self.admin_token)
+
     @property
     def admin_enabled(self) -> bool:
-        return self.admin_token is not None and bool(self.admin_token.get_secret_value())
+        return bool(self.admin_token_value)
+
+
+MIN_ADMIN_TOKEN_LENGTH = 16
+
+
+def check_admin_token(value: SecretStr | None) -> str:
+    """Stripped token; "" if unset or empty (admin disabled).
+
+    ``ValueError`` (without the value) if it is set but blank or shorter than 16 characters
+    after stripping: a misconfiguration, not a silent "admin off". Also called by create_app,
+    since ``model_copy(update=...)`` skips field validators.
+    """
+    raw = value.get_secret_value() if value is not None else ""
+    if not raw:
+        return ""
+    token = raw.strip()
+    if len(token) < MIN_ADMIN_TOKEN_LENGTH:
+        raise ValueError(
+            f"ADMIN_TOKEN must be at least {MIN_ADMIN_TOKEN_LENGTH} non-blank characters long "
+            "(leave it empty to disable the admin endpoints)"
+        )
+    return token
 
 
 @lru_cache

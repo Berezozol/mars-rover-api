@@ -1,5 +1,6 @@
 """Application factory."""
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -7,20 +8,33 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
+from app.api.caching import CachingMiddleware
 from app.api.health import router as health_router
 from app.api.legacy import router as legacy_router
 from app.api.v2 import router as v2_router
-from app.core.config import Settings, get_settings
+from app.api.v2.admin import router as admin_router
+from app.core.config import Settings, check_admin_token, get_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging
 from app.db.session import create_engine, create_session_factory
+from app.services.admin import AdapterFactory, cancel_background
 from app.services.scheduler import SyncScheduler
 from app.services.sync import SyncService
+from app.sources.base import SourceAdapter
 from app.sources.http import UpstreamClient
+from app.sources.registry import build_adapter
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
+    """Build the app. Test hooks (replace on ``app.state`` before requests):
+
+    - ``adapter_factory``: ``Callable[[str], SourceAdapter]`` used by the admin sync;
+      the default builds the real adapter with the shared upstream client (lifespan).
+    - ``sync_tasks``: set of the running background sync tasks (await them in tests).
+    """
     settings = settings or get_settings()
+    # Fail fast on a too-short ADMIN_TOKEN (model_copy(update=...) skips the validator).
+    check_admin_token(settings.admin_token)
     configure_logging(settings.log_level)
 
     engine = create_engine(
@@ -31,8 +45,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         try:
+            if settings.sync_enabled or settings.admin_enabled:
+                app.state.upstream_client = UpstreamClient(settings)
             if settings.sync_enabled:
-                _start_sync(app, settings)
+                _start_scheduler(app, settings)
             yield
         finally:
             try:
@@ -55,12 +71,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.session_factory = create_session_factory(engine)
     app.state.upstream_client = None
     app.state.scheduler = None
+    # One service for the scheduler and the admin endpoints.
+    app.state.sync_service = SyncService(app.state.session_factory, settings)
+    app.state.adapter_factory = _default_adapter_factory(app, settings)
+    app.state.sync_tasks = set()
 
+    # Added first = inner: CORS headers also reach 304 responses.
+    app.add_middleware(CachingMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
         allow_methods=["GET"],
         allow_headers=["*"],
+        expose_headers=["ETag"],
     )
     register_exception_handlers(app)
 
@@ -68,26 +91,42 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(legacy_router, prefix="/api/v1")
     app.include_router(legacy_router, prefix="/mars-photos/api/v1", include_in_schema=False)
     app.include_router(v2_router, prefix="/api/v2")
+    if settings.admin_enabled:
+        app.include_router(admin_router, prefix="/api/v2")
     return app
 
 
-def _start_sync(app: FastAPI, settings: Settings) -> None:
-    """Create the shared upstream client and start the periodic sync."""
-    client = UpstreamClient(settings)
-    app.state.upstream_client = client
-    service = SyncService(app.state.session_factory, settings)
-    app.state.scheduler = SyncScheduler(service, client, settings)
+def _default_adapter_factory(app: FastAPI, settings: Settings) -> AdapterFactory:
+    """Real adapters over the shared upstream client created in the lifespan."""
+
+    def factory(rover_id: str) -> SourceAdapter:
+        client: UpstreamClient | None = app.state.upstream_client
+        if client is None:
+            raise RuntimeError("The upstream client is not running (application not started)")
+        return build_adapter(rover_id, client, settings)
+
+    return factory
+
+
+def _start_scheduler(app: FastAPI, settings: Settings) -> None:
+    """Start the periodic sync on the shared client and service."""
+    app.state.scheduler = SyncScheduler(app.state.sync_service, app.state.upstream_client, settings)
     app.state.scheduler.start()
 
 
 async def _stop_sync(app: FastAPI) -> None:
-    """Stop the scheduler and close the client; the client is closed even if stopping fails."""
+    """Stop the scheduler and background syncs, then close the client (always)."""
     try:
-        if app.state.scheduler is not None:
-            await app.state.scheduler.shutdown()
+        try:
+            if app.state.scheduler is not None:
+                await app.state.scheduler.shutdown()
+        finally:
+            tasks: set[asyncio.Task[None]] = app.state.sync_tasks
+            await cancel_background(tasks)
     finally:
         if app.state.upstream_client is not None:
             await app.state.upstream_client.aclose()
+            app.state.upstream_client = None
 
 
 app = create_app()

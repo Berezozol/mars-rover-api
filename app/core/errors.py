@@ -29,15 +29,23 @@ DB_UNAVAILABLE_MESSAGE = "Database unavailable"
 _MAX_ECHO = 64
 
 # Errors meaning "the database cannot be reached", not "the query is wrong": SQLAlchemy's
-# connectivity errors, and what asyncpg raises raw while connecting (refused / reset sockets,
-# the connect timeout, server-side connection rejections).
+# connectivity errors and server-side connection rejections. Handled globally.
 _DB_UNAVAILABLE_TYPES: tuple[type[BaseException], ...] = (
     OperationalError,
     InterfaceError,
     PostgresConnectionError,
+)
+
+# Raw I/O errors asyncpg raises while connecting (refused / reset sockets, the connect
+# timeout). They mean "database unavailable" only when raised by database code, so they are
+# NOT handled globally: database call sites convert them with ``DatabaseUnavailable``
+# (see app/db/session.py). Anywhere else they stay a 500.
+DB_IO_ERRORS: tuple[type[BaseException], ...] = (
     OSError,  # includes ConnectionError
     TimeoutError,  # asyncio.TimeoutError is an alias since Python 3.11
 )
+
+NO_STORE = "no-store"
 
 
 class AppError(Exception):
@@ -88,6 +96,15 @@ class ServiceUnavailableError(AppError):
     code = "service_unavailable"
 
 
+class DatabaseUnavailable(ServiceUnavailableError):
+    """The database could not be reached (raised in place of a raw I/O error from DB code)."""
+
+    code = "db_unavailable"
+
+    def __init__(self) -> None:
+        super().__init__(DB_UNAVAILABLE_MESSAGE)
+
+
 class SyncInProgress(ConflictError):
     """A sync of this rover is already running (the advisory lock is held)."""
 
@@ -102,7 +119,8 @@ class NoSourceForRover(ValidationAppError):
     """The rover has no upstream source that can be synced (e.g. Spirit, Opportunity)."""
 
     def __init__(self, rover_id: str) -> None:
-        super().__init__(f"Rover {rover_id} has no upstream source to sync")
+        message = f"Rover {rover_id[:_MAX_ECHO]} has no upstream source to sync"
+        super().__init__(message, details=[{"field": "rover", "message": message}])
         self.rover_id = rover_id
 
 
@@ -162,12 +180,14 @@ def error_response(
     code: str,
     message: str,
     details: Any = None,
+    headers: dict[str, str] | None = None,
 ) -> JSONResponse:
     if is_legacy_path(request.url.path):
-        return JSONResponse({"errors": message}, status_code=status_code)
+        return JSONResponse({"errors": message}, status_code=status_code, headers=headers)
     return JSONResponse(
         {"error": {"code": code, "message": message, "details": details}},
         status_code=status_code,
+        headers=headers,
     )
 
 
@@ -228,11 +248,13 @@ async def _handle_validation_error(request: Request, exc: RequestValidationError
 
 async def _handle_unexpected_error(request: Request, exc: Exception) -> JSONResponse:
     logger.exception("Unhandled error path=%s", request.url.path)
+    # Rendered by the outermost ServerErrorMiddleware, outside the caching middleware.
     return error_response(
         request,
         status_code=500,
         code="internal_error",
         message="Internal server error",
+        headers={"Cache-Control": NO_STORE},
     )
 
 

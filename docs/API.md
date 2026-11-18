@@ -122,9 +122,16 @@
 `200` список:
 ```json
 {"id": 17, "rover": "perseverance", "mode": "incremental", "from_sol": 2024, "to_sol": 2031,
- "status": "success", "started_at": "...", "finished_at": "...", "photos_upserted": 412, "error": null}
+ "status": "success", "started_at": "...", "finished_at": "...", "photos_upserted": 412, "failed_sols": [], "error": null}
 ```
-Сортировка `started_at DESC`.
+Сортировка `started_at DESC`. `failed_sols` — солы, которые не удалось загрузить (по возрастанию). `401` · `404 rover_not_found` (неизвестный `rover`) · `422`.
+
+## Кэширование (v1 и v2)
+
+- `HEAD` поддерживается на всех `GET`-ручках v1 и v2: те же заголовки, без тела.
+- Успешные `GET` (`200`) отдают `ETag`; повторный запрос с совпадающим `If-None-Match` получает `304` без тела.
+- `Cache-Control`: списки, марсоходы, камеры и манифест — `public, max-age=300`; карточка снимка (`/photos/{id}`) — `public, max-age=3600`; редирект на изображение — `public, max-age=86400`; ошибки и admin-ручки — `no-store`.
+- CORS — любые источники, только `GET`; заголовок `ETag` виден клиенту.
 
 ## Черновики (уточнить перед своим этапом)
 

@@ -3,9 +3,11 @@
 from datetime import UTC, date, datetime
 from typing import Annotated, Any
 
-from pydantic import BaseModel, PlainSerializer
+from pydantic import BaseModel, ConfigDict, Field, PlainSerializer, StrictInt, StrictStr
 
-from app.db.models import Photo, SolSummary
+from app.api.v2.params import MAX_SOL
+from app.db.models import Photo, SolSummary, SyncRun
+from app.services.admin import RunPage
 from app.services.v2 import CameraInfo, LatestPhotos, Manifest, PhotoPage, RoverInfo
 
 
@@ -212,4 +214,65 @@ def _manifest_sol(summary: SolSummary) -> ManifestSolOut:
 def manifest_out(result: Manifest) -> ManifestResponse:
     return ManifestResponse(
         rover=rover_out(result.rover), sols=[_manifest_sol(s) for s in result.sols]
+    )
+
+
+class SyncRequestIn(BaseModel):
+    """POST /admin/sync body; integers are strict (no "5", 5.0 or true)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    rover: StrictStr
+    from_sol: Annotated[StrictInt | None, Field(ge=0, le=MAX_SOL)] = None
+    to_sol: Annotated[StrictInt | None, Field(ge=0, le=MAX_SOL)] = None
+
+
+class SyncStartedOut(BaseModel):
+    run_id: int
+    status: str
+
+
+class RunOut(BaseModel):
+    id: int
+    rover: str
+    mode: str
+    from_sol: int | None
+    to_sol: int | None
+    status: str
+    started_at: UtcDateTime
+    finished_at: UtcDateTime | None
+    photos_upserted: int
+    failed_sols: list[int]
+    error: str | None
+
+
+class RunsResponse(BaseModel):
+    items: list[RunOut]
+    page: int
+    per_page: int
+    total: int
+
+
+def run_out(run: SyncRun) -> RunOut:
+    return RunOut(
+        id=run.id,
+        rover=run.rover_id,
+        mode=run.mode,
+        from_sol=run.from_sol,
+        to_sol=run.to_sol,
+        status=run.status,
+        started_at=run.started_at,
+        finished_at=run.finished_at,
+        photos_upserted=run.photos_upserted,
+        failed_sols=sorted(run.failed_sols or []),
+        error=run.error,
+    )
+
+
+def runs_out(result: RunPage) -> RunsResponse:
+    return RunsResponse(
+        items=[run_out(run) for run in result.items],
+        page=result.page,
+        per_page=result.per_page,
+        total=result.total,
     )

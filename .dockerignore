@@ -1,0 +1,11 @@
+# Allow-list: only what the image needs reaches the build context.
+# Notably excluded: .env (secrets), .venv, .python-version, tests, docs, design, .git.
+*
+!app/
+!migrations/
+!alembic.ini
+!pyproject.toml
+!uv.lock
+
+**/__pycache__/
+**/*.py[cod]

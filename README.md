@@ -15,7 +15,7 @@ Not affiliated with or endorsed by NASA or JPL. Images courtesy of NASA/JPL-Calt
 
 ## Quick start
 
-Requirements: Python 3.12+, [uv](https://docs.astral.sh/uv/), Docker.
+Requirements: Python 3.13+, [uv](https://docs.astral.sh/uv/), Docker.
 
 ```bash
 cp .env.example .env              # PowerShell: Copy-Item .env.example .env

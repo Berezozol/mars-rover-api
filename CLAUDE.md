@@ -12,7 +12,7 @@
 Перед работой прочитай раздел, который касается задачи. Если документ и код расходятся — сообщи, сам не выбирай.
 
 ## Стек
-Python 3.12+, FastAPI, SQLAlchemy 2.0 (async) + asyncpg, Alembic, httpx + tenacity, APScheduler, pydantic-settings. Тесты: pytest, pytest-asyncio, respx. Инструменты: uv, ruff. БД: PostgreSQL 16 в Docker Compose.
+Python 3.13+, FastAPI, SQLAlchemy 2.0 (async) + asyncpg, Alembic, httpx + tenacity, APScheduler, pydantic-settings. Тесты: pytest, pytest-asyncio, respx. Инструменты: uv, ruff. БД: PostgreSQL 16 в Docker Compose.
 
 ## Команды
 - поднять БД: `docker compose up -d db` — Postgres 16 на `localhost:5433`, базы `mars` (разработка) и `mars_test` (тесты)

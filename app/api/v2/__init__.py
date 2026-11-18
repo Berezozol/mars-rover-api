@@ -1,6 +1,7 @@
 """API v2, the project's own API (docs/API.md).
 
-Image redirect and admin endpoints arrive in stage 6. Unknown query parameters are ignored.
+Unknown query parameters are ignored. The admin router (app.api.v2.admin) is mounted by
+create_app only when ADMIN_TOKEN is set.
 """
 
 from fastapi import APIRouter
