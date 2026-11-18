@@ -9,6 +9,7 @@ from sqlalchemy import (
     BindParameter,
     Integer,
     Select,
+    Text,
     bindparam,
     delete,
     distinct,
@@ -23,7 +24,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import contains_eager, selectinload
 
-from app.db.models import Camera, Photo, SolSummary
+from app.db.models import Camera, CameraSolCount, Photo, SolSummary
 from app.repositories._common import FRESH
 from app.repositories.rovers import get_or_create_cameras
 from app.sources.base import PhotoRecord
@@ -79,6 +80,21 @@ async def upsert_photos(
     for start in range(0, len(rows), _UPSERT_CHUNK):
         await session.execute(_upsert_statement(rows[start : start + _UPSERT_CHUNK]))
     return len(unique)
+
+
+async def moved_from_sols(
+    session: AsyncSession, rover_id: str, records: Sequence[PhotoRecord]
+) -> set[int]:
+    """Sols where already stored photos of these records sit under a different sol."""
+    new_sol = {record.source_id: record.sol for record in records}
+    if not new_sol:
+        return set()
+    ids_param = bindparam("ids", value=list(new_sol), type_=ARRAY(Text))
+    stmt = select(Photo.source_id, Photo.sol).where(
+        Photo.rover_id == rover_id, Photo.source_id == func.any(ids_param)
+    )
+    rows = await session.execute(stmt)
+    return {sol for source_id, sol in rows if sol != new_sol[source_id]}
 
 
 def _photo_row(rover_id: str, camera_id: int, record: PhotoRecord) -> dict[str, Any]:
@@ -196,7 +212,8 @@ async def max_sol(session: AsyncSession, rover_id: str, *, full_only: bool = Fal
 async def recompute_sol_summaries(
     session: AsyncSession, rover_id: str, sols: Iterable[int]
 ) -> None:
-    """Rebuild summaries for the given sols; sols without photos lose their row."""
+    """Rebuild summaries and camera counts for the given sols; sols without photos lose
+    their rows."""
     sol_list = sorted(set(sols))
     if not sol_list:
         return
@@ -211,6 +228,31 @@ async def recompute_sol_summaries(
     )
     await session.execute(stale)
     await session.execute(_summary_upsert(rover_id, sols_param))
+    await _recompute_camera_counts(session, rover_id, sols_param)
+
+
+async def _recompute_camera_counts(
+    session: AsyncSession, rover_id: str, sols_param: BindParameter[list[int]]
+) -> None:
+    """Replace the camera counts of the given sols with fresh aggregates."""
+    await session.execute(
+        delete(CameraSolCount).where(
+            CameraSolCount.rover_id == rover_id, CameraSolCount.sol == func.any(sols_param)
+        )
+    )
+    aggregated = (
+        select(
+            Photo.rover_id,
+            Photo.sol,
+            Photo.camera_id,
+            func.count(Photo.id),
+            func.count(Photo.id).filter(Photo.sample_type == FULL_SAMPLE_TYPE),
+        )
+        .where(Photo.rover_id == rover_id, Photo.sol == func.any(sols_param))
+        .group_by(Photo.rover_id, Photo.sol, Photo.camera_id)
+    )
+    columns = ["rover_id", "sol", "camera_id", "total_photos", "full_photos"]
+    await session.execute(pg_insert(CameraSolCount).from_select(columns, aggregated))
 
 
 def _summary_upsert(rover_id: str, sols_param: BindParameter[list[int]]) -> Insert:

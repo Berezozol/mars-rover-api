@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.cameras import camera_full_name
 from app.core.legacy_dates import legacy_earth_date
-from app.db.models import Camera, Photo, Rover, SolSummary
+from app.db.models import Camera, CameraSolCount, Rover, SolSummary
 from app.repositories._common import FRESH
 
 
@@ -45,11 +45,17 @@ async def count_cameras(session: AsyncSession, rover_id: str | None = None) -> d
 async def list_cameras_with_counts(
     session: AsyncSession, rover_id: str
 ) -> list[tuple[Camera, int]]:
-    """The rover's cameras ordered by code, each with its photo count over all sample types."""
+    """The rover's cameras ordered by code, each with its photo count over all sample types.
+
+    Counts are summed from camera_sol_counts (kept by the sync), not from photos.
+    """
     counts = (
-        select(Photo.camera_id, func.count(Photo.id).label("total"))
-        .where(Photo.rover_id == rover_id)
-        .group_by(Photo.camera_id)
+        select(
+            CameraSolCount.camera_id,
+            func.sum(CameraSolCount.total_photos).label("total"),
+        )
+        .where(CameraSolCount.rover_id == rover_id)
+        .group_by(CameraSolCount.camera_id)
         .subquery()
     )
     stmt = (

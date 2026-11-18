@@ -19,8 +19,10 @@ from app.core.errors import SyncInProgress
 from app.db.models import Rover
 from app.repositories import photos as photos_repo
 from app.repositories import rovers as rovers_repo
+from app.repositories import source_counts as counts_repo
 from app.repositories import sync_runs as runs_repo
-from app.sources.base import PhotoRecord, SourceAdapter
+from app.repositories.source_counts import SourceCountRow
+from app.sources.base import FetchStats, PhotoRecord, SolStats, SourceAdapter
 from app.sources.http import UpstreamError
 
 logger = logging.getLogger(__name__)
@@ -45,6 +47,8 @@ class SyncResult:
     photos_upserted: int
     failed_sols: list[int]
     error: str | None
+    # Total the source declared for the range, when known.
+    source_total: int | None = None
 
 
 @dataclass
@@ -53,6 +57,14 @@ class _Progress:
     stored_sols: int = 0
     failed_sols: set[int] = field(default_factory=set)
     last_error: BaseException | None = None
+    # Sum of the totals the source declared per chunk; None once a chunk's is unknown.
+    source_total: int | None = 0
+
+    def add_source_total(self, total: int | None) -> None:
+        if self.source_total is not None and total is not None:
+            self.source_total += total
+        else:
+            self.source_total = None
 
     def fail(self, sols: Iterable[int], exc: BaseException) -> None:
         self.failed_sols.update(sols)
@@ -468,20 +480,67 @@ async def _sync_chunk(
 ) -> None:
     """Store every yielded sol; on an upstream failure the not yet yielded sols fail."""
     pending = set(range(chunk_from, chunk_to + 1))
+    stream = adapter.fetch_sols(chunk_from, chunk_to)
+    stats = _stream_stats(stream)
     try:
-        async for sol, records in adapter.fetch_sols(chunk_from, chunk_to):
+        async for sol, records in stream:
             # A sol yielded again (out-of-order feed) and then cut off by a failure is
             # not reported: that needs the failing sol in the adapter exception.
             pending.discard(sol)
-            await _store_sol(session, rover_id, sol, records, progress)
+            counts = _sol_counts(stats, sol, records)
+            await _store_sol(session, rover_id, sol, records, counts, progress)
     except UpstreamError as exc:
         progress.fail(pending, exc)
+        progress.add_source_total(None)
         logger.warning(
             "Sync chunk failed rover=%s chunk=%d..%d unfinished_sols=%d error=%s",
             rover_id,
             chunk_from,
             chunk_to,
             len(pending),
+            describe_error(exc),
+        )
+        return
+    complete = stats is not None and stats.complete
+    progress.add_source_total(stats.range_total if stats is not None and complete else None)
+    if stats is not None and complete:
+        await _store_final_counts(session, rover_id, stats.sols)
+
+
+def _stream_stats(stream: object) -> FetchStats | None:
+    """Statistics of a real adapter stream; None for adapters without them."""
+    stats = getattr(stream, "stats", None)
+    return stats if isinstance(stats, FetchStats) else None
+
+
+def _sol_counts(stats: FetchStats | None, sol: int, records: list[PhotoRecord]) -> SourceCountRow:
+    """Counts of a delivered sol; without adapter stats, what was delivered."""
+    sol_stats = stats.sols.get(sol) if stats is not None else None
+    if sol_stats is None:
+        return SourceCountRow(received=len(records), dropped=0, source_total=None)
+    return SourceCountRow(sol_stats.received, sol_stats.dropped, sol_stats.source_total)
+
+
+async def _store_final_counts(
+    session: AsyncSession, rover_id: str, stats: dict[int, SolStats]
+) -> None:
+    """Record the final counts of every sol of a finished chunk: also sols that delivered
+    nothing (empty or all dropped) and sols a re-yield changed after they were stored."""
+    rows = {
+        sol: SourceCountRow(item.received, item.dropped, item.source_total)
+        for sol, item in stats.items()
+    }
+    if not rows:
+        return
+    try:
+        await counts_repo.upsert_sol_source_counts(session, rover_id, rows)
+        await session.commit()
+    except SQLAlchemyError as exc:
+        await session.rollback()
+        logger.warning(
+            "Sync failed to store source counts rover=%s sols=%s error=%s",
+            rover_id,
+            compact_ranges(rows),
             describe_error(exc),
         )
 
@@ -491,12 +550,16 @@ async def _store_sol(
     rover_id: str,
     sol: int,
     records: list[PhotoRecord],
+    counts: SourceCountRow,
     progress: _Progress,
 ) -> None:
-    """Upsert one sol and its summary in its own transaction."""
+    """Upsert one sol, its summaries and its source counts in its own transaction."""
     try:
+        # Photos the source moved to this sol leave their old sols: recompute those too.
+        moved_from = await photos_repo.moved_from_sols(session, rover_id, records)
         count = await photos_repo.upsert_photos(session, rover_id, records)
-        await photos_repo.recompute_sol_summaries(session, rover_id, [sol])
+        await photos_repo.recompute_sol_summaries(session, rover_id, [sol, *moved_from])
+        await counts_repo.upsert_sol_source_counts(session, rover_id, {sol: counts})
         await session.commit()
     except SQLAlchemyError as exc:
         await session.rollback()
@@ -530,6 +593,7 @@ async def _finish(
         photos_upserted=progress.photos_upserted,
         error=error,
         failed_sols=progress.failed_sols,
+        source_total=progress.source_total,
     )
     await session.commit()
     result = SyncResult(
@@ -542,6 +606,7 @@ async def _finish(
         photos_upserted=progress.photos_upserted,
         failed_sols=sorted(progress.failed_sols),
         error=error,
+        source_total=progress.source_total,
     )
     _log_result(result, progress.stored_sols)
     return result

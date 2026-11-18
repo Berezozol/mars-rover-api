@@ -1,12 +1,14 @@
 """Perseverance (Mars 2020) adapter for the mars.nasa.gov raw images RSS/JSON feed."""
 
 import logging
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncGenerator, AsyncIterator, Mapping
 from typing import Any
 
 from app.core.config import Settings
 from app.sources.base import (
+    FetchStats,
     PhotoRecord,
+    SolStream,
     build_record,
     dedupe_by_source_id,
     validate_sol_range,
@@ -99,33 +101,84 @@ class M2020Adapter:
             raise UpstreamError(self._url, None, "latest_sol is missing")
         return sol
 
-    async def fetch_sols(
-        self, from_sol: int, to_sol: int
-    ) -> AsyncIterator[tuple[int, list[PhotoRecord]]]:
+    async def source_total(self) -> int | None:
+        """``total_results`` of an unbounded ``sol >= 0`` query with one image per page."""
+        params: dict[str, str | int] = {
+            **BASE_PARAMS,
+            "order": "sol desc",
+            "num": 1,
+            "page": 0,
+            "condition_2": "0:sol:gte",
+        }
+        data = await self._client.get_json(self._url, params)
+        if not isinstance(data, dict):
+            raise UpstreamError(self._url, None, "response is not an object")
+        return to_int(data.get("total_results"), field="total_results")
+
+    def fetch_sols(self, from_sol: int, to_sol: int) -> SolStream:
+        """Stream sols of the range; ``stats.range_total`` is the range's ``total_results``.
+
+        Per-sol ``source_total`` is known only for a single-sol range (the feed has no
+        per-sol total).
+        """
+        stats = FetchStats()
+        return SolStream(self._fetch_sols(from_sol, to_sol, stats), stats)
+
+    async def _fetch_sols(
+        self, from_sol: int, to_sol: int, stats: FetchStats
+    ) -> AsyncGenerator[tuple[int, list[PhotoRecord]]]:
         validate_sol_range(from_sol, to_sol)
         current_sol: int | None = None
         bucket: list[PhotoRecord] = []
-        async for record in self._iter_records(from_sol, to_sol):
-            if record.sol != current_sol:
-                if current_sol is not None and record.sol > current_sol:
+        seen: dict[int, set[str]] = {}
+        async for raw_sol, record in self._iter_images(from_sol, to_sol, stats):
+            if raw_sol is None or not from_sol <= raw_sol <= to_sol:
+                stats.unattributed_dropped += 1
+                continue
+            if raw_sol != current_sol:
+                if current_sol is not None and raw_sol > current_sol:
                     logger.warning(
                         "Perseverance feed out of order: sol %d after sol %d",
-                        record.sol,
+                        raw_sol,
                         current_sol,
                     )
-                if current_sol is not None and bucket:
-                    yield current_sol, self._dedupe(current_sol, bucket)
-                current_sol, bucket = record.sol, []
-            bucket.append(record)
-        if current_sol is not None and bucket:
-            yield current_sol, self._dedupe(current_sol, bucket)
+                if current_sol is not None:
+                    records = self._finish_sol(current_sol, bucket, stats, seen)
+                    if records:
+                        yield current_sol, records
+                current_sol, bucket = raw_sol, []
+            sol_stats = stats.sol(raw_sol)
+            sol_stats.received += 1
+            if record is None:
+                sol_stats.dropped += 1
+            else:
+                bucket.append(record)
+        if current_sol is not None:
+            records = self._finish_sol(current_sol, bucket, stats, seen)
+            if records:
+                yield current_sol, records
+        stats.finish(from_sol, to_sol)
+        if from_sol == to_sol and stats.unattributed_dropped:
+            # The range total also counts images of unknown sols: not this sol's total.
+            stats.sol(from_sol).source_total = None
 
     @staticmethod
-    def _dedupe(sol: int, records: list[PhotoRecord]) -> list[PhotoRecord]:
-        return dedupe_by_source_id(records, label=f"perseverance sol {sol}")
+    def _finish_sol(
+        sol: int, bucket: list[PhotoRecord], stats: FetchStats, seen: dict[int, set[str]]
+    ) -> list[PhotoRecord]:
+        """Dedupe a finished sol, also against records already yielded for it."""
+        unique = dedupe_by_source_id(bucket, label=f"perseverance sol {sol}")
+        known = seen.setdefault(sol, set())
+        fresh = [record for record in unique if record.source_id not in known]
+        known.update(record.source_id for record in fresh)
+        stats.sol(sol).dropped += len(bucket) - len(fresh)
+        return fresh
 
-    async def _iter_records(self, from_sol: int, to_sol: int) -> AsyncIterator[PhotoRecord]:
-        """Yield records page by page; stop when all ``total_results`` raw images arrived.
+    async def _iter_images(
+        self, from_sol: int, to_sol: int, stats: FetchStats
+    ) -> AsyncIterator[tuple[int | None, PhotoRecord | None]]:
+        """Yield ``(raw sol, record or None)`` per raw image, page by page; stop when all
+        ``total_results`` raw images arrived.
 
         An empty page before that raises ``IncompleteResponse``.
         """
@@ -133,11 +186,15 @@ class M2020Adapter:
         fetched = 0
         while True:
             images, raw_count, total = await self._fetch_page(from_sol, to_sol, page)
+            if page == 0:
+                stats.range_total = total
+                if from_sol == to_sol:
+                    # A single-sol range: the range total is that sol's total.
+                    stats.sol(from_sol).source_total = total
             fetched += raw_count
             for raw in images:
-                record = self._parse_in_range(raw, from_sol, to_sol)
-                if record is not None:
-                    yield record
+                yield self._parse_in_range(raw, from_sol, to_sol)
+            stats.unattributed_dropped += raw_count - len(images)
             if fetched >= total:
                 return
             if raw_count == 0:
@@ -187,9 +244,14 @@ class M2020Adapter:
         return images, len(raw_images), total
 
     @staticmethod
-    def _parse_in_range(raw: Mapping[str, Any], from_sol: int, to_sol: int) -> PhotoRecord | None:
+    def _parse_in_range(
+        raw: Mapping[str, Any], from_sol: int, to_sol: int
+    ) -> tuple[int | None, PhotoRecord | None]:
+        """The image's sol (None if unknown) and its record (None if rejected)."""
         record = parse_m2020_image(raw)
-        if record is not None and not from_sol <= record.sol <= to_sol:
+        if record is None:
+            return _raw_sol(raw), None
+        if not from_sol <= record.sol <= to_sol:
             logger.warning(
                 "Skipping Perseverance image %s: sol %d outside %d..%d",
                 record.source_id,
@@ -197,5 +259,16 @@ class M2020Adapter:
                 from_sol,
                 to_sol,
             )
-            return None
-        return record
+        return record.sol, record
+
+
+def _raw_sol(raw: Mapping[str, Any]) -> int | None:
+    """The sol of a rejected image, without logging (parsing already warned)."""
+    value = clean(raw.get("sol"))
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value)
+    return None

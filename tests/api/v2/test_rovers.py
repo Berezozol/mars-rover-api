@@ -6,6 +6,9 @@ from typing import Any
 import httpx
 import pytest
 from fastapi import FastAPI
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.pool import NullPool
 
 from tests.api.v2.conftest import (
     CAMERA_KEYS,
@@ -236,3 +239,28 @@ async def test_cameras_rover_without_data_has_zero_totals(
     body = (await client.get(f"{V2}/rovers/spirit/cameras")).json()
 
     assert [camera["total_photos"] for camera in body["items"]] == [0] * CAMERAS_COUNT["spirit"]
+
+
+@pytest.mark.parametrize("rover_id", ROVER_IDS)
+async def test_cameras_totals_equal_group_by_over_photos(
+    client: httpx.AsyncClient, world: World, migrated_db: str, rover_id: str
+) -> None:
+    """Stage 7: totals come from camera_sol_counts and equal the old GROUP BY result."""
+    engine = create_async_engine(migrated_db, poolclass=NullPool)
+    try:
+        async with engine.connect() as conn:
+            rows = await conn.execute(
+                text(
+                    "SELECT c.code, count(p.id) AS n FROM cameras c "
+                    "LEFT JOIN photos p ON p.camera_id = c.id "
+                    "WHERE c.rover_id = :rover GROUP BY c.code"
+                ),
+                {"rover": rover_id},
+            )
+            expected = {code: n for code, n in rows}
+    finally:
+        await engine.dispose()
+
+    body = (await client.get(f"{V2}/rovers/{rover_id}/cameras")).json()
+
+    assert {camera["code"]: camera["total_photos"] for camera in body["items"]} == expected

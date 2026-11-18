@@ -25,7 +25,16 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
-__all__ = ["Base", "Camera", "Photo", "Rover", "SolSummary", "SyncRun"]
+__all__ = [
+    "Base",
+    "Camera",
+    "CameraSolCount",
+    "Photo",
+    "Rover",
+    "SolSourceCount",
+    "SolSummary",
+    "SyncRun",
+]
 
 _TIMESTAMPTZ = DateTime(timezone=True)
 
@@ -132,6 +141,34 @@ class SolSummary(Base):
     full_cameras: Mapped[list[str]] = mapped_column(ARRAY(Text))
 
 
+class CameraSolCount(Base):
+    """Photos per (sol, camera), recomputed by the sync with sol_summaries; no zero rows."""
+
+    __tablename__ = "camera_sol_counts"
+
+    rover_id: Mapped[str] = mapped_column(ForeignKey("rovers.id"), primary_key=True)
+    sol: Mapped[int] = mapped_column(Integer, primary_key=True)
+    camera_id: Mapped[int] = mapped_column(ForeignKey("cameras.id"), primary_key=True)
+    total_photos: Mapped[int] = mapped_column(Integer)
+    full_photos: Mapped[int] = mapped_column(Integer)
+
+
+class SolSourceCount(Base):
+    """What the source returned for a sol in the latest fetch (overwritten by every fetch)."""
+
+    __tablename__ = "sol_source_counts"
+
+    rover_id: Mapped[str] = mapped_column(ForeignKey("rovers.id"), primary_key=True)
+    sol: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Records the source returned for the sol.
+    received: Mapped[int] = mapped_column(Integer)
+    # Received but not stored: thumbnails, failed normalization, duplicates, wrong sol.
+    dropped: Mapped[int] = mapped_column(Integer)
+    # Per-sol total declared by the source, when the feed exposes one.
+    source_total: Mapped[int | None] = mapped_column(Integer)
+    fetched_at: Mapped[datetime] = mapped_column(_TIMESTAMPTZ)
+
+
 class SyncRun(Base):
     __tablename__ = "sync_runs"
     __table_args__ = (
@@ -154,3 +191,5 @@ class SyncRun(Base):
     failed_sols: Mapped[list[int]] = mapped_column(
         ARRAY(Integer), server_default=text("'{}'::integer[]")
     )
+    # Total the source declared for the run's range, when known.
+    source_total: Mapped[int | None] = mapped_column(BigInteger)

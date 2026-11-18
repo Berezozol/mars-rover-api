@@ -1,12 +1,15 @@
 """Curiosity (MSL) adapter for the mars.nasa.gov raw_image_items API."""
 
 import logging
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncGenerator, Mapping
 from typing import Any
 
 from app.core.config import Settings
 from app.sources.base import (
+    FetchStats,
     PhotoRecord,
+    SolStats,
+    SolStream,
     build_record,
     dedupe_by_source_id,
     validate_sol_range,
@@ -106,23 +109,53 @@ class MslAdapter:
             raise UpstreamError(self._url, None, "latest item has no sol")
         return sol
 
-    async def fetch_sols(
-        self, from_sol: int, to_sol: int
-    ) -> AsyncIterator[tuple[int, list[PhotoRecord]]]:
+    async def source_total(self) -> int | None:
+        """``total`` of the mission query without thumbnails, one item per page."""
+        params: dict[str, str | int] = {
+            "order": self.ORDER,
+            "per_page": 1,
+            "page": 0,
+            "condition_1": MISSION_CONDITION,
+            "extended": NO_THUMBNAILS,
+        }
+        data = await self._client.get_json(self._url, params)
+        if not isinstance(data, dict):
+            raise UpstreamError(self._url, None, "response is not an object")
+        return to_int(data.get("total"), field="total")
+
+    def fetch_sols(self, from_sol: int, to_sol: int) -> SolStream:
+        """Stream sols of the range; per-sol ``source_total`` is the feed's ``total``
+        (thumbnails excluded) and ``stats.range_total`` their sum once the range is done."""
+        stats = FetchStats()
+        return SolStream(self._fetch_sols(from_sol, to_sol, stats), stats)
+
+    async def _fetch_sols(
+        self, from_sol: int, to_sol: int, stats: FetchStats
+    ) -> AsyncGenerator[tuple[int, list[PhotoRecord]]]:
         validate_sol_range(from_sol, to_sol)
         for sol in range(to_sol, from_sol - 1, -1):
-            records = await self._fetch_sol(sol)
+            records, sol_stats = await self._fetch_sol(sol)
+            stats.sols[sol] = sol_stats
             if records:
                 yield sol, records
+        totals = [stats.sols[sol].source_total for sol in range(from_sol, to_sol + 1)]
+        stats.range_total = sum(t for t in totals if t is not None) if None not in totals else None
+        stats.complete = True
 
-    async def _fetch_sol(self, sol: int) -> list[PhotoRecord]:
+    async def _fetch_sol(self, sol: int) -> tuple[list[PhotoRecord], SolStats]:
         records: list[PhotoRecord] = []
+        sol_stats = SolStats()
         page = 0
         while True:
-            items, more = await self._fetch_page(sol, page)
+            items, raw_count, more, total = await self._fetch_page(sol, page)
+            if page == 0:
+                sol_stats.source_total = total
+            sol_stats.received += raw_count
             records.extend(self._parse_items(items, sol))
             if not more:
-                return dedupe_by_source_id(records, label=f"curiosity sol {sol}")
+                unique = dedupe_by_source_id(records, label=f"curiosity sol {sol}")
+                sol_stats.dropped = sol_stats.received - len(unique)
+                return unique, sol_stats
             if page + 1 >= self._max_pages:
                 raise PageLimitExceeded(
                     self._url,
@@ -132,7 +165,10 @@ class MslAdapter:
                 )
             page += 1
 
-    async def _fetch_page(self, sol: int, page: int) -> tuple[list[Mapping[str, Any]], bool]:
+    async def _fetch_page(
+        self, sol: int, page: int
+    ) -> tuple[list[Mapping[str, Any]], int, bool, int | None]:
+        """Return ``(items, raw item count, more, total)`` of one page."""
         params: dict[str, str | int] = {
             "order": self.ORDER,
             "per_page": self._page_size,
@@ -144,8 +180,10 @@ class MslAdapter:
         data = await self._client.get_json(self._url, params)
         if not isinstance(data, dict) or not isinstance(data.get("items"), list):
             raise UpstreamError(self._url, None, "response has no items list")
-        items = [item for item in data["items"] if isinstance(item, Mapping)]
-        return items, data.get("more") is True
+        raw_items = data["items"]
+        items = [item for item in raw_items if isinstance(item, Mapping)]
+        total = to_int(data.get("total"), field="total")
+        return items, len(raw_items), data.get("more") is True, total
 
     @staticmethod
     def _parse_items(items: list[Mapping[str, Any]], sol: int) -> list[PhotoRecord]:

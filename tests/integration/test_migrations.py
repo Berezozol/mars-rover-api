@@ -33,8 +33,10 @@ EXPECTED_COLUMNS = {
     },
     "sync_runs": {
         "id", "rover_id", "mode", "from_sol", "to_sol", "status", "started_at", "finished_at",
-        "photos_upserted", "error", "failed_sols",
+        "photos_upserted", "error", "failed_sols", "source_total",
     },
+    "camera_sol_counts": {"rover_id", "sol", "camera_id", "total_photos", "full_photos"},
+    "sol_source_counts": {"rover_id", "sol", "received", "dropped", "source_total", "fetched_at"},
 }  # fmt: skip
 
 
@@ -44,8 +46,8 @@ def _head(alembic_cfg: AlembicConfig) -> str:
     return head
 
 
-def test_migrations_head_revision_is_0003(alembic_cfg: AlembicConfig) -> None:
-    assert _head(alembic_cfg) == "0003"
+def test_migrations_head_revision_is_0004(alembic_cfg: AlembicConfig) -> None:
+    assert _head(alembic_cfg) == "0004"
 
 
 def test_migrations_single_head(alembic_cfg: AlembicConfig) -> None:
@@ -89,6 +91,9 @@ async def test_schema_table_has_contract_columns(db_session: AsyncSession, table
         ("sol_summaries", "cameras", "ARRAY"),
         ("sol_summaries", "full_cameras", "ARRAY"),
         ("sync_runs", "failed_sols", "ARRAY"),
+        ("sync_runs", "source_total", "bigint"),
+        ("sol_source_counts", "source_total", "integer"),
+        ("sol_source_counts", "fetched_at", "timestamp with time zone"),
     ],
     ids=lambda v: str(v),
 )
@@ -111,7 +116,10 @@ async def test_schema_column_type_matches_contract(
      ("cameras", "code"), ("cameras", "sort_order"), ("photos", "source_id"),
      ("photos", "sol"), ("photos", "earth_date"), ("photos", "taken_at"),
      ("photos", "sample_type"), ("photos", "img_full"), ("photos", "created_at"),
-     ("photos", "updated_at"), ("sync_runs", "failed_sols")],
+     ("photos", "updated_at"), ("sync_runs", "failed_sols"),
+     ("camera_sol_counts", "total_photos"), ("camera_sol_counts", "full_photos"),
+     ("sol_source_counts", "received"), ("sol_source_counts", "dropped"),
+     ("sol_source_counts", "fetched_at")],
     ids=lambda v: str(v),
 )  # fmt: skip
 async def test_schema_required_column_is_not_null(
@@ -149,6 +157,8 @@ async def _unique_column_sets(session: AsyncSession, table: str) -> set[tuple[st
         ("cameras", ("rover_id", "code")),
         ("photos", ("rover_id", "source_id")),
         ("sol_summaries", ("rover_id", "sol")),
+        ("camera_sol_counts", ("rover_id", "sol", "camera_id")),
+        ("sol_source_counts", ("rover_id", "sol")),
     ],
     ids=lambda v: str(v),
 )
@@ -228,3 +238,37 @@ async def test_schema_sync_runs_failed_sols_is_integer_array_default_empty(
         text("SELECT failed_sols FROM sync_runs WHERE id = :id"), {"id": run_id}
     )
     assert stored == []
+
+
+@pytest.mark.parametrize(
+    ("table", "column"),
+    [("sync_runs", "source_total"), ("sol_source_counts", "source_total")],
+    ids=lambda v: str(v),
+)
+async def test_schema_source_total_is_nullable(
+    db_session: AsyncSession, table: str, column: str
+) -> None:
+    result = await db_session.execute(
+        text(
+            "SELECT is_nullable FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND table_name = :table AND column_name = :column"
+        ),
+        {"table": table, "column": column},
+    )
+    assert result.scalar_one() == "YES"
+
+
+@pytest.mark.parametrize("table", ["camera_sol_counts", "sol_source_counts"])
+async def test_schema_count_table_primary_key_matches_contract(
+    db_session: AsyncSession, table: str
+) -> None:
+    conn = await db_session.connection()
+
+    def pk(sync_conn: Any) -> list[str]:
+        return inspect(sync_conn).get_pk_constraint(table)["constrained_columns"]
+
+    expected = {
+        "camera_sol_counts": ["rover_id", "sol", "camera_id"],
+        "sol_source_counts": ["rover_id", "sol"],
+    }
+    assert await conn.run_sync(pk) == expected[table]

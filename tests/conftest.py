@@ -8,8 +8,9 @@
   test: repository code may flush (and commit to a savepoint), nothing survives the test.
 - `session_factory` is an `async_sessionmaker` bound to the test database for code that
   COMMITS (the sync service). Such tests must also use `clean_db`.
-- `clean_db` empties photos, sol_summaries and sync_runs, removes non-seed cameras and resets
-  the rovers cache fields before and after the test; seed rows survive.
+- `clean_db` empties photos, sol_summaries, sync_runs, camera_sol_counts and
+  sol_source_counts, removes non-seed cameras and resets the rovers cache fields before and
+  after the test; seed rows survive.
 - `make_record` builds `PhotoRecord` objects with sensible defaults.
 - `app` / `client` give an application instance and an HTTP client without a real server.
 - `upstream_router` (autouse) blocks real outgoing HTTP for every test: it is a respx router
@@ -139,8 +140,18 @@ _CLEAN_STATEMENTS = [
 ]
 
 
+# Stage-7 tables (migration 0004); truncated only if present so that the suite still runs
+# against a schema without them.
+_OPTIONAL_TABLES = ("camera_sol_counts", "sol_source_counts")
+
+
 async def _clean_database(factory: async_sessionmaker[AsyncSession]) -> None:
     async with factory() as session:
+        for table in _OPTIONAL_TABLES:
+            if await session.scalar(
+                text("SELECT to_regclass(:t) IS NOT NULL"), {"t": f"public.{table}"}
+            ):
+                await session.execute(text(f"TRUNCATE {table}"))
         for statement in _CLEAN_STATEMENTS:
             await session.execute(text(statement))
         await session.commit()

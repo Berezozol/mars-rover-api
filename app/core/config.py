@@ -28,6 +28,13 @@ class Settings(BaseSettings):
     sync_interval_minutes: int = 360
     sync_overlap_sols: int = 7
     sync_chunk_sols: int = Field(default=10, ge=1)
+    # Sols per backfill batch; each batch is one sync run (CLI `backfill`).
+    backfill_batch_sols: int = Field(default=100, ge=1)
+    # When the rover is locked by another sync: retry every N seconds, give up after M.
+    backfill_lock_retry_seconds: float = Field(default=30.0, ge=0)
+    backfill_lock_max_wait_seconds: float = Field(default=600.0, ge=0)
+    # Stop the backfill after this many consecutive batches whose run failed.
+    backfill_max_failed_batches: int = Field(default=3, ge=1)
 
     upstream_timeout_seconds: float = Field(default=30.0, gt=0)
     upstream_max_rps: float = 1.0

@@ -86,7 +86,9 @@ docs/
 - `sol_summaries` — `(rover_id, sol)` PK, `earth_date`, `total_photos`, `cameras` (массив кодов), `full_photos`, `full_cameras` (только полнокадровые — для манифеста v1). `earth_date` — самая ранняя реальная дата съёмки за сол; массивы камер — уникальные коды по алфавиту. Пересчитывается синхронизацией для затронутых солов — манифест читается без тяжёлых агрегатов.
 
 **Две разные `earth_date`.** В таблице `photos.earth_date` — реальная дата съёмки по UTC (её отдаёт v2). Легаси-дата v1 не хранится: она однозначно вычисляется из сола и даты посадки (`app/core/legacy_dates.py`), а фильтр v1 по дате переводится в фильтр по солу.
-- `sync_runs` — журнал: `id`, `rover_id`, `mode` (`incremental` / `backfill`), `from_sol`, `to_sol`, `status` (`running` / `success` / `partial` / `failed`), `started_at`, `finished_at`, `photos_upserted`, `failed_sols` (массив солов), `error`. Строки `running`, оставшиеся от убитого процесса, следующий запуск того же марсохода (под его блокировкой) помечает `failed` с ошибкой `abandoned`.
+- `camera_sol_counts` — `(rover_id, sol, camera_id)` PK, `total_photos`, `full_photos`. Пересчитывается вместе с `sol_summaries`; из неё `/cameras` берёт счётчики без агрегата по всем фото. Нулевых строк нет.
+- `sol_source_counts` — `(rover_id, sol)` PK, `received` (сколько записей прислал источник при последней загрузке сола), `dropped` (из них не сохранено: миниатюры, ошибки нормализации, дубли), `source_total` (итог сола, объявленный источником, если известен), `fetched_at`. Нужна для сверки.
+- `sync_runs` — журнал: `id`, `rover_id`, `mode` (`incremental` / `backfill`), `from_sol`, `to_sol`, `status` (`running` / `success` / `partial` / `failed`), `started_at`, `finished_at`, `photos_upserted`, `failed_sols` (массив солов), `source_total` (итог диапазона по данным источника, если известен), `error`. Строки `running`, оставшиеся от убитого процесса, следующий запуск того же марсохода (под его блокировкой) помечает `failed` с ошибкой `abandoned`.
 
 ## Синхронизация
 
@@ -99,7 +101,12 @@ docs/
   - Лимит частоты действует на экземпляр `UpstreamClient`: в процессе (планировщик, CLI) — один общий клиент.
 
 - **Инкремент:** узнать последний сол у источника и пройти солы от `min(rovers.max_sol, последний сол, сбойные солы прошлого инкремента) − SYNC_OVERLAP_SOLS` до последнего. Сбойные солы запуска хранятся в `sync_runs.failed_sols`; если последний завершённый инкремент с известным диапазоном был не `success`, следующий начинается с его самого раннего сбойного сола — дыры закрываются сами. Инкремент с известным диапазоном, который аварийно оборвался (отменён, упал или брошен как `abandoned`), записывает в `failed_sols` весь свой диапазон: прошлые дыры в него входили, поэтому они не теряются. Сбои backfill инкремент не подбирает, их перезапускают backfill-ом. Перекрытие нужно, потому что снимки за сол доходят до Земли несколько дней.
-- **Backfill:** CLI-команда с диапазоном солов и паузами между запросами. Полная история — это миллионы записей, её грузим постепенно.
+- **Backfill:** `python -m app.cli backfill --rover X [--from-sol] [--to-sol] [--batch-sols] [--no-resume]` (`app/services/backfill.py`).
+  - Пачки на фиксированной сетке `[k·N, k·N+N−1]` (N = `BACKFILL_BATCH_SOLS`, по умолчанию 100) сверху вниз, каждая — отдельный запуск `backfill` в `sync_runs`.
+  - Возобновление по покрытию: сол загружен, если последний завершённый backfill, покрывающий его, — `success` или `partial` без этого сола в `failed_sols`. Пачка, где все солы загружены, пропускается.
+  - Занята блокировка марсохода — ждать по `BACKFILL_LOCK_RETRY_SECONDS` до `BACKFILL_LOCK_MAX_WAIT_SECONDS`, потом выход с кодом 2. `BACKFILL_MAX_FAILED_BATCHES` сбойных пачек подряд (источник лежит) — остановка, код 1.
+  - В конце сбойные солы этого вызова перезапрашиваются один раз. Коды выхода: 0 — всё загружено, 1 — остались сбойные солы, 2 — блокировка или неверный ввод, 130 — Ctrl+C (повторный запуск продолжит).
+- **Сверка:** `python -m app.cli reconcile --rover X [--offline] [--legacy-manifest PATH] [--output PATH]` (`app/services/reconcile.py`). Сравнивает фото, сводки и счётчики камер между собой, `received − dropped` с сохранённым по каждому солу, итоги источника по солам и по запускам, классифицирует солы без данных (сбой / у источника пусто / не запрашивался) и при наличии манифеста старого API сверяет полнокадровые счётчики (у нас ≥ старого — ожидаемо). Код 0 — необъяснённых расхождений нет.
 - **Идемпотентность:** `INSERT ... ON CONFLICT (rover_id, source_id) DO UPDATE`. Повторный запуск не плодит дубли.
 - **Одна синхронизация на марсоход за раз:** `pg_try_advisory_lock` по марсоходу. Занято → `409 sync_in_progress` (или пропуск в планировщике).
 - **Частичные сбои:** упал один сол — записать в журнал, идти дальше, итоговый статус `partial`.
@@ -123,4 +130,4 @@ docs/
 
 ## Настройки (переменные окружения)
 
-`DATABASE_URL`, `TEST_DATABASE_URL`, `SYNC_ENABLED`, `SYNC_INTERVAL_MINUTES`, `SYNC_OVERLAP_SOLS` (по умолчанию 7), `SYNC_CHUNK_SOLS` (по умолчанию 10), `UPSTREAM_TIMEOUT_SECONDS`, `UPSTREAM_MAX_RPS`, `UPSTREAM_USER_AGENT`, `ADMIN_TOKEN` (не задан или пуст → admin-ручки отключены; иначе не короче 16 символов, иначе приложение не стартует), `CORS_ORIGINS`, `LOG_LEVEL`. Шаблон — `.env.example`, реальный `.env` в git не попадает.
+`DATABASE_URL`, `TEST_DATABASE_URL`, `SYNC_ENABLED`, `SYNC_INTERVAL_MINUTES`, `SYNC_OVERLAP_SOLS` (по умолчанию 7), `SYNC_CHUNK_SOLS` (по умолчанию 10), `BACKFILL_BATCH_SOLS` (100), `BACKFILL_LOCK_RETRY_SECONDS` (30), `BACKFILL_LOCK_MAX_WAIT_SECONDS` (600), `BACKFILL_MAX_FAILED_BATCHES` (3), `UPSTREAM_TIMEOUT_SECONDS`, `UPSTREAM_MAX_RPS`, `UPSTREAM_USER_AGENT`, `ADMIN_TOKEN` (не задан или пуст → admin-ручки отключены; иначе не короче 16 символов, иначе приложение не стартует), `CORS_ORIGINS`, `LOG_LEVEL`. Шаблон — `.env.example`, реальный `.env` в git не попадает.

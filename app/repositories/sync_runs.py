@@ -37,6 +37,7 @@ async def finish_run(
     photos_upserted: int,
     error: str | None,
     failed_sols: Sequence[int] = (),
+    source_total: int | None = None,
 ) -> None:
     stmt = (
         update(SyncRun)
@@ -46,6 +47,7 @@ async def finish_run(
             photos_upserted=photos_upserted,
             error=error,
             failed_sols=sorted(set(failed_sols)),
+            source_total=source_total,
             finished_at=func.now(),
         )
     )
@@ -125,3 +127,23 @@ async def count_runs(session: AsyncSession, *, rover_id: str | None = None) -> i
     if rover_id is not None:
         stmt = stmt.where(SyncRun.rover_id == rover_id)
     return await session.scalar(stmt) or 0
+
+
+async def finished_runs(
+    session: AsyncSession,
+    rover_id: str,
+    *,
+    mode: Literal["incremental", "backfill"] | None = None,
+) -> list[SyncRun]:
+    """The rover's finished runs with a known range, most recently finished first."""
+    stmt = select(SyncRun).where(
+        SyncRun.rover_id == rover_id,
+        SyncRun.finished_at.is_not(None),
+        SyncRun.status != RUNNING,
+        SyncRun.from_sol.is_not(None),
+        SyncRun.to_sol.is_not(None),
+    )
+    if mode is not None:
+        stmt = stmt.where(SyncRun.mode == mode)
+    stmt = stmt.order_by(SyncRun.finished_at.desc(), SyncRun.id.desc())
+    return list(await session.scalars(stmt, execution_options=FRESH))

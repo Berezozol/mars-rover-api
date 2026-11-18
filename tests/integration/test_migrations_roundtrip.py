@@ -21,7 +21,15 @@ from sqlalchemy.pool import NullPool
 
 pytestmark = [pytest.mark.integration, pytest.mark.migrations_roundtrip]
 
-APP_TABLES = {"rovers", "cameras", "photos", "sol_summaries", "sync_runs"}
+APP_TABLES = {
+    "rovers",
+    "cameras",
+    "photos",
+    "sol_summaries",
+    "sync_runs",
+    "camera_sol_counts",
+    "sol_source_counts",
+}
 
 
 def _head(alembic_cfg: AlembicConfig) -> str:
@@ -161,3 +169,111 @@ def test_migration_0003_failed_sols_down_and_up_keeps_existing_runs(
     finally:
         command.upgrade(alembic_cfg, "head")
         asyncio.run(_execute(migrated_db, "DELETE FROM sync_runs WHERE error = 'pre-0003'"))
+
+
+# --- 0004: camera_sol_counts / sol_source_counts / sync_runs.source_total ----------------
+
+# Photos written before 0004: (source_id, sol, camera code, sample_type).
+PRE_0004_PHOTOS = [
+    ("pre0004-1", 50, "FHAZ", "full"),
+    ("pre0004-2", 50, "FHAZ", "full"),
+    ("pre0004-3", 50, "FHAZ", "subframe"),
+    ("pre0004-4", 50, "NAVCAM", "downsampled"),
+    ("pre0004-5", 51, "NAVCAM", "full"),
+]
+
+
+async def _fetch(url: str, sql: str) -> list[dict[str, Any]]:
+    engine = create_async_engine(url, poolclass=NullPool)
+    try:
+        async with engine.connect() as conn:
+            return [dict(row) for row in (await conn.execute(text(sql))).mappings()]
+    finally:
+        await engine.dispose()
+
+
+async def _insert_pre_0004_photos(url: str) -> None:
+    engine = create_async_engine(url, poolclass=NullPool)
+    try:
+        async with engine.begin() as conn:
+            for source_id, sol, code, sample_type in PRE_0004_PHOTOS:
+                await conn.execute(
+                    text(
+                        "INSERT INTO photos (rover_id, camera_id, source_id, sol, earth_date, "
+                        "taken_at, sample_type, img_full) "
+                        "SELECT 'curiosity', c.id, :source_id, :sol, DATE '2012-09-01', "
+                        "TIMESTAMPTZ '2012-09-01 12:00:00+00', :sample_type, 'https://x.test/i' "
+                        "FROM cameras c WHERE c.rover_id = 'curiosity' AND c.code = :code"
+                    ),
+                    {"source_id": source_id, "sol": sol, "code": code, "sample_type": sample_type},
+                )
+    finally:
+        await engine.dispose()
+
+
+def _tables_and_sync_run_columns(url: str) -> tuple[set[str], set[str]]:
+    state = asyncio.run(_db_state(url))
+    columns, _ = asyncio.run(_sync_run_columns_and_rows(url))
+    return state["tables"], columns
+
+
+def test_migration_0004_downgrade_removes_count_tables_and_source_total(
+    migrated_db: str, alembic_cfg: AlembicConfig
+) -> None:
+    try:
+        command.downgrade(alembic_cfg, "0003")
+        tables, columns = _tables_and_sync_run_columns(migrated_db)
+        assert {"camera_sol_counts", "sol_source_counts"} & tables == set()
+        assert "source_total" not in columns
+        command.upgrade(alembic_cfg, "0004")
+        tables, columns = _tables_and_sync_run_columns(migrated_db)
+        assert {"camera_sol_counts", "sol_source_counts"} <= tables
+        assert "source_total" in columns
+    finally:
+        command.upgrade(alembic_cfg, "head")
+
+
+def test_migration_0004_upgrade_fills_camera_sol_counts_from_existing_photos(
+    migrated_db: str, alembic_cfg: AlembicConfig
+) -> None:
+    try:
+        command.downgrade(alembic_cfg, "0003")
+        asyncio.run(_insert_pre_0004_photos(migrated_db))
+        command.upgrade(alembic_cfg, "0004")
+
+        rows = asyncio.run(
+            _fetch(
+                migrated_db,
+                "SELECT s.sol, c.code, s.total_photos, s.full_photos "
+                "FROM camera_sol_counts s JOIN cameras c ON c.id = s.camera_id "
+                "WHERE s.rover_id = 'curiosity' ORDER BY s.sol, c.code",
+            )
+        )
+        assert [(r["sol"], r["code"], r["total_photos"], r["full_photos"]) for r in rows] == [
+            (50, "FHAZ", 3, 2),
+            (50, "NAVCAM", 1, 0),  # no full frames: row kept, full_photos 0
+            (51, "NAVCAM", 1, 1),
+        ]
+        # Cameras without photos get no rows; nothing invented for other rovers.
+        others = asyncio.run(
+            _fetch(
+                migrated_db,
+                "SELECT count(*) AS n FROM camera_sol_counts WHERE rover_id <> 'curiosity'",
+            )
+        )
+        assert others == [{"n": 0}]
+        # sol_source_counts cannot be derived from photos: it starts empty.
+        assert asyncio.run(_fetch(migrated_db, "SELECT count(*) AS n FROM sol_source_counts")) == [
+            {"n": 0}
+        ]
+    finally:
+        command.upgrade(alembic_cfg, "head")
+        asyncio.run(_execute(migrated_db, "DELETE FROM photos WHERE source_id LIKE 'pre0004-%'"))
+        asyncio.run(
+            _execute(
+                migrated_db,
+                "DO $$ BEGIN IF to_regclass('public.camera_sol_counts') IS NOT NULL THEN "
+                "DELETE FROM camera_sol_counts WHERE rover_id = 'curiosity' AND sol IN (50, 51); "
+                "END IF; END $$",
+            )
+        )
