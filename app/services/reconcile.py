@@ -33,6 +33,13 @@ from app.services.sync import compact_ranges
 LIST_LIMIT = 20
 GOOD_STATUSES = ("success", "partial")
 
+# First sol compared with the old API manifest, per rover (owner decision, docs/LEGACY-API.md,
+# accepted differences): up to Curiosity sol 4102 the old API's database held every
+# frame type, thumbnails included, while v1 shows full frames only; from sol 4103 it counted
+# full frames as v1 does.
+CURIOSITY_LEGACY_FIRST_SOL = 4103
+LEGACY_COMPARE_MIN_SOL: dict[str, int] = {"curiosity": CURIOSITY_LEGACY_FIRST_SOL}
+
 
 @dataclass(frozen=True)
 class StoredMismatch:
@@ -69,6 +76,9 @@ class LegacyDiff:
 @dataclass
 class LegacyComparison:
     sols_compared: int = 0
+    # Manifest sols below from_sol are not compared (LEGACY_COMPARE_MIN_SOL).
+    from_sol: int = 0
+    sols_skipped: int = 0
     equal: int = 0
     # ours > old: expected (the old API was capped / incomplete).
     ours_higher: list[LegacyDiff] = field(default_factory=list)
@@ -201,7 +211,8 @@ async def build_report(
         # v1 counts: every frame for the rovers v1 shows them for, else full frames.
         column = 0 if shows_all_frames(rover_id) else 1
         v1_counts = {sol: counts[column] for sol, counts in summaries.items()}
-        report.legacy = compare_legacy(v1_counts, legacy_manifest)
+        min_sol = LEGACY_COMPARE_MIN_SOL.get(rover_id, 0)
+        report.legacy = compare_legacy(v1_counts, legacy_manifest, min_sol=min_sol)
     return report
 
 
@@ -286,10 +297,15 @@ def _fetched_by(row: SolSourceCount, run: SyncRun) -> bool:
     return run.finished_at is not None and row.fetched_at <= run.finished_at
 
 
-def compare_legacy(ours: dict[int, int], legacy: dict[int, int]) -> LegacyComparison:
-    """Per-sol v1 counts against the old API manifest."""
-    comparison = LegacyComparison(sols_compared=len(legacy))
-    for sol in sorted(legacy):
+def compare_legacy(
+    ours: dict[int, int], legacy: dict[int, int], *, min_sol: int = 0
+) -> LegacyComparison:
+    """Per-sol v1 counts against the old API manifest, for sols >= ``min_sol`` only."""
+    compared = sorted(sol for sol in legacy if sol >= min_sol)
+    comparison = LegacyComparison(
+        sols_compared=len(compared), from_sol=min_sol, sols_skipped=len(legacy) - len(compared)
+    )
+    for sol in compared:
         diff = LegacyDiff(sol, ours.get(sol, 0), legacy[sol])
         if diff.ours == diff.legacy:
             comparison.equal += 1
@@ -333,6 +349,7 @@ def render_text(report: ReconcileReport) -> str:
             f"  legacy manifest: {legacy.sols_compared} sols compared, {expected} expected "
             f"({legacy.equal} equal, {len(legacy.ours_higher)} ours higher: old API capped "
             "or incomplete)",
+            f"  legacy sols below {legacy.from_sol} not compared: {legacy.sols_skipped}",
             _items("legacy sols where ours < old (unexplained)", legacy.unexplained),
         ]
     verdict = "OK" if report.ok else f"{report.unexplained_count} unexplained difference(s)"

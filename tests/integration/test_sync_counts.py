@@ -14,6 +14,7 @@ trimmed from tests/fixtures/upstream/ (no network).
 
 import copy
 import dataclasses
+import json
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -431,3 +432,174 @@ async def test_sync_m2020_sol_reappearing_with_only_duplicates_keeps_counts_cons
     assert row["received"] == 6  # every raw image of the sol, both passes
     assert row["received"] - row["dropped"] == 4  # the duplicates are dropped
     assert (counts[999]["received"], counts[999]["dropped"]) == (2, 0)
+
+
+# --- stage 9: unstable range paging, single-sol refetch ------------------------------------
+
+
+def unstable_m2020_responder(truth: dict[int, list[dict[str, Any]]], per_page: int) -> Any:
+    """Single-sol queries page through the true set; a multi-sol query repeats the first
+    image of the top sol where the second one should be (one lost, one duplicated)."""
+    template = load_fixture("m2020/range_1000_page0.json")
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        params = query(request)
+        low = int(params["condition_2"].split(":")[0])
+        high = int(params["condition_3"].split(":")[0])
+        selected = [
+            img for sol in sorted(truth, reverse=True) if low <= sol <= high for img in truth[sol]
+        ]
+        if low != high and len(selected) > 1:
+            selected = list(selected)
+            selected[1] = copy.deepcopy(selected[0])
+        page = int(params["page"])
+        body = {
+            **template,
+            "page": page if page == 0 else str(page),
+            "per_page": str(per_page),
+            "total_results": len(selected),
+            "images": selected[page * per_page : (page + 1) * per_page],
+        }
+        return httpx.Response(200, json=body)
+
+    return respond
+
+
+async def test_sync_m2020_unstable_range_paging_stores_complete_sol_and_reconciles(
+    service: SyncService,
+    session_factory: SessionFactory,
+    upstream_router: respx.MockRouter,
+    upstream_client: http.UpstreamClient,
+) -> None:
+    from app.services import reconcile
+    from tests.integration.test_reconcile_cli import mentions, sol_paths
+
+    base = load_fixture("m2020/range_1000_page0.json")["images"]
+    truth: dict[int, list[dict[str, Any]]] = {1001: [], 1000: []}
+    for sol in truth:
+        for n in range(3):
+            clone = copy.deepcopy(base[n])
+            clone["imageid"] += f"_U{sol}_{n}"
+            clone["sol"] = sol
+            truth[sol].append(clone)
+    upstream_router.get(M2020_URL).mock(side_effect=unstable_m2020_responder(truth, 2))
+    adapter = M2020Adapter(upstream_client, make_settings(m2020_page_size=2))
+
+    result = await service.run(adapter, from_sol=1000, to_sol=1001)
+
+    assert result.status == "success"
+    assert await photo_sols(session_factory, "perseverance") == {1001: 3, 1000: 3}
+    stored = await fetch_all(
+        session_factory,
+        "SELECT source_id FROM photos WHERE rover_id = 'perseverance' ORDER BY source_id",
+    )
+    assert [r["source_id"] for r in stored] == sorted(
+        img["imageid"] for imgs in truth.values() for img in imgs
+    )
+    counts = await source_counts(session_factory, "perseverance")
+    for sol in (1000, 1001):
+        assert counts[sol]["received"] - counts[sol]["dropped"] == 3, counts[sol]
+
+    async with session_factory() as session:
+        report = await reconcile.build_report(
+            session,
+            "perseverance",
+            source_total=None,
+            source_total_error=None,
+            legacy_manifest=None,
+        )
+    body = json.loads(reconcile.render_json(report))
+    for sol in (1000, 1001):
+        assert not mentions(sol_paths(body, sol), "unexplained"), sol_paths(body, sol)
+
+
+class FlakyM2020Feed:
+    """M20 feed double for sync runs over sols 1000-1001 (truth: 1001 A B C, 1000 D E).
+
+    - ``latest``: answers ``latest=true`` with ``latest_sol`` 1001;
+    - ``unstable``: a multi-sol query loses C and repeats D ([A B] [D D] [E]): every sol is
+      yielded, the range is one image short and sol 1001 has no repeat of its own;
+    - ``refetch_1001``: ``"ok"``, ``"5xx"`` (always 503) or ``"empty"`` (page 0 declares 3
+      images and holds none) for the single-sol query of sol 1001.
+    """
+
+    def __init__(self) -> None:
+        base = load_fixture("m2020/range_1000_page0.json")
+        self.template = base
+        self.truth: dict[int, list[dict[str, Any]]] = {}
+        for sol, names in ((1001, "ABC"), (1000, "DE")):
+            self.truth[sol] = []
+            for n, name in enumerate(names):
+                image = copy.deepcopy(base["images"][n])
+                image["imageid"] = f"FLAKY_{name}"
+                image["sol"] = sol
+                self.truth[sol].append(image)
+        self.unstable = True
+        self.refetch_1001 = "ok"
+        self.per_page = 2
+        self.single_sols: list[int] = []
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        params = query(request)
+        if params.get("latest") == "true":
+            return httpx.Response(
+                200, json={**load_fixture("m2020/latest.json"), "latest_sol": 1001}
+            )
+        low = int(params["condition_2"].split(":")[0])
+        high = int(params["condition_3"].split(":")[0])
+        page = int(params["page"])
+        ordered = [
+            img
+            for sol in sorted(self.truth, reverse=True)
+            if low <= sol <= high
+            for img in self.truth[sol]
+        ]
+        total = len(ordered)
+        if low == high:
+            self.single_sols.append(low)
+            if low == 1001 and self.refetch_1001 == "5xx":
+                return httpx.Response(503, json={"error": "synthetic"})
+            if low == 1001 and self.refetch_1001 == "empty":
+                ordered = []
+        elif self.unstable and low <= 1000 and high >= 1001:
+            ordered = [ordered[0], ordered[1], ordered[3], ordered[3], ordered[4]]
+        body = {
+            **self.template,
+            "page": page if page == 0 else str(page),
+            "per_page": str(self.per_page),
+            "total_results": total,
+            "images": ordered[page * self.per_page : (page + 1) * self.per_page],
+        }
+        return httpx.Response(200, json=body)
+
+
+@pytest.mark.parametrize("failure", ["5xx", "empty"])
+async def test_sync_m2020_failed_final_refetch_is_partial_and_next_run_recovers(
+    service: SyncService,
+    session_factory: SessionFactory,
+    upstream_router: respx.MockRouter,
+    upstream_client: http.UpstreamClient,
+    failure: str,
+) -> None:
+    feed = FlakyM2020Feed()
+    feed.refetch_1001 = failure
+    upstream_router.get(M2020_URL).mock(side_effect=feed)
+    adapter = M2020Adapter(upstream_client, make_settings(m2020_page_size=2))
+
+    first = await service.run(adapter)  # incremental
+
+    assert 1001 in feed.single_sols  # the final pass tried sol 1001 alone
+    assert first.status == "partial", first
+    assert 1001 in first.failed_sols
+    assert 1000 not in first.failed_sols
+    sols = await photo_sols(session_factory, "perseverance")
+    assert sols[1000] == 2
+
+    # The feed recovers; the next incremental run retries sol 1001 and gets all of it.
+    feed.unstable = False
+    feed.refetch_1001 = "ok"
+    second = await service.run(adapter)
+
+    assert second.status == "success", second
+    assert second.from_sol is not None and second.from_sol <= 1001
+    assert await photo_sols(session_factory, "perseverance") == {1001: 3, 1000: 2}

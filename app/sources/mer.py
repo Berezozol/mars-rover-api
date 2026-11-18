@@ -18,6 +18,7 @@ gives the ``source_id``, all of them are listed in ``extra.products``.
 
 import asyncio
 import logging
+import re
 import sys
 from collections import Counter, defaultdict
 from collections.abc import AsyncGenerator, Iterable, Iterator
@@ -72,6 +73,12 @@ CAMERA_CREDITS: dict[str, str] = {
 
 _MOTION_COUNTER = "ROVER_MOTION_COUNTER"
 _PRODUCT_ID_LENGTH = 27
+# Accepted PATH_NAME / FILE_NAME of an EDR product; anything else falls back to the product id.
+_PATH_NAME_RE = re.compile(r"/?mer[12][a-z]{2}_0xxx/data/sol\d{4}/edr/?", re.IGNORECASE)
+_FILE_NAME_RE = re.compile(r"[0-9a-z]+\.img", re.IGNORECASE)
+# Index tables end rows with CRLF; a lone CR or LF may occur inside a field.
+ROW_TERMINATOR = b"\r\n"
+_READ_CHUNK = 1 << 20
 
 
 class MerCacheMissing(UpstreamError):
@@ -233,9 +240,15 @@ def pick_product(rows: Iterable[IndexRow]) -> IndexRow:
 
 
 def product_path(row: IndexRow) -> tuple[str, str]:
-    """``(directory relative to the archive root, file name)`` of the ``.img`` product."""
-    if row.path_name and row.file_name:
-        return row.path_name.strip("/"), row.file_name
+    """``(directory relative to the archive root, file name)`` of the ``.img`` product.
+
+    ``PATH_NAME``/``FILE_NAME`` are used only when they look like an EDR path and file;
+    otherwise (absent, ``N/A``, anything else) the path is built from the product id.
+    They match in any case and are lower-cased: the archive's paths are lower case.
+    """
+    path, name = row.path_name, row.file_name
+    if path and name and _PATH_NAME_RE.fullmatch(path) and _FILE_NAME_RE.fullmatch(name):
+        return path.strip("/").lower(), name.lower()
     # Descent volumes have no PATH_NAME/FILE_NAME (docs/DATA-SOURCES.md).
     return f"{row.volume_id}/data/sol{row.sol:04d}/edr", row.product_id.lower() + ".img"
 
@@ -337,6 +350,8 @@ class RoverIndex:
     skipped_types: Counter[str] = field(default_factory=Counter)
     unknown_types: Counter[str] = field(default_factory=Counter)
     unknown_instruments: Counter[str] = field(default_factory=Counter)
+    # Image-type rows whose product id is not 27 characters long.
+    bad_product_ids: int = 0
 
 
 def missing_files(cache_dir: Path, rover_id: str) -> list[Path]:
@@ -429,14 +444,23 @@ def _columns(label: IndexLabel, volume: str) -> _Columns:
 def _read_table(path: Path, label: IndexLabel, volume: str, index: RoverIndex) -> int:
     columns = _columns(label, volume)
     read = 0
-    with path.open(encoding="latin-1", newline="") as file:
-        for line in file:
-            if not line.strip():
-                continue
-            read += 1
-            _add_row(split_row(line), label, columns, volume, index)
+    for line in iter_table_rows(path):
+        read += 1
+        _add_row(split_row(line.decode("latin-1")), label, columns, volume, index)
     index.read_rows += read
     return read
+
+
+def iter_table_rows(path: Path) -> Iterator[bytes]:
+    """Non-blank rows of an index table, split on CRLF only (blocking, streamed)."""
+    with path.open("rb") as file:
+        rest = b""
+        while chunk := file.read(_READ_CHUNK):
+            rows = (rest + chunk).split(ROW_TERMINATOR)
+            rest = rows.pop()
+            yield from (row for row in rows if row.strip())
+        if rest.strip():
+            yield rest
 
 
 def _add_row(
@@ -453,8 +477,11 @@ def _add_row(
         counter = index.skipped_types if kind in SKIPPED_TYPES else index.unknown_types
         counter[kind] += 1
         return
+    if len(product_id) != _PRODUCT_ID_LENGTH:
+        index.bad_product_ids += 1
+        return
     instrument = values[columns.instrument]
-    if instrument not in INSTRUMENT_CAMERAS or len(product_id) != _PRODUCT_ID_LENGTH:
+    if instrument not in INSTRUMENT_CAMERAS:
         index.unknown_instruments[instrument] += 1
         return
     index.rows[sol].append(_index_row(values, columns, volume, sol, product_id, instrument))
@@ -511,6 +538,10 @@ def _log_skipped(rover_id: str, index: RoverIndex) -> None:
         logger.warning("MER %s: skipped %d rows of unknown product type %r", rover_id, count, kind)
     for name, count in sorted(index.unknown_instruments.items()):
         logger.warning("MER %s: skipped %d rows of unknown instrument %r", rover_id, count, name)
+    if index.bad_product_ids:
+        logger.warning(
+            "MER %s: skipped %d rows with a malformed product id", rover_id, index.bad_product_ids
+        )
     if index.unattributed:
         logger.warning("MER %s: skipped %d unparsable index rows", rover_id, index.unattributed)
     logger.info(

@@ -20,6 +20,7 @@ from app.sources.mer import (
     TABLE_FILE,
     IndexLabel,
     index_paths,
+    iter_table_rows,
     parse_label,
     volume_ids,
 )
@@ -54,13 +55,8 @@ class DownloadReport:
 
 
 def count_rows(path: Path) -> int:
-    """Non-empty lines of an index table (blocking)."""
-    rows = 0
-    with path.open("rb") as file:
-        for line in file:
-            if line.strip():
-                rows += 1
-    return rows
+    """Non-blank CRLF-terminated rows of an index table, as the importer reads them (blocking)."""
+    return sum(1 for _ in iter_table_rows(path))
 
 
 def read_label(path: Path) -> IndexLabel | None:

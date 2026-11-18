@@ -5,7 +5,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.legacy.schemas import ManifestResponse, manifest_out
+from app.api.legacy.schemas import ManifestResponse, manifest_dict
+from app.api.responses import FastJSONResponse
 from app.db.session import get_session
 from app.services import legacy
 
@@ -16,5 +17,6 @@ router = APIRouter()
 async def get_manifest(
     rover: str,
     session: Annotated[AsyncSession, Depends(get_session)],
-) -> ManifestResponse:
-    return ManifestResponse(photo_manifest=manifest_out(await legacy.get_manifest(session, rover)))
+) -> FastJSONResponse:
+    manifest = await legacy.get_manifest(session, rover)
+    return FastJSONResponse({"photo_manifest": manifest_dict(manifest)})

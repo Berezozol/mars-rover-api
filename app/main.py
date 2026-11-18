@@ -6,9 +6,10 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
 from app import __version__
-from app.api.caching import CachingMiddleware
+from app.api.caching import CachingMiddleware, VaryAcceptEncodingMiddleware
 from app.api.health import router as health_router
 from app.api.legacy import router as legacy_router
 from app.api.v2 import router as v2_router
@@ -23,6 +24,12 @@ from app.services.sync import SyncService
 from app.sources.base import SourceAdapter
 from app.sources.http import UpstreamClient
 from app.sources.registry import build_adapter
+
+# Bodies below this many bytes are sent as is.
+GZIP_MINIMUM_SIZE = 1000
+# zlib level 1: an 8 MB v1 list compresses ~85x in ~11 ms; level 6 gains ~25% more ratio at
+# ~3x the time (it would push the largest v1 lists past the 200 ms target).
+GZIP_COMPRESS_LEVEL = 1
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -85,6 +92,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["*"],
         expose_headers=["ETag"],
     )
+    # Outside the caching middleware: the ETag is computed on the uncompressed body, so it
+    # does not depend on the encoding (see app.api.caching).
+    app.add_middleware(
+        GZipMiddleware, minimum_size=GZIP_MINIMUM_SIZE, compresslevel=GZIP_COMPRESS_LEVEL
+    )
+    app.add_middleware(VaryAcceptEncodingMiddleware)
     register_exception_handlers(app)
 
     app.include_router(health_router)

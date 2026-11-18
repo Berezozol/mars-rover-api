@@ -6,7 +6,7 @@ Every request to a NASA/JPL source must go through ``UpstreamClient``.
 import asyncio
 import logging
 import time
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from pathlib import Path
 from types import TracebackType
 from typing import Any, Self
@@ -44,6 +44,15 @@ class IncompleteResponse(UpstreamError):
     """The upstream returned fewer items than it announced; the incomplete sol is not yielded."""
 
 
+class SolsFetchFailed(UpstreamError):
+    """A refetch failed; ``sols`` may be incomplete even if they were yielded already."""
+
+    def __init__(self, cause: UpstreamError, sols: Iterable[int]) -> None:
+        self.sols = frozenset(sols)
+        listed = ", ".join(str(sol) for sol in sorted(self.sols))
+        super().__init__(cause.url, cause.status, f"refetch of sols {listed} failed: {cause}")
+
+
 class _RetryableStatusError(Exception):
     """Internal marker for a response status worth retrying (429, 5xx)."""
 
@@ -65,7 +74,12 @@ def _parse_retry_after(value: str | None) -> float | None:
 
 
 class RateLimiter:
-    """Guarantees at least ``1 / max_rps`` seconds between consecutive acquisitions."""
+    """Spaces requests at least ``1 / max_rps`` seconds apart.
+
+    The spacing holds for the scheduled grant times: each acquisition is granted at
+    ``max(now, previous grant + interval)``. A caller that resumes late after its grant
+    (event-loop delay) may send closer to the next request than the interval.
+    """
 
     def __init__(
         self, max_rps: float, *, clock: Clock = time.monotonic, sleep: Sleep = asyncio.sleep
@@ -97,6 +111,11 @@ def _content_length(response: httpx.Response) -> int | None:
 
 def _is_retryable(exc: BaseException) -> bool:
     return isinstance(exc, httpx.TransportError | _RetryableStatusError)
+
+
+def _is_download_retryable(exc: BaseException) -> bool:
+    """A truncated download is retried too (a JSON page short of its total is not)."""
+    return _is_retryable(exc) or isinstance(exc, IncompleteResponse)
 
 
 class UpstreamClient:
@@ -144,26 +163,34 @@ class UpstreamClient:
         """Stream ``url`` into ``dest`` and return the number of bytes written.
 
         The body goes to ``dest`` + ``.part`` first and is renamed only when complete; a body
-        shorter or longer than its ``Content-Length`` is an ``IncompleteResponse``. Same
-        retries, rate limit and User-Agent as ``get_json``; raises ``UpstreamError`` on any
-        final failure (the ``.part`` file is then removed).
+        shorter or longer than its ``Content-Length`` is an ``IncompleteResponse``, retried
+        like a transport error. Same retries, rate limit and User-Agent as ``get_json``;
+        raises ``UpstreamError`` on any final failure (the ``.part`` file is then removed).
         """
         part = dest.with_name(dest.name + ".part")
         dest.parent.mkdir(parents=True, exist_ok=True)
         try:
-            size = await self._with_retries(url, lambda: self._stream_to(url, part))
+            size = await self._with_retries(
+                url, lambda: self._stream_to(url, part), retryable=_is_download_retryable
+            )
         except BaseException:
             part.unlink(missing_ok=True)
             raise
         part.replace(dest)
         return size
 
-    async def _with_retries[T](self, url: str, call: Callable[[], Awaitable[T]]) -> T:
+    async def _with_retries[T](
+        self,
+        url: str,
+        call: Callable[[], Awaitable[T]],
+        *,
+        retryable: Callable[[BaseException], bool] = _is_retryable,
+    ) -> T:
         retrying = AsyncRetrying(
             sleep=self._sleep,
             stop=stop_after_attempt(self._max_retries + 1),
             wait=self._backoff,
-            retry=retry_if_exception(_is_retryable),
+            retry=retry_if_exception(retryable),
             before_sleep=lambda state: self._log_retry(url, state),
             reraise=True,
         )

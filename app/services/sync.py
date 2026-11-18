@@ -23,7 +23,7 @@ from app.repositories import source_counts as counts_repo
 from app.repositories import sync_runs as runs_repo
 from app.repositories.source_counts import SourceCountRow
 from app.sources.base import FetchStats, PhotoRecord, SolStats, SourceAdapter
-from app.sources.http import UpstreamError
+from app.sources.http import SolsFetchFailed, UpstreamError
 
 logger = logging.getLogger(__name__)
 
@@ -490,6 +490,9 @@ async def _sync_chunk(
             counts = _sol_counts(stats, sol, records)
             await _store_sol(session, rover_id, sol, records, counts, progress)
     except UpstreamError as exc:
+        # A failed refetch also names sols that were yielded (and stored) before it.
+        incomplete = exc.sols if isinstance(exc, SolsFetchFailed) else frozenset()
+        pending.update(sol for sol in incomplete if chunk_from <= sol <= chunk_to)
         progress.fail(pending, exc)
         progress.add_source_total(None)
         logger.warning(
@@ -501,10 +504,29 @@ async def _sync_chunk(
             describe_error(exc),
         )
         return
-    complete = stats is not None and stats.complete
-    progress.add_source_total(stats.range_total if stats is not None and complete else None)
-    if stats is not None and complete:
-        await _store_final_counts(session, rover_id, stats.sols)
+    if stats is None or not stats.complete:
+        progress.add_source_total(None)
+        return
+    stored = await _store_final_counts(session, rover_id, stats.sols)
+    # Without the chunk's final counts the run total cannot be checked against them.
+    progress.add_source_total(_attributed_total(stats, rover_id) if stored else None)
+
+
+def _attributed_total(stats: FetchStats, rover_id: str) -> int | None:
+    """The range total minus images the source gave no (or an out-of-range) sol.
+
+    Those images are in no sol's ``received``; subtracting them keeps the run's recorded
+    ``source_total`` comparable with the sum of its sols' ``received`` (reconcile).
+    """
+    if stats.range_total is None:
+        return None
+    if stats.unattributed_dropped:
+        logger.warning(
+            "Source images without a sol in range rover=%s count=%d (not in the run total)",
+            rover_id,
+            stats.unattributed_dropped,
+        )
+    return stats.range_total - stats.unattributed_dropped
 
 
 def _stream_stats(stream: object) -> FetchStats | None:
@@ -523,15 +545,17 @@ def _sol_counts(stats: FetchStats | None, sol: int, records: list[PhotoRecord]) 
 
 async def _store_final_counts(
     session: AsyncSession, rover_id: str, stats: dict[int, SolStats]
-) -> None:
+) -> bool:
     """Record the final counts of every sol of a finished chunk: also sols that delivered
-    nothing (empty or all dropped) and sols a re-yield changed after they were stored."""
+    nothing (empty or all dropped) and sols a re-yield changed after they were stored.
+
+    False if they could not be written."""
     rows = {
         sol: SourceCountRow(item.received, item.dropped, item.source_total)
         for sol, item in stats.items()
     }
     if not rows:
-        return
+        return True
     try:
         await counts_repo.upsert_sol_source_counts(session, rover_id, rows)
         await session.commit()
@@ -543,6 +567,8 @@ async def _store_final_counts(
             compact_ranges(rows),
             describe_error(exc),
         )
+        return False
+    return True
 
 
 async def _store_sol(

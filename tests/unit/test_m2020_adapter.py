@@ -598,3 +598,224 @@ async def test_fetch_sols_upstream_failure_raises_upstream_error(
 
     with pytest.raises(http.UpstreamError):
         await _collect(make_adapter().fetch_sols(1000, 1000))
+
+
+# --- unstable paging inside a sol: single-sol refetch (stage 9) ----------------------------
+#
+# The feed orders only by sol, so a multi-sol (range) fetch may repeat an image of one page
+# on the next page and never send another one. When a range fetch returns a repeated imageid
+# (or fewer unique records than total_results), the adapter refetches each affected sol with
+# a single-sol query and yields that sol's complete set instead.
+
+
+def _range_feed(
+    pages: dict[tuple[int, int, int], dict[str, Any]],
+) -> Callable[[Any], Any]:
+    """respx side effect keyed by (condition_2 sol, condition_3 sol, page)."""
+
+    def key(request: Any) -> tuple[int, int, int]:
+        q = query(request)
+        low = int(q["condition_2"].split(":")[0])
+        high = int(q["condition_3"].split(":")[0])
+        return (low, high, int(q["page"]))
+
+    return paged_responder(pages, key=key)
+
+
+def _sols_requested(route: Any) -> list[tuple[int, int, str]]:
+    out = []
+    for call in route.calls:
+        q = query(call.request)
+        out.append(
+            (int(q["condition_2"].split(":")[0]), int(q["condition_3"].split(":")[0]), q["page"])
+        )
+    return out
+
+
+# Truth: sol 1001 -> A, B, C; sol 1000 -> D, E. The range pages repeat B and lose C.
+UNSTABLE_PAGES = {
+    (1000, 1001, 0): _page([_image(1001, "A"), _image(1001, "B")], total=5, per_page=2),
+    (1000, 1001, 1): _page([_image(1001, "B"), _image(1000, "D")], total=5, page="1", per_page=2),
+    (1000, 1001, 2): _page([_image(1000, "E")], total=5, page="2", per_page=2),
+    (1001, 1001, 0): _page([_image(1001, "A"), _image(1001, "B")], total=3, per_page=2),
+    (1001, 1001, 1): _page([_image(1001, "C")], total=3, page="1", per_page=2),
+    # Served in case an implementation refetches the clean sol too (the test then fails on
+    # the request list, not on a 500).
+    (1000, 1000, 0): _page([_image(1000, "D"), _image(1000, "E")], total=2, per_page=2),
+}
+
+
+async def test_fetch_sols_range_with_repeated_image_refetches_that_sol_alone(
+    upstream_router: respx.MockRouter, make_adapter: Callable[..., Any]
+) -> None:
+    route = upstream_router.get(M2020_URL).mock(side_effect=_range_feed(UNSTABLE_PAGES))
+    stream = make_adapter(m2020_page_size=2).fetch_sols(1000, 1001)
+
+    result = await _collect(stream)
+
+    assert [(sol, sorted(r.source_id for r in recs)) for sol, recs in result] == [
+        (1001, ["A", "B", "C"]),
+        (1000, ["D", "E"]),
+    ]
+    requests = _sols_requested(route)
+    assert [r for r in requests if r[:2] == (1000, 1001)] == [
+        (1000, 1001, "0"),
+        (1000, 1001, "1"),
+        (1000, 1001, "2"),
+    ]
+    single = [r for r in requests if r[:2] != (1000, 1001)]
+    assert single == [(1001, 1001, "0"), (1001, 1001, "1")]
+    for call in route.calls:
+        q = query(call.request)
+        assert (q["order"], q["num"]) == ("sol desc", "2")
+
+
+async def test_fetch_sols_refetch_stats_are_consistent(
+    upstream_router: respx.MockRouter, make_adapter: Callable[..., Any]
+) -> None:
+    upstream_router.get(M2020_URL).mock(side_effect=_range_feed(UNSTABLE_PAGES))
+    stream = make_adapter(m2020_page_size=2).fetch_sols(1000, 1001)
+
+    result = dict(await _collect(stream))
+    stats = stream.stats
+
+    assert stats.complete
+    assert stats.refetched_sols == {1001}
+    assert stats.range_duplicates == 1
+    # The refetch's counts replace the sol's entry: received - dropped == delivered.
+    assert (stats.sols[1001].received, stats.sols[1001].dropped) == (3, 0)
+    assert (stats.sols[1000].received, stats.sols[1000].dropped) == (2, 0)
+    for sol, sol_stats in stats.sols.items():
+        assert sol_stats.received - sol_stats.dropped == len(result.get(sol, [])), sol
+
+
+async def test_fetch_sols_clean_range_makes_no_extra_requests(
+    upstream_router: respx.MockRouter, make_adapter: Callable[..., Any]
+) -> None:
+    pages = {
+        (1000, 1001, 0): _page([_image(1001, "A"), _image(1001, "B")], total=5, per_page=2),
+        (1000, 1001, 1): _page(
+            [_image(1001, "C"), _image(1000, "D")], total=5, page="1", per_page=2
+        ),
+        (1000, 1001, 2): _page([_image(1000, "E")], total=5, page="2", per_page=2),
+    }
+    route = upstream_router.get(M2020_URL).mock(side_effect=_range_feed(pages))
+    stream = make_adapter(m2020_page_size=2).fetch_sols(1000, 1001)
+
+    result = await _collect(stream)
+
+    assert route.call_count == 3
+    assert [(sol, [r.source_id for r in recs]) for sol, recs in result] == [
+        (1001, ["A", "B", "C"]),
+        (1000, ["D", "E"]),
+    ]
+    assert stream.stats.refetched_sols == set()
+    assert stream.stats.range_duplicates == 0
+
+
+async def test_fetch_sols_refetch_respects_rate_limit(
+    upstream_router: respx.MockRouter,
+    make_adapter: Callable[..., Any],
+    fake_clock: FakeClock,
+) -> None:
+    route = upstream_router.get(M2020_URL).mock(side_effect=_range_feed(UNSTABLE_PAGES))
+
+    await _collect(make_adapter(m2020_page_size=2, upstream_max_rps=1).fetch_sols(1000, 1001))
+
+    assert route.call_count == 5
+    # One request per second: a pause before every request but the first.
+    pauses = [s for s in fake_clock.sleeps if s > 0]
+    assert len(pauses) == route.call_count - 1
+    assert all(s == pytest.approx(1.0) for s in pauses)
+
+
+async def test_fetch_sols_refetch_respects_max_pages(
+    upstream_router: respx.MockRouter, make_adapter: Callable[..., Any]
+) -> None:
+    """The single-sol refetch never pages past UPSTREAM_MAX_PAGES (here it never ends)."""
+    endless = {
+        (1001, 1001, k): _page(
+            [_image(1001, f"X{k}a"), _image(1001, f"X{k}b")], total=10_000, page=str(k), per_page=2
+        )
+        for k in range(50)
+    }
+    route = upstream_router.get(M2020_URL).mock(
+        side_effect=_range_feed({**UNSTABLE_PAGES, **endless})
+    )
+    adapter = make_adapter(m2020_page_size=2, upstream_max_pages=3)
+
+    with pytest.raises(http.UpstreamError) as info:
+        await _collect(adapter.fetch_sols(1000, 1001))
+
+    # The page limit may be reported as is or wrapped as the failed refetch of sol 1001.
+    error: BaseException | None = info.value
+    chain = []
+    while error is not None:
+        chain.append(error)
+        error = error.__cause__
+    assert any(isinstance(e, http.PageLimitExceeded) for e in chain), chain
+    single = [r for r in _sols_requested(route) if r[:2] == (1001, 1001)]
+    assert 1 <= len(single) <= 3
+    assert route.call_count <= 6
+
+
+async def test_fetch_sols_single_sol_with_repeated_image_is_not_refetched(
+    upstream_router: respx.MockRouter, make_adapter: Callable[..., Any]
+) -> None:
+    """A single-sol fetch is already the narrowest query: no second pass."""
+    pages = {
+        (1001, 1001, 0): _page([_image(1001, "A"), _image(1001, "B")], total=4, per_page=2),
+        (1001, 1001, 1): _page(
+            [_image(1001, "B"), _image(1001, "C")], total=4, page="1", per_page=2
+        ),
+    }
+    route = upstream_router.get(M2020_URL).mock(side_effect=_range_feed(pages))
+
+    result = await _collect(make_adapter(m2020_page_size=2).fetch_sols(1001, 1001))
+
+    assert route.call_count == 2
+    assert [(sol, [r.source_id for r in recs]) for sol, recs in result] == [(1001, ["A", "B", "C"])]
+
+
+def _merged(result: list[tuple[int, list[Any]]]) -> dict[int, list[str]]:
+    """sol -> sorted source ids over every yield of the sol; no id may be yielded twice."""
+    ids = [r.source_id for _, recs in result for r in recs]
+    assert len(ids) == len(set(ids)), ids
+    merged: dict[int, list[str]] = {}
+    for sol, recs in result:
+        merged.setdefault(sol, []).extend(r.source_id for r in recs)
+    return {sol: sorted(v) for sol, v in merged.items()}
+
+
+# Truth: 1003 -> A B C; 1002 -> D E F; 1001 -> G H. Range order A..H, two per page:
+# [A B] [C D] [E F] [G H]. 1003 and 1002 straddle page boundaries. The last page comes back
+# as [F G]: F repeated (sol 1002), H lost (sol 1001). Only that boundary fell short.
+SHORT_LAST_PAGE = {
+    (1001, 1003, 0): _page([_image(1003, "A"), _image(1003, "B")], total=8, per_page=2),
+    (1001, 1003, 1): _page([_image(1003, "C"), _image(1002, "D")], total=8, page="1", per_page=2),
+    (1001, 1003, 2): _page([_image(1002, "E"), _image(1002, "F")], total=8, page="2", per_page=2),
+    (1001, 1003, 3): _page([_image(1002, "F"), _image(1001, "G")], total=8, page="3", per_page=2),
+    (1003, 1003, 0): _page([_image(1003, "A"), _image(1003, "B")], total=3, per_page=2),
+    (1003, 1003, 1): _page([_image(1003, "C")], total=3, page="1", per_page=2),
+    (1002, 1002, 0): _page([_image(1002, "D"), _image(1002, "E")], total=3, per_page=2),
+    (1002, 1002, 1): _page([_image(1002, "F")], total=3, page="1", per_page=2),
+    (1001, 1001, 0): _page([_image(1001, "G"), _image(1001, "H")], total=2, per_page=2),
+}
+
+
+async def test_fetch_sols_refetches_only_sols_at_the_short_page_boundary(
+    upstream_router: respx.MockRouter, make_adapter: Callable[..., Any]
+) -> None:
+    route = upstream_router.get(M2020_URL).mock(side_effect=_range_feed(SHORT_LAST_PAGE))
+
+    result = await _collect(make_adapter(m2020_page_size=2).fetch_sols(1001, 1003))
+
+    assert _merged(result) == {
+        1003: ["A", "B", "C"],
+        1002: ["D", "E", "F"],
+        1001: ["G", "H"],
+    }
+    single = {r[0] for r in _sols_requested(route) if r[0] == r[1]}
+    # 1003 straddles a boundary too, but that boundary delivered everything.
+    assert single == {1002, 1001}
+    assert route.call_count == 4 + 2 + 1

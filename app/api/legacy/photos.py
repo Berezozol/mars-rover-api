@@ -5,7 +5,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.legacy.schemas import PhotoResponse, photo_out
+from app.api.legacy.schemas import PhotoResponse, photo_dict
+from app.api.responses import FastJSONResponse
 from app.db.session import get_session
 from app.services import legacy
 
@@ -18,6 +19,6 @@ router = APIRouter()
 async def get_photo(
     id: str,
     session: Annotated[AsyncSession, Depends(get_session)],
-) -> PhotoResponse:
+) -> FastJSONResponse:
     result = await legacy.get_photo(session, id)
-    return PhotoResponse(photo=photo_out(result.rover, result.photo))
+    return FastJSONResponse({"photo": photo_dict(result.rover, result.photo)})

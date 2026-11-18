@@ -33,7 +33,12 @@ from app.core.errors import NoSourceForRover, SyncInProgress
 from app.core.logging import configure_logging
 from app.db.session import create_engine, create_session_factory
 from app.services import reconcile
-from app.services.backfill import BackfillOptions, BackfillResult, BackfillService
+from app.services.backfill import (
+    BackfillArgumentError,
+    BackfillOptions,
+    BackfillResult,
+    BackfillService,
+)
 from app.services.mer_download import download_indexes
 from app.services.sync import SyncResult, SyncService, compact_ranges
 from app.sources.base import SourceAdapter
@@ -319,7 +324,9 @@ async def _run_backfill(
                 max_failed_batches=settings.backfill_max_failed_batches,
             )
             result = await service.run(adapter, from_sol=from_sol, to_sol=to_sol, options=options)
-    except (NoSourceForRover, ValueError) as exc:
+    except (NoSourceForRover, BackfillArgumentError) as exc:
+        # Only the up-front argument checks are usage errors; any other ValueError is a
+        # crash (exit 1 below).
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_USAGE
     except SyncInProgress as exc:
@@ -372,7 +379,9 @@ async def run_reconcile_command(
             try:
                 source_total, source_error = await _source_total(rover, settings)
             except NoSourceForRover as exc:
-                print(f"error: {exc}; use --offline", file=sys.stderr)
+                # The hint fits only a known rover without a live feed, not a mistyped slug.
+                hint = "; use --offline" if rover.lower() in ROVER_PREFIXES else ""
+                print(f"error: {exc}{hint}", file=sys.stderr)
                 return EXIT_USAGE
         try:
             async with factory() as session:

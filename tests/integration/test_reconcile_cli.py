@@ -71,19 +71,28 @@ def cli_env(monkeypatch: pytest.MonkeyPatch, settings: Settings) -> Iterator[Non
 # --- data --------------------------------------------------------------------------------
 
 
-async def store_sol(factory: SessionFactory, sol: int, full: int, subframes: int) -> None:
-    records = sol_records(ROVER, sol, full, camera_code="FHAZ")
+async def store_sol(
+    factory: SessionFactory, sol: int, full: int, subframes: int, *, rover: str = ROVER
+) -> None:
+    camera = "FHAZ" if rover == ROVER else "NAVCAM_LEFT"
+    records = sol_records(rover, sol, full, camera_code=camera)
     if subframes:
-        records += sol_records(ROVER, sol, subframes, camera_code="FHAZ", sample_type="subframe")
+        records += sol_records(rover, sol, subframes, camera_code=camera, sample_type="subframe")
     async with factory() as session:
-        await upsert_photos(session, ROVER, records)
-        await recompute_sol_summaries(session, ROVER, [sol])
-        await refresh_rover_stats(session, ROVER)
+        await upsert_photos(session, rover, records)
+        await recompute_sol_summaries(session, rover, [sol])
+        await refresh_rover_stats(session, rover)
         await session.commit()
 
 
 async def set_source_counts(
-    factory: SessionFactory, sol: int, received: int, dropped: int, source_total: int | None
+    factory: SessionFactory,
+    sol: int,
+    received: int,
+    dropped: int,
+    source_total: int | None,
+    *,
+    rover: str = ROVER,
 ) -> None:
     async with factory() as session:
         await session.execute(
@@ -95,7 +104,7 @@ async def set_source_counts(
                 "dropped = EXCLUDED.dropped, source_total = EXCLUDED.source_total"
             ),
             {
-                "rover": ROVER,
+                "rover": rover,
                 "sol": sol,
                 "received": received,
                 "dropped": dropped,
@@ -106,7 +115,13 @@ async def set_source_counts(
 
 
 async def add_run(
-    factory: SessionFactory, from_sol: int, to_sol: int, status: str, failed: list[int]
+    factory: SessionFactory,
+    from_sol: int,
+    to_sol: int,
+    status: str,
+    failed: list[int],
+    *,
+    rover: str = ROVER,
 ) -> None:
     async with factory() as session:
         await session.execute(
@@ -116,7 +131,7 @@ async def add_run(
                 "VALUES (:rover, 'backfill', :from_sol, :to_sol, :status, now(), :failed)"
             ),
             {
-                "rover": ROVER,
+                "rover": rover,
                 "from_sol": from_sol,
                 "to_sol": to_sol,
                 "status": status,
@@ -144,9 +159,11 @@ async def clean_data(session_factory: SessionFactory) -> SessionFactory:
 # --- running the CLI and reading the report ---------------------------------------------
 
 
-async def reconcile(tmp_path: Path, *extra: str, offline: bool = True) -> tuple[int, Any]:
+async def reconcile(
+    tmp_path: Path, *extra: str, offline: bool = True, rover: str = ROVER
+) -> tuple[int, Any]:
     output = tmp_path / "report.json"
-    argv = ["reconcile", "--rover", ROVER, "--output", str(output), *extra]
+    argv = ["reconcile", "--rover", rover, "--output", str(output), *extra]
     if offline:
         argv.append("--offline")
     try:
@@ -381,11 +398,11 @@ async def test_reconcile_reports_dropped_total(clean_data: SessionFactory, tmp_p
 # --- legacy manifest ----------------------------------------------------------------------
 
 
-def write_manifest(tmp_path: Path, totals: dict[int, int]) -> Path:
+def write_manifest(tmp_path: Path, totals: dict[int, int], name: str = "Curiosity") -> Path:
     """A v1 photo_manifest (docs/LEGACY-API.md) with the given sol -> total_photos."""
     manifest = {
         "photo_manifest": {
-            "name": "Curiosity",
+            "name": name,
             "landing_date": "2012-08-06",
             "launch_date": "2011-11-26",
             "status": "active",
@@ -420,6 +437,11 @@ async def test_reconcile_legacy_ours_greater_or_equal_is_expected_exit_0(
     assert not mentions(sol_paths(report, 1), "unexplained")
 
 
+# Curiosity before sol 4103: the old API stored all frame types (docs/LEGACY-API.md, last row
+# of the deviations table), so the comparison with the old manifest starts at sol 4103.
+LEGACY_FIRST_SOL = 4103
+
+
 @pytest.mark.parametrize(
     ("totals", "sol"),
     [
@@ -427,12 +449,83 @@ async def test_reconcile_legacy_ours_greater_or_equal_is_expected_exit_0(
         pytest.param({0: 2, 1: 3, 2: 1, 9: 4}, 9, id="sol-missing-here"),
     ],
 )
-async def test_reconcile_legacy_ours_below_old_is_unexplained_exit_1(
+async def test_reconcile_legacy_curiosity_early_sol_below_old_is_ignored_exit_0(
     clean_data: SessionFactory, tmp_path: Path, totals: dict[int, int], sol: int
 ) -> None:
     manifest = write_manifest(tmp_path, totals)
 
     code, report = await reconcile(tmp_path, "--legacy-manifest", str(manifest))
+
+    assert code == 0
+    assert not mentions(sol_paths(report, sol), "unexplained")
+
+
+@pytest.fixture
+async def curiosity_late(session_factory: SessionFactory) -> SessionFactory:
+    """Curiosity: sol 20 (6 full + 518 subframes, as in stage 7) and sol 4200 (2 full)."""
+    for sol, full, subframes in ((20, 6, 518), (4200, 2, 0)):
+        await store_sol(session_factory, sol, full, subframes)
+        total = full + subframes
+        await set_source_counts(session_factory, sol, total, 0, total)
+    await add_run(session_factory, 0, 4200, "success", [])
+    return session_factory
+
+
+async def test_reconcile_legacy_curiosity_sol_20_mismatch_ignored_sol_4200_unexplained(
+    curiosity_late: SessionFactory, tmp_path: Path
+) -> None:
+    manifest = write_manifest(tmp_path, {20: 1046, 4200: 5})
+
+    code, report = await reconcile(tmp_path, "--legacy-manifest", str(manifest))
+
+    assert code == 1
+    assert not mentions(sol_paths(report, 20), "unexplained"), sol_paths(report, 20)
+    paths = sol_paths(report, 4200)
+    assert mentions(paths, "legacy", "manifest", "unexplained"), paths
+
+
+async def test_reconcile_legacy_curiosity_only_early_mismatch_exits_0(
+    curiosity_late: SessionFactory, tmp_path: Path
+) -> None:
+    manifest = write_manifest(tmp_path, {20: 1046, 4102: 7, 4200: 2})
+
+    code, report = await reconcile(tmp_path, "--legacy-manifest", str(manifest))
+
+    assert code == 0
+    for sol in (20, 4102):
+        assert not mentions(sol_paths(report, sol), "unexplained"), sol
+
+
+async def test_reconcile_legacy_curiosity_boundary_sol_4103_is_compared_exit_1(
+    curiosity_late: SessionFactory, tmp_path: Path
+) -> None:
+    # Sol 4103 has no photos here but 3 in the old manifest.
+    manifest = write_manifest(tmp_path, {20: 6, LEGACY_FIRST_SOL: 3, 4200: 2})
+
+    code, report = await reconcile(tmp_path, "--legacy-manifest", str(manifest))
+
+    assert code == 1
+    assert mentions(sol_paths(report, LEGACY_FIRST_SOL), "unexplained")
+
+
+@pytest.mark.parametrize(
+    ("totals", "sol"),
+    [
+        pytest.param({0: 2, 1: 4}, 1, id="full-photos-below-old-total"),
+        pytest.param({0: 2, 1: 3, 9: 4}, 9, id="sol-missing-here"),
+    ],
+)
+async def test_reconcile_legacy_other_rover_early_sol_below_old_is_unexplained_exit_1(
+    session_factory: SessionFactory, tmp_path: Path, totals: dict[int, int], sol: int
+) -> None:
+    rover = "perseverance"
+    for s, full in ((0, 2), (1, 3)):
+        await store_sol(session_factory, s, full, 0, rover=rover)
+        await set_source_counts(session_factory, s, full, 0, full, rover=rover)
+    await add_run(session_factory, 0, 9, "success", [], rover=rover)
+    manifest = write_manifest(tmp_path, totals, name="Perseverance")
+
+    code, report = await reconcile(tmp_path, "--legacy-manifest", str(manifest), rover=rover)
 
     assert code == 1
     paths = sol_paths(report, sol)
@@ -530,3 +623,32 @@ async def test_reconcile_camera_counts_differ_from_photos_total_exits_1(
     numbers = all_numbers(report)
     assert OUR_TOTAL in numbers
     assert OUR_TOTAL + 3 in numbers
+
+
+# --- usage errors --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("offline", [False, True], ids=["online", "offline"])
+@pytest.mark.parametrize("rover", ["curiousity", "Perseverence", "mars"])
+async def test_reconcile_mistyped_rover_exits_2_without_offline_hint(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    upstream_router: respx.MockRouter,
+    rover: str,
+    offline: bool,
+) -> None:
+    output = tmp_path / "report.json"
+    argv = ["reconcile", "--rover", rover, "--output", str(output)]
+    if offline:
+        argv.append("--offline")
+    try:
+        code = await asyncio.to_thread(cli.main, argv)
+    except SystemExit as exc:
+        code = exc.code if isinstance(exc.code, int) else 1
+
+    assert code == 2
+    err = capsys.readouterr().err
+    assert err.strip()
+    assert "--offline" not in err
+    assert not upstream_router.calls
+    assert not output.exists()

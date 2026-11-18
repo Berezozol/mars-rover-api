@@ -62,6 +62,10 @@ class BackfillLocked(Exception):
     """The rover stayed locked by another sync longer than the allowed wait."""
 
 
+class BackfillArgumentError(ValueError):
+    """Invalid backfill arguments (batch size, sol range), raised before any batch runs."""
+
+
 def batch_grid(from_sol: int, to_sol: int, size: int) -> list[tuple[int, int]]:
     """Descending batches ``[k*size, k*size+size-1]`` clipped to ``[from_sol, to_sol]``."""
     return [
@@ -145,11 +149,11 @@ class BackfillService:
         """
         opts = options or BackfillOptions()
         if opts.batch_sols < 1:
-            raise ValueError(f"batch_sols must be at least 1, got {opts.batch_sols}")
+            raise BackfillArgumentError(f"batch_sols must be at least 1, got {opts.batch_sols}")
         if to_sol is None:
             to_sol = await adapter.latest_sol()
         if from_sol < 0 or from_sol > to_sol:
-            raise ValueError(f"Invalid sol range {from_sol}..{to_sol}")
+            raise BackfillArgumentError(f"Invalid sol range {from_sol}..{to_sol}")
         batches = batch_grid(from_sol, to_sol, opts.batch_sols)
         loaded = await self._loaded(adapter.rover_id, from_sol, to_sol) if opts.resume else set()
         done = [all(sol in loaded for sol in range(a, b + 1)) for a, b in batches]

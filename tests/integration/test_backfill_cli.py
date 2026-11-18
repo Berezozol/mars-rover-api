@@ -424,6 +424,43 @@ async def test_backfill_rover_without_source_exits_2(feed: MslFeed) -> None:
     assert await run_cli(["backfill", "--rover", "spirit", "--to-sol", "5"]) == 2
 
 
+async def test_backfill_unexpected_value_error_inside_sync_exits_1_not_2(
+    feed: MslFeed, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Only invalid input is a usage error (2); a ValueError from deep inside a run is a
+    crash of the backfill (1), whatever its message says."""
+    from app.services.sync import SyncService
+
+    async def broken_run(self: Any, *args: Any, **kwargs: Any) -> Any:
+        raise ValueError("Invalid sol range deep inside the sync")
+
+    monkeypatch.setattr(SyncService, "run", broken_run)
+
+    code = await run_cli(["backfill", "--rover", "curiosity", "--from-sol", "0", "--to-sol", "24"])
+
+    assert code == 1
+    assert "usage" not in capsys.readouterr().err.lower()
+
+
+def test_backfill_unexpected_value_error_from_adapter_exits_1(
+    feed: MslFeed, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Same, raised while the adapter parses a page (the upstream answer itself is fine)."""
+
+    def boom(sol: int) -> None:
+        if sol == 12:
+            raise ValueError("unexpected value while parsing")
+
+    feed.on_sol = boom
+
+    try:
+        code = cli.main(["backfill", "--rover", "curiosity", "--from-sol", "10", "--to-sol", "19"])
+    except SystemExit as exc:
+        code = exc.code if isinstance(exc.code, int) else 1
+
+    assert code == 1
+
+
 def _db_rows(url: str, sql: str) -> list[dict[str, Any]]:
     async def read() -> list[dict[str, Any]]:
         engine = create_async_engine(url, poolclass=NullPool)

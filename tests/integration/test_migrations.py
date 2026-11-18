@@ -3,6 +3,8 @@
 Downgrade/upgrade round trips live in test_migrations_roundtrip.py.
 """
 
+import re
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -14,6 +16,8 @@ from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 pytestmark = pytest.mark.integration
+
+ROOT = Path(__file__).resolve().parents[2]
 
 EXPECTED_COLUMNS = {
     "rovers": {
@@ -46,8 +50,8 @@ def _head(alembic_cfg: AlembicConfig) -> str:
     return head
 
 
-def test_migrations_head_revision_is_0004(alembic_cfg: AlembicConfig) -> None:
-    assert _head(alembic_cfg) == "0004"
+def test_migrations_head_revision_is_0005(alembic_cfg: AlembicConfig) -> None:
+    assert _head(alembic_cfg) == "0005"
 
 
 def test_migrations_single_head(alembic_cfg: AlembicConfig) -> None:
@@ -181,8 +185,9 @@ async def _photo_indexdefs(session: AsyncSession) -> list[str]:
         "(rover_id, sol DESC, taken_at DESC, id DESC)",
         "(rover_id, earth_date)",
         "(rover_id, camera_id, sol)",
+        "(rover_id, sample_type, sol DESC, taken_at DESC, id DESC)",
     ],
-    ids=["sol_taken_at_desc", "earth_date", "camera_sol"],
+    ids=["sol_taken_at_desc", "earth_date", "camera_sol", "sample_type_sol_desc"],
 )
 async def test_schema_photos_index_exists(db_session: AsyncSession, columns: str) -> None:
     defs = await _photo_indexdefs(db_session)
@@ -272,3 +277,33 @@ async def test_schema_count_table_primary_key_matches_contract(
         "sol_source_counts": ["rover_id", "sol"],
     }
     assert await conn.run_sync(pk) == expected[table]
+
+
+# --- 0005: the sample_type index is built without locking photos ----------------------------
+
+MIGRATION_0005 = sorted((ROOT / "migrations" / "versions").glob("*_0005_*.py"))
+
+
+def test_migration_0005_creates_index_concurrently() -> None:
+    assert len(MIGRATION_0005) == 1, MIGRATION_0005
+    source = MIGRATION_0005[0].read_text(encoding="utf-8")
+    upgrade = source.split("def upgrade", 1)[1].split("def downgrade", 1)[0]
+    assert re.search(r"postgresql_concurrently\s*=\s*True|CREATE INDEX CONCURRENTLY", upgrade, re.I)
+    # CREATE INDEX CONCURRENTLY cannot run inside the migration transaction.
+    assert "autocommit_block" in upgrade
+
+
+async def test_migration_0005_index_is_valid(db_session: AsyncSession) -> None:
+    """A failed concurrent build leaves an INVALID index behind; this one must be valid."""
+    rows = await db_session.execute(
+        text(
+            "SELECT i.indisvalid, i.indisready, pg_get_indexdef(i.indexrelid) AS indexdef "
+            "FROM pg_index i JOIN pg_class t ON t.oid = i.indrelid "
+            "WHERE t.relname = 'photos'"
+        )
+    )
+    matching = [
+        r for r in rows if "(rover_id, sample_type, sol DESC, taken_at DESC, id DESC)" in r.indexdef
+    ]
+    assert len(matching) == 1
+    assert matching[0].indisvalid and matching[0].indisready

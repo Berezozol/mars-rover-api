@@ -178,6 +178,23 @@ async def count_photos(session: AsyncSession, flt: PhotoFilter) -> int:
     return await session.scalar(stmt) or 0
 
 
+async def camera_total_photos(
+    session: AsyncSession, rover_id: str, camera_codes: Sequence[str], *, full_only: bool = False
+) -> int:
+    """Photos of the cameras over all sols, summed from camera_sol_counts (full frames only
+    with ``full_only``); kept by the sync together with sol_summaries."""
+    codes = [code.upper() for code in camera_codes]
+    if not codes:
+        return 0
+    column = CameraSolCount.full_photos if full_only else CameraSolCount.total_photos
+    stmt = (
+        select(func.coalesce(func.sum(column), 0))
+        .join(Camera, Camera.id == CameraSolCount.camera_id)
+        .where(CameraSolCount.rover_id == rover_id, Camera.code.in_(codes))
+    )
+    return int(await session.scalar(stmt) or 0)
+
+
 async def sol_total_photos(session: AsyncSession, rover_id: str, sol: int) -> int:
     """Photos of the sol over all sample types, from sol_summaries (0 without a row)."""
     stmt = select(SolSummary.total_photos).where(

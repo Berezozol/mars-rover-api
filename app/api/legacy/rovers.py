@@ -10,9 +10,10 @@ from app.api.legacy.schemas import (
     PhotosResponse,
     RoverResponse,
     RoversResponse,
-    photos_out,
-    rover_out,
+    photos_dicts,
+    rover_dict,
 )
+from app.api.responses import FastJSONResponse
 from app.db.session import get_session
 from app.services import legacy
 
@@ -24,14 +25,14 @@ OptionalParam = Annotated[str | None, Query()]
 
 
 @router.get("/rovers", response_model=RoversResponse)
-async def list_rovers(session: Session) -> RoversResponse:
+async def list_rovers(session: Session) -> FastJSONResponse:
     rovers = await legacy.list_rovers(session)
-    return RoversResponse(rovers=[rover_out(item) for item in rovers])
+    return FastJSONResponse({"rovers": [rover_dict(item) for item in rovers]})
 
 
 @router.get("/rovers/{rover}", response_model=RoverResponse)
-async def get_rover(rover: str, session: Session) -> RoverResponse:
-    return RoverResponse(rover=rover_out(await legacy.get_rover(session, rover)))
+async def get_rover(rover: str, session: Session) -> FastJSONResponse:
+    return FastJSONResponse({"rover": rover_dict(await legacy.get_rover(session, rover))})
 
 
 @router.get("/rovers/{rover}/photos", response_model=PhotosResponse)
@@ -43,7 +44,7 @@ async def list_photos(
     camera: OptionalParam = None,
     page: OptionalParam = None,
     per_page: OptionalParam = None,
-) -> PhotosResponse:
+) -> FastJSONResponse:
     result = await legacy.search_photos(
         session,
         rover,
@@ -53,7 +54,7 @@ async def list_photos(
         page=page,
         per_page=per_page,
     )
-    return PhotosResponse(photos=photos_out(result.rover, result.photos))
+    return FastJSONResponse({"photos": photos_dicts(result.rover, result.photos)})
 
 
 @router.get("/rovers/{rover}/latest_photos", response_model=LatestPhotosResponse)
@@ -63,6 +64,6 @@ async def latest_photos(
     camera: OptionalParam = None,
     page: OptionalParam = None,
     per_page: OptionalParam = None,
-) -> LatestPhotosResponse:
+) -> FastJSONResponse:
     result = await legacy.latest_photos(session, rover, camera=camera, page=page, per_page=per_page)
-    return LatestPhotosResponse(latest_photos=photos_out(result.rover, result.photos))
+    return FastJSONResponse({"latest_photos": photos_dicts(result.rover, result.photos)})

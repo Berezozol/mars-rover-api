@@ -5,6 +5,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.responses import FastJSONResponse
 from app.api.v2.params import (
     CameraParam,
     EarthDateParam,
@@ -21,10 +22,10 @@ from app.api.v2.schemas import (
     RoverOut,
     RoversResponse,
     camera_out,
-    latest_out,
-    manifest_out,
-    photos_out,
-    rover_out,
+    latest_body,
+    manifest_body,
+    photos_body,
+    rover_dict,
 )
 from app.db.session import get_session
 from app.services import v2
@@ -46,13 +47,14 @@ _ERRORS: dict[int | str, dict[str, Any]] = {
 
 
 @router.get("/rovers", response_model=RoversResponse, responses=_UNAVAILABLE)
-async def list_rovers(session: Session) -> RoversResponse:
-    return RoversResponse(items=[rover_out(info) for info in await v2.list_rovers(session)])
+async def list_rovers(session: Session) -> FastJSONResponse:
+    rovers = await v2.list_rovers(session)
+    return FastJSONResponse({"items": [rover_dict(info) for info in rovers]})
 
 
 @router.get("/rovers/{rover}", response_model=RoverOut, responses=_ERRORS)
-async def get_rover(rover: str, session: Session) -> RoverOut:
-    return rover_out(await v2.get_rover(session, rover))
+async def get_rover(rover: str, session: Session) -> FastJSONResponse:
+    return FastJSONResponse(rover_dict(await v2.get_rover(session, rover)))
 
 
 @router.get("/rovers/{rover}/cameras", response_model=CamerasResponse, responses=_ERRORS)
@@ -70,9 +72,9 @@ async def list_photos(
     earth_date: EarthDateParam = None,
     camera: CameraParam = None,
     sample_type: SampleTypeParam = None,
-) -> PhotosResponse:
+) -> FastJSONResponse:
     query = PhotoQuery(sol=sol, earth_date=earth_date, camera=camera, sample_type=sample_type)
-    return photos_out(await v2.search_photos(session, rover, query, pagination))
+    return FastJSONResponse(photos_body(await v2.search_photos(session, rover, query, pagination)))
 
 
 @router.get("/rovers/{rover}/photos/latest", response_model=LatestPhotosResponse, responses=_ERRORS)
@@ -81,8 +83,8 @@ async def latest_photos(
     session: Session,
     pagination: Pagination,
     camera: CameraParam = None,
-) -> LatestPhotosResponse:
-    return latest_out(await v2.latest_photos(session, rover, camera, pagination))
+) -> FastJSONResponse:
+    return FastJSONResponse(latest_body(await v2.latest_photos(session, rover, camera, pagination)))
 
 
 @router.get("/rovers/{rover}/manifest", response_model=ManifestResponse, responses=_ERRORS)
@@ -91,5 +93,5 @@ async def get_manifest(
     session: Session,
     from_sol: SolParam = None,
     to_sol: SolParam = None,
-) -> ManifestResponse:
-    return manifest_out(await v2.get_manifest(session, rover, from_sol, to_sol))
+) -> FastJSONResponse:
+    return FastJSONResponse(manifest_body(await v2.get_manifest(session, rover, from_sol, to_sol)))

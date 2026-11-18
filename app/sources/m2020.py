@@ -2,6 +2,7 @@
 
 import logging
 from collections.abc import AsyncGenerator, AsyncIterator, Mapping
+from dataclasses import dataclass, field
 from typing import Any
 
 from app.core.config import Settings
@@ -16,6 +17,7 @@ from app.sources.base import (
 from app.sources.http import (
     IncompleteResponse,
     PageLimitExceeded,
+    SolsFetchFailed,
     UpstreamClient,
     UpstreamError,
 )
@@ -127,13 +129,26 @@ class M2020Adapter:
     async def _fetch_sols(
         self, from_sol: int, to_sol: int, stats: FetchStats
     ) -> AsyncGenerator[tuple[int, list[PhotoRecord]]]:
+        """Group the range's images by sol.
+
+        Paging a multi-sol range (``order=sol desc``) is unstable inside a sol: at a page
+        boundary one image can repeat while another is skipped. A sol of a multi-sol range
+        that shows a repeated image is therefore refetched alone and that result is used;
+        if the range still delivered fewer unique images than ``total_results``, the sols
+        next to the boundaries of pages that fell short are refetched too. A failed refetch
+        raises ``SolsFetchFailed`` naming the sols left incomplete (possibly yielded already).
+        """
         validate_sol_range(from_sol, to_sol)
+        state = _RangeState(refetch=from_sol != to_sol)
         current_sol: int | None = None
         bucket: list[PhotoRecord] = []
-        seen: dict[int, set[str]] = {}
-        async for raw_sol, record in self._iter_images(from_sol, to_sol, stats):
+        pages = state.pages if state.refetch else None
+        async for raw_sol, record in self._iter_images(from_sol, to_sol, stats, pages):
             if raw_sol is None or not from_sol <= raw_sol <= to_sol:
                 stats.unattributed_dropped += 1
+                continue
+            if raw_sol in stats.refetched_sols:
+                # The sol's single-sol refetch is authoritative.
                 continue
             if raw_sol != current_sol:
                 if current_sol is not None and raw_sol > current_sol:
@@ -143,7 +158,7 @@ class M2020Adapter:
                         current_sol,
                     )
                 if current_sol is not None:
-                    records = self._finish_sol(current_sol, bucket, stats, seen)
+                    records = await self._finish_sol(current_sol, bucket, stats, state)
                     if records:
                         yield current_sol, records
                 current_sol, bucket = raw_sol, []
@@ -154,36 +169,106 @@ class M2020Adapter:
             else:
                 bucket.append(record)
         if current_sol is not None:
-            records = self._finish_sol(current_sol, bucket, stats, seen)
+            records = await self._finish_sol(current_sol, bucket, stats, state)
             if records:
                 yield current_sol, records
+        missing = _missing_images(stats, state) if state.refetch else 0
+        if missing > 0:
+            planned = _short_page_sols(state.pages, from_sol, to_sol) - stats.refetched_sols
+            logger.warning(
+                "Perseverance sols %d..%d: range short by %d images; refetching %d sol(s) "
+                "next to short pages: %s",
+                from_sol,
+                to_sol,
+                missing,
+                len(planned),
+                sorted(planned, reverse=True),
+            )
+            remaining = sorted(planned, reverse=True)
+            while remaining:
+                sol = remaining[0]
+                reason = f"range short by {missing} images"
+                records = await self._refetch_sol(sol, stats, state, reason, remaining)
+                remaining.pop(0)
+                if records:
+                    yield sol, records
         stats.finish(from_sol, to_sol)
         if from_sol == to_sol and stats.unattributed_dropped:
             # The range total also counts images of unknown sols: not this sol's total.
             stats.sol(from_sol).source_total = None
 
-    @staticmethod
-    def _finish_sol(
-        sol: int, bucket: list[PhotoRecord], stats: FetchStats, seen: dict[int, set[str]]
+    async def _finish_sol(
+        self, sol: int, bucket: list[PhotoRecord], stats: FetchStats, state: "_RangeState"
     ) -> list[PhotoRecord]:
-        """Dedupe a finished sol, also against records already yielded for it."""
+        """Dedupe a finished sol, also against records already yielded for it; a sol of a
+        multi-sol range with repeated images is refetched alone instead."""
         unique = dedupe_by_source_id(bucket, label=f"perseverance sol {sol}")
-        known = seen.setdefault(sol, set())
+        duplicates = len(bucket) - len(unique)
+        if duplicates and state.refetch:
+            state.duplicates[sol] = state.duplicates.get(sol, 0) + duplicates
+            reason = f"{duplicates} repeated images in the range fetch"
+            return await self._refetch_sol(sol, stats, state, reason, [sol])
+        state.duplicates[sol] = state.duplicates.get(sol, 0) + duplicates
+        known = state.seen.setdefault(sol, set())
         fresh = [record for record in unique if record.source_id not in known]
         known.update(record.source_id for record in fresh)
         stats.sol(sol).dropped += len(bucket) - len(fresh)
         return fresh
 
+    async def _refetch_sol(
+        self,
+        sol: int,
+        stats: FetchStats,
+        state: "_RangeState",
+        reason: str,
+        incomplete: list[int],
+    ) -> list[PhotoRecord]:
+        """Fetch one sol alone; its counts replace the sol's entry, its new records are
+        returned (records already yielded for the sol are not repeated).
+
+        On failure raises ``SolsFetchFailed`` for ``incomplete`` (this sol and the sols
+        still waiting for their refetch).
+        """
+        sub = FetchStats()
+        collected: list[PhotoRecord] = []
+        try:
+            async for _sol, records in self._fetch_sols(sol, sol, sub):
+                collected.extend(records)
+        except UpstreamError as exc:
+            raise SolsFetchFailed(exc, incomplete) from exc
+        previous = stats.sols.get(sol)
+        stats.sols[sol] = sub.sol(sol)
+        stats.refetched_sols.add(sol)
+        stats.range_duplicates += state.duplicates.pop(sol, 0)
+        known = state.seen.setdefault(sol, set())
+        fresh = [record for record in collected if record.source_id not in known]
+        known.update(record.source_id for record in fresh)
+        logger.warning(
+            "Perseverance sol %d refetched alone (%s): %d images instead of %d",
+            sol,
+            reason,
+            sub.sol(sol).received,
+            previous.received if previous is not None else 0,
+        )
+        return fresh
+
     async def _iter_images(
-        self, from_sol: int, to_sol: int, stats: FetchStats
+        self,
+        from_sol: int,
+        to_sol: int,
+        stats: FetchStats,
+        pages: list["_Page"] | None = None,
     ) -> AsyncIterator[tuple[int | None, PhotoRecord | None]]:
         """Yield ``(raw sol, record or None)`` per raw image, page by page; stop when all
         ``total_results`` raw images arrived.
 
-        An empty page before that raises ``IncompleteResponse``.
+        ``pages`` collects each page's first and last sol and whether it delivered fewer
+        new (not yet seen) images than expected. An empty page before the end raises
+        ``IncompleteResponse``.
         """
         page = 0
         fetched = 0
+        seen_ids: set[str] = set()
         while True:
             images, raw_count, total = await self._fetch_page(from_sol, to_sol, page)
             if page == 0:
@@ -192,6 +277,10 @@ class M2020Adapter:
                     # A single-sol range: the range total is that sol's total.
                     stats.sol(from_sol).source_total = total
             fetched += raw_count
+            if pages is not None and images:
+                expected = min(self._page_size, total - page * self._page_size)
+                new = _new_images(images, seen_ids)
+                pages.append(_Page(_raw_sol(images[0]), _raw_sol(images[-1]), new < expected))
             for raw in images:
                 yield self._parse_in_range(raw, from_sol, to_sol)
             stats.unattributed_dropped += raw_count - len(images)
@@ -260,6 +349,64 @@ class M2020Adapter:
                 to_sol,
             )
         return record.sol, record
+
+
+@dataclass
+class _RangeState:
+    """Bookkeeping of one ``fetch_sols`` call."""
+
+    # Refetch sols with repeated images alone (multi-sol ranges only).
+    refetch: bool
+    # source_ids already yielded per sol.
+    seen: dict[int, set[str]] = field(default_factory=dict)
+    # Repeated images per sol that were dropped without a refetch.
+    duplicates: dict[int, int] = field(default_factory=dict)
+    # Pages of the range fetch (multi-sol ranges only).
+    pages: list["_Page"] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class _Page:
+    first_sol: int | None
+    last_sol: int | None
+    # Fewer new (not yet seen in this fetch) images than the page should hold.
+    short: bool
+
+
+def _new_images(images: list[Mapping[str, Any]], seen_ids: set[str]) -> int:
+    """Images of a page not seen earlier in the fetch (an image without id counts as new)."""
+    new = 0
+    for raw in images:
+        imageid = clean(raw.get("imageid"))
+        key = str(imageid) if imageid is not None else None
+        if key is None or key not in seen_ids:
+            new += 1
+        if key is not None:
+            seen_ids.add(key)
+    return new
+
+
+def _short_page_sols(pages: list[_Page], from_sol: int, to_sol: int) -> set[int]:
+    """Sols on both sides of every boundary of a page that fell short."""
+    sols: set[int | None] = set()
+    for index, page in enumerate(pages):
+        if not page.short:
+            continue
+        sols.update((page.first_sol, page.last_sol))
+        if index > 0:
+            sols.add(pages[index - 1].last_sol)
+        if index + 1 < len(pages):
+            sols.add(pages[index + 1].first_sol)
+    return {sol for sol in sols if sol is not None and from_sol <= sol <= to_sol}
+
+
+def _missing_images(stats: FetchStats, state: _RangeState) -> int:
+    """Images the range declared but did not deliver as unique ones (any sol)."""
+    if stats.range_total is None:
+        return 0
+    received = sum(item.received for item in stats.sols.values())
+    unique = received - sum(state.duplicates.values())
+    return stats.range_total - stats.unattributed_dropped - unique
 
 
 def _raw_sol(raw: Mapping[str, Any]) -> int | None:

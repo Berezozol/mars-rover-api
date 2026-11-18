@@ -246,7 +246,8 @@ async def test_etag_without_quotes_or_partial_value_does_not_match(
 async def test_200_content_length_matches_body(client: httpx.AsyncClient, photo_id: int) -> None:
     for url in all_urls(photo_id):
         response = await client.get(url)
-        assert int(response.headers["content-length"]) == len(response.content), url
+        # Content-Length counts the bytes on the wire (gzip-encoded when httpx asks for it).
+        assert int(response.headers["content-length"]) == response.num_bytes_downloaded, url
 
 
 # --- HEAD ----------------------------------------------------------------------------------

@@ -124,56 +124,64 @@ class ManifestResponse(BaseModel):
     sols: list[ManifestSolOut]
 
 
-def rover_out(info: RoverInfo) -> RoverOut:
+# --- JSON bodies ---------------------------------------------------------------------------
+# Lists, the manifest and rovers are returned as plain dicts serialized without
+# re-validation (app.api.responses). Keys follow the order of the models above, which stay
+# the documented (OpenAPI) shape; datetimes are formatted here with ``_utc_z``.
+
+Json = dict[str, Any]
+
+
+def _utc_z_or_none(value: datetime | None) -> str | None:
+    return _utc_z(value) if value is not None else None
+
+
+def rover_dict(info: RoverInfo) -> Json:
     rover = info.rover
-    return RoverOut(
-        id=rover.id,
-        name=rover.name,
-        mission=rover.mission,
-        launch_date=rover.launch_date,
-        landing_date=rover.landing_date,
-        status=rover.status,
-        max_sol=rover.max_sol,
-        max_date=rover.max_date,
-        total_photos=rover.total_photos,
-        cameras_count=info.cameras_count,
-        last_synced_at=rover.last_synced_at,
-    )
+    return {
+        "id": rover.id,
+        "name": rover.name,
+        "mission": rover.mission,
+        "launch_date": rover.launch_date,
+        "landing_date": rover.landing_date,
+        "status": rover.status,
+        "max_sol": rover.max_sol,
+        "max_date": rover.max_date,
+        "total_photos": rover.total_photos,
+        "cameras_count": info.cameras_count,
+        "last_synced_at": _utc_z_or_none(rover.last_synced_at),
+    }
 
 
 def camera_out(info: CameraInfo) -> CameraOut:
     return CameraOut(code=info.camera.code, name=info.camera.name, total_photos=info.total_photos)
 
 
-def _photo_fields(photo: Photo) -> dict[str, Any]:
+def photo_dict(photo: Photo) -> Json:
     return {
         "id": photo.id,
         "rover": photo.rover_id,
         "sol": photo.sol,
         "earth_date": photo.earth_date,
-        "taken_at": photo.taken_at,
-        "camera": PhotoCameraOut(code=photo.camera.code, name=photo.camera.name),
+        "taken_at": _utc_z(photo.taken_at),
+        "camera": {"code": photo.camera.code, "name": photo.camera.name},
         "sample_type": photo.sample_type,
         "title": photo.title,
         "img_src": photo.img_full,
-        "images": ImagesOut(
-            small=photo.img_small,
-            medium=photo.img_medium,
-            large=photo.img_large,
-            full=photo.img_full,
-        ),
+        "images": {
+            "small": photo.img_small,
+            "medium": photo.img_medium,
+            "large": photo.img_large,
+            "full": photo.img_full,
+        },
         "credit": photo.credit,
-        "source": SourceOut(id=photo.source_id, link=photo.source_link),
+        "source": {"id": photo.source_id, "link": photo.source_link},
     }
-
-
-def photo_out(photo: Photo) -> PhotoOut:
-    return PhotoOut(**_photo_fields(photo))
 
 
 def photo_detail_out(photo: Photo) -> PhotoDetailOut:
     return PhotoDetailOut(
-        **_photo_fields(photo),
+        **photo_dict(photo),
         caption=photo.caption,
         received_at=photo.received_at,
         site=photo.site,
@@ -182,39 +190,37 @@ def photo_detail_out(photo: Photo) -> PhotoDetailOut:
     )
 
 
-def photos_out(result: PhotoPage) -> PhotosResponse:
-    return PhotosResponse(
-        items=[photo_out(photo) for photo in result.items],
-        page=result.page,
-        per_page=result.per_page,
-        total=result.total,
-    )
+def photos_body(result: PhotoPage) -> Json:
+    return {
+        "items": [photo_dict(photo) for photo in result.items],
+        "page": result.page,
+        "per_page": result.per_page,
+        "total": result.total,
+    }
 
 
-def latest_out(result: LatestPhotos) -> LatestPhotosResponse:
+def latest_body(result: LatestPhotos) -> Json:
     page = result.photos
-    return LatestPhotosResponse(
-        sol=result.sol,
-        items=[photo_out(photo) for photo in page.items],
-        page=page.page,
-        per_page=page.per_page,
-        total=page.total,
-    )
+    return {
+        "sol": result.sol,
+        "items": [photo_dict(photo) for photo in page.items],
+        "page": page.page,
+        "per_page": page.per_page,
+        "total": page.total,
+    }
 
 
-def _manifest_sol(summary: SolSummary) -> ManifestSolOut:
-    return ManifestSolOut(
-        sol=summary.sol,
-        earth_date=summary.earth_date,
-        total_photos=summary.total_photos,
-        cameras=list(summary.cameras),
-    )
+def _manifest_sol(summary: SolSummary) -> Json:
+    return {
+        "sol": summary.sol,
+        "earth_date": summary.earth_date,
+        "total_photos": summary.total_photos,
+        "cameras": list(summary.cameras),
+    }
 
 
-def manifest_out(result: Manifest) -> ManifestResponse:
-    return ManifestResponse(
-        rover=rover_out(result.rover), sols=[_manifest_sol(s) for s in result.sols]
-    )
+def manifest_body(result: Manifest) -> Json:
+    return {"rover": rover_dict(result.rover), "sols": [_manifest_sol(s) for s in result.sols]}
 
 
 class SyncRequestIn(BaseModel):

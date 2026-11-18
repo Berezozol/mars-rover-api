@@ -219,6 +219,14 @@ async def _total(session: AsyncSession, rover: Rover, flt: PhotoFilter) -> int:
     Not rovers.total_photos: that cache is refreshed only when a sync finishes, while photos
     and summaries are committed per sol, so it lags during a sync or after a crash.
     """
+    by_date = flt.sol is not None or flt.earth_date is not None
+    sample_type = flt.sample_type.lower() if flt.sample_type is not None else None
+    full_or_any = sample_type in (None, photos_repo.FULL_SAMPLE_TYPE)
+    if flt.camera_codes is not None and not by_date and full_or_any:
+        # Camera alone, or camera + full: summed from camera_sol_counts, no photos scan.
+        return await photos_repo.camera_total_photos(
+            session, rover.id, flt.camera_codes, full_only=sample_type is not None
+        )
     narrowed = flt.earth_date is not None or flt.camera_codes is not None
     if narrowed or flt.sample_type is not None:
         return await photos_repo.count_photos(session, flt)

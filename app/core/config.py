@@ -8,6 +8,15 @@ from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def _project_root() -> Path:
+    """The directory containing pyproject.toml above this file (else the package's parent)."""
+    here = Path(__file__).resolve()
+    return next((p for p in here.parents if (p / "pyproject.toml").is_file()), here.parents[2])
+
+
+PROJECT_ROOT = _project_root()
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -32,7 +41,7 @@ class Settings(BaseSettings):
     # Sols per backfill batch; each batch is one sync run (CLI `backfill`).
     backfill_batch_sols: int = Field(default=100, ge=1)
     # When the rover is locked by another sync: retry every N seconds, give up after M.
-    backfill_lock_retry_seconds: float = Field(default=30.0, ge=0)
+    backfill_lock_retry_seconds: float = Field(default=30.0, gt=0)
     backfill_lock_max_wait_seconds: float = Field(default=600.0, ge=0)
     # Stop the backfill after this many consecutive batches whose run failed.
     backfill_max_failed_batches: int = Field(default=3, ge=1)
@@ -53,10 +62,16 @@ class Settings(BaseSettings):
     # Spirit/Opportunity: one-time import from the PDS Imaging Node index files (stage 8).
     mer_pds_base_url: str = "https://planetarydata.jpl.nasa.gov/img/data/mer/"
     # Local cache of <volume>/index/edrindex.{lbl,tab}; filled by `mer-download`.
+    # A relative path is resolved against the project root, not the working directory.
     mer_cache_dir: Path = Path("data/mer")
 
     admin_token: SecretStr | None = None
     cors_origins: list[str] = ["*"]
+
+    @field_validator("mer_cache_dir", mode="after")
+    @classmethod
+    def _resolve_mer_cache_dir(cls, value: Path) -> Path:
+        return value if value.is_absolute() else PROJECT_ROOT / value
 
     @field_validator("admin_token", mode="after")
     @classmethod

@@ -277,3 +277,34 @@ def test_migration_0004_upgrade_fills_camera_sol_counts_from_existing_photos(
                 "END IF; END $$",
             )
         )
+
+
+# --- 0005: photos (rover_id, sample_type, sol DESC, taken_at DESC, id DESC) index ----------
+
+SAMPLE_TYPE_INDEX_COLUMNS = "(rover_id, sample_type, sol DESC, taken_at DESC, id DESC)"
+
+
+def _sample_type_indexdefs(url: str) -> list[str]:
+    rows = asyncio.run(
+        _fetch(
+            url,
+            "SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'photos'",
+        )
+    )
+    return [r["indexdef"] for r in rows if SAMPLE_TYPE_INDEX_COLUMNS in r["indexdef"]]
+
+
+def test_migration_0005_downgrade_drops_sample_type_index_and_upgrade_recreates_it(
+    migrated_db: str, alembic_cfg: AlembicConfig
+) -> None:
+    try:
+        assert len(_sample_type_indexdefs(migrated_db)) == 1
+        command.downgrade(alembic_cfg, "0004")
+        assert _sample_type_indexdefs(migrated_db) == []
+        assert asyncio.run(_db_state(migrated_db))["versions"] == ["0004"]
+        command.upgrade(alembic_cfg, "0005")
+        defs = _sample_type_indexdefs(migrated_db)
+        assert len(defs) == 1
+        assert "WHERE" not in defs[0]
+    finally:
+        command.upgrade(alembic_cfg, "head")

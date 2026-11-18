@@ -8,6 +8,8 @@ ROW_BYTES/START_BYTE are wrong, ROVER_MOTION_COUNTER is 5 tab fields, Descent ha
 PATH_NAME/FILE_NAME, rows are not sorted, a few Opportunity PRODUCT_IDs are listed twice.
 """
 
+import logging
+import re
 from collections import Counter
 from collections.abc import Callable
 from datetime import UTC, date, datetime
@@ -574,3 +576,158 @@ async def test_one_missing_index_file_raises_mer_cache_missing(tmp_path: Path) -
 def test_rover_without_mer_volumes_is_rejected() -> None:
     with pytest.raises(ValueError):
         mer.volume_ids("curiosity")
+
+
+# --- robustness of the index reader (stage 8 review fixes) ---------------------------------
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+SPOT_VOLUME = "mer2no_0xxx"
+SPOT_PRODUCT = "2N160633049EDNA2K1F0006R0M1"
+SPOT_SOL = 386
+SPOT_PATH = rb'"/mer2no_0xxx/data/sol0386/edr/ *"'
+SPOT_FILE = rb'"2n160633049edna2k1f0006r0m1\.img *"'
+
+
+def _rewrite_spot(cache: Path, edit: Callable[[bytes], bytes]) -> None:
+    def transform(lines: list[bytes]) -> list[bytes]:
+        out = []
+        hits = 0
+        for line in lines:
+            if SPOT_PRODUCT.encode() in line:
+                new = edit(line)
+                assert new != line, "the edit did not apply"
+                line = new
+                hits += 1
+            out.append(line)
+        assert hits == 1
+        return out
+
+    rewrite_rows(cache, SPOT_VOLUME, transform)
+
+
+@pytest.mark.parametrize(
+    ("path", "file"),
+    [
+        pytest.param(b'"N/A"', None, id="path-not-a-path"),
+        pytest.param(b'"/mer2no_0xxx/data/../../../../etc/"', None, id="path-traversal"),
+        pytest.param(None, b'"garbage"', id="file-not-the-product"),
+        pytest.param(None, b'"../../x.img"', id="file-traversal"),
+        pytest.param(b'"N/A"', b'"N/A"', id="both-bad"),
+    ],
+)
+async def test_adapter_bad_path_or_file_name_falls_back_to_product_id_path(
+    tmp_path: Path, path: bytes | None, file: bytes | None
+) -> None:
+    original = by_source_id(await all_records("spirit"))[SPOT_PRODUCT]
+    cache = copy_cache(tmp_path, ("spirit",))
+
+    def edit(line: bytes) -> bytes:
+        if path is not None:
+            line = re.sub(SPOT_PATH, path, line, count=1)
+        if file is not None:
+            line = re.sub(SPOT_FILE, file, line, count=1)
+        return line
+
+    _rewrite_spot(cache, edit)
+    record = by_source_id(await all_records("spirit", cache))[SPOT_PRODUCT]
+
+    # The original row's path is exactly the product-id path, so the URLs must not change.
+    assert (
+        record.img_full
+        == original.img_full
+        == (f"{BASE}/mer2no_0xxx/browse/sol0386/edr/2n160633049edna2k1f0006r0m1.img.jpg")
+    )
+    assert (
+        record.source_link
+        == original.source_link
+        == (f"{BASE}/mer2no_0xxx/data/sol0386/edr/2n160633049edna2k1f0006r0m1.img")
+    )
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        pytest.param(b'"MARS  "', b'"MARS \r"', id="in-padding"),
+        pytest.param(b'"EXTENDED MISSION', b'"EXTENDED\rMISSION', id="inside-value"),
+    ],
+)
+async def test_adapter_lone_cr_inside_field_does_not_break_parsing(
+    tmp_path: Path, old: bytes, new: bytes
+) -> None:
+    """A stray CR (not followed by LF) inside a quoted field is not a row terminator."""
+    original = await all_records("spirit")
+    cache = copy_cache(tmp_path, ("spirit",))
+    _rewrite_spot(cache, lambda line: line.replace(old, new, 1))
+
+    records = await all_records("spirit", cache)
+
+    assert by_source_id(records) == by_source_id(original)
+    _, stats = await fetch(build_adapter("spirit", cache), SPOT_SOL, SPOT_SOL)
+    _, stats_original = await fetch(build_adapter("spirit", MER_FIXTURES), SPOT_SOL, SPOT_SOL)
+    assert stats.sols[SPOT_SOL] == stats_original.sols[SPOT_SOL]
+    assert stats.unattributed_dropped == stats_original.unattributed_dropped
+
+
+@pytest.mark.parametrize(
+    "bad_id",
+    [
+        pytest.param(SPOT_PRODUCT[:-1], id="26-chars"),
+        pytest.param(SPOT_PRODUCT + "X", id="28-chars"),
+    ],
+)
+async def test_adapter_product_id_of_wrong_length_is_dropped_and_counted_apart(
+    tmp_path: Path, bad_id: str
+) -> None:
+    cache = copy_cache(tmp_path, ("spirit",))
+    _rewrite_spot(
+        cache,
+        lambda line: line.replace(f'"{SPOT_PRODUCT}"'.encode(), f'"{bad_id}"'.encode(), 1),
+    )
+
+    batches, stats = await fetch(build_adapter("spirit", cache), SPOT_SOL, SPOT_SOL)
+    ids = {r.source_id for _, records in batches for r in records}
+
+    assert SPOT_PRODUCT not in ids and bad_id not in ids
+    sol_stats = stats.sols[SPOT_SOL]
+    assert sol_stats.received == received_by_sol("spirit")[SPOT_SOL]
+    assert sol_stats.dropped == sol_stats.received - len(ids)
+
+    # Counted on its own, not as an unknown instrument (NAVCAM_RIGHT is a known one).
+    index = mer.load_rover_index(cache, "spirit")
+    assert "NAVCAM_RIGHT" not in index.unknown_instruments
+    assert sum(index.unknown_instruments.values()) == sum(
+        mer.load_rover_index(MER_FIXTURES, "spirit").unknown_instruments.values()
+    )
+
+
+async def test_adapter_relative_cache_dir_resolves_against_project_root(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    relative = MER_FIXTURES.relative_to(PROJECT_ROOT)
+
+    records = await all_records("spirit", relative)
+
+    assert len(records) == FRAMES_TOTAL["spirit"]
+
+
+async def test_adapter_uppercase_path_and_file_name_accepted_url_unchanged(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Upper-case PATH_NAME/FILE_NAME are valid values: no fallback, same (lower-case) URLs."""
+    original = by_source_id(await all_records("spirit"))[SPOT_PRODUCT]
+    cache = copy_cache(tmp_path, ("spirit",))
+
+    def upper(line: bytes) -> bytes:
+        line = re.sub(SPOT_PATH, lambda m: m.group(0).upper(), line, count=1)
+        return re.sub(SPOT_FILE, lambda m: m.group(0).upper(), line, count=1)
+
+    _rewrite_spot(cache, upper)
+    caplog.set_level(logging.WARNING)
+    record = by_source_id(await all_records("spirit", cache))[SPOT_PRODUCT]
+
+    assert record.img_full == original.img_full
+    assert record.source_link == original.source_link
+    assert not [
+        r for r in caplog.records if r.levelno >= logging.WARNING and SPOT_PRODUCT in r.getMessage()
+    ]

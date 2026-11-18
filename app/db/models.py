@@ -85,6 +85,15 @@ class Photo(Base):
             text("taken_at DESC"),
             text("id DESC"),
         ),
+        # Filter by sample_type without sol (v2): newest-first listing and count.
+        Index(
+            "ix_photos_rover_id_sample_type_sol",
+            "rover_id",
+            "sample_type",
+            text("sol DESC"),
+            text("taken_at DESC"),
+            text("id DESC"),
+        ),
         # Filter by real earth_date (v2).
         Index("ix_photos_rover_id_earth_date", "rover_id", "earth_date"),
         # Filter by camera (v2).

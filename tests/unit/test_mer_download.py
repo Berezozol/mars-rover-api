@@ -107,6 +107,42 @@ async def test_download_shorter_than_content_length_fails_without_file(
     assert listing(tmp_path) == []
 
 
+async def test_download_retries_incomplete_response_once_then_succeeds(
+    tmp_path: Path, upstream_router: respx.MockRouter
+) -> None:
+    body = fixture_bytes("mer2no_0xxx", "edrindex.tab")
+    route = upstream_router.get(url("mer2no_0xxx", "edrindex.tab"))
+    route.side_effect = [
+        httpx.Response(200, content=body[:100], headers={"Content-Length": str(len(body))}),
+        httpx.Response(200, content=body),
+    ]
+    dest = tmp_path / "edrindex.tab"
+    clock = FakeClock()
+
+    async with UpstreamClient(make_settings(), sleep=clock.sleep, clock=clock) as client:
+        size = await client.download(url("mer2no_0xxx", "edrindex.tab"), dest)
+
+    assert route.call_count == 2
+    assert size == len(body)
+    assert dest.read_bytes() == body
+    assert listing(tmp_path) == ["edrindex.tab"]  # no .part left behind
+
+
+async def test_download_incomplete_twice_fails_without_file(
+    tmp_path: Path, upstream_router: respx.MockRouter
+) -> None:
+    route = upstream_router.get(url("mer2no_0xxx", "edrindex.tab"))
+    route.respond(200, content=b"truncated\r\n", headers={"Content-Length": "4096"})
+    clock = FakeClock()
+
+    async with UpstreamClient(make_settings(), sleep=clock.sleep, clock=clock) as client:
+        with pytest.raises(UpstreamError):
+            await client.download(url("mer2no_0xxx", "edrindex.tab"), tmp_path / "edrindex.tab")
+
+    assert route.call_count >= 2
+    assert listing(tmp_path) == []
+
+
 async def test_download_http_error_leaves_no_file(
     tmp_path: Path, upstream_router: respx.MockRouter
 ) -> None:

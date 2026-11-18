@@ -59,13 +59,18 @@ class FetchStats:
     records were all dropped and, once the whole range is fetched (``complete``), sols the
     source has nothing for (``received == 0``). ``range_total`` is the total the source
     declared for the whole range, when known. ``unattributed_dropped`` counts records whose
-    sol is missing or outside the range.
+    sol is missing or outside the range. ``range_duplicates`` counts repeated records of a
+    multi-sol fetch whose sols were then refetched alone (the refetch's counts replace the
+    sol's entry, so these duplicates are in no sol's ``dropped``); ``refetched_sols`` lists
+    those sols.
     """
 
     sols: dict[int, SolStats] = field(default_factory=dict)
     range_total: int | None = None
     complete: bool = False
     unattributed_dropped: int = 0
+    range_duplicates: int = 0
+    refetched_sols: set[int] = field(default_factory=set)
 
     def sol(self, sol: int) -> SolStats:
         return self.sols.setdefault(sol, SolStats())

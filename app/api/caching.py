@@ -8,6 +8,13 @@ Pure ASGI middleware. For GET/HEAD under the API prefixes:
 - 4xx/5xx: ``Cache-Control: no-store``.
 Admin responses (any method) always get ``no-store`` and no ETag. Other paths (/health, /docs) are
 untouched.
+
+Compression: GZipMiddleware sits outside this middleware, so the ETag is computed on the
+uncompressed body and is the same for gzip and identity responses (a weak validator: the
+representations are semantically equal). ``If-None-Match`` matches either way and the 304
+(no body) passes GZip untouched. ``VaryAcceptEncodingMiddleware`` (outermost) adds
+``Vary: Accept-Encoding``. A HEAD response carries the identity ``Content-Length`` and no
+``Content-Encoding`` (its empty body is not compressed).
 """
 
 import hashlib
@@ -84,6 +91,36 @@ class CachingMiddleware:
             await self.app(scope, receive, send)
             return
         await _CachedResponse(scope, send).run(self.app, receive)
+
+
+class VaryAcceptEncodingMiddleware:
+    """Outermost: every API response carries ``Vary: Accept-Encoding`` exactly once.
+
+    GZipMiddleware adds it only to the bodies it compresses; 304s, HEAD responses and
+    small bodies need it too, so shared caches keep gzip and identity copies apart.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or _api_prefix(scope["path"]) is None:
+            await self.app(scope, receive, send)
+            return
+
+        async def sender(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                tokens = {
+                    token.strip().lower()
+                    for value in headers.getlist("vary")
+                    for token in value.split(",")
+                }
+                if "accept-encoding" not in tokens and "*" not in tokens:
+                    headers.add_vary_header("Accept-Encoding")
+            await send(message)
+
+        await self.app(scope, receive, sender)
 
 
 def _as_get(scope: Scope) -> Scope:

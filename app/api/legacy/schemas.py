@@ -1,6 +1,7 @@
 """v1 response models (docs/LEGACY-API.md, "Объекты"); field order is the JSON key order."""
 
 from datetime import date
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -82,65 +83,72 @@ class ManifestResponse(BaseModel):
     photo_manifest: ManifestOut
 
 
-def rover_out(item: LegacyRover) -> RoverOut:
+# --- JSON bodies ---------------------------------------------------------------------------
+# The routes return plain dicts serialized without re-validation (app.api.responses). Keys
+# are in the order of the models above, which stay the documented (OpenAPI) shape.
+
+Json = dict[str, Any]
+
+
+def rover_dict(item: LegacyRover) -> Json:
     rover = item.rover
-    return RoverOut(
-        id=rover.legacy_id,
-        name=rover.name,
-        landing_date=rover.landing_date,
-        launch_date=rover.launch_date,
-        status=rover.status,
-        max_sol=item.counters.max_sol,
-        max_date=item.counters.max_date,
-        total_photos=item.counters.total_photos,
-        cameras=[RoverCameraOut(name=c.code, full_name=c.name) for c in item.cameras],
-    )
+    return {
+        "id": rover.legacy_id,
+        "name": rover.name,
+        "landing_date": rover.landing_date,
+        "launch_date": rover.launch_date,
+        "status": rover.status,
+        "max_sol": item.counters.max_sol,
+        "max_date": item.counters.max_date,
+        "total_photos": item.counters.total_photos,
+        "cameras": [{"name": c.code, "full_name": c.name} for c in item.cameras],
+    }
 
 
-def photos_out(item: LegacyRover, photos: list[LegacyPhotoItem]) -> list[PhotoOut]:
+def photos_dicts(item: LegacyRover, photos: list[LegacyPhotoItem]) -> list[Json]:
     """Photos of one rover; the rover object is built once and shared."""
-    rover = rover_out(item)
-    return [_photo_out(item, rover, photo) for photo in photos]
+    rover = rover_dict(item)
+    return [_photo_dict(item, rover, photo) for photo in photos]
 
 
-def photo_out(item: LegacyRover, photo: LegacyPhotoItem) -> PhotoOut:
-    return _photo_out(item, rover_out(item), photo)
+def photo_dict(item: LegacyRover, photo: LegacyPhotoItem) -> Json:
+    return _photo_dict(item, rover_dict(item), photo)
 
 
-def _photo_out(item: LegacyRover, rover: RoverOut, entry: LegacyPhotoItem) -> PhotoOut:
+def _photo_dict(item: LegacyRover, rover: Json, entry: LegacyPhotoItem) -> Json:
     photo = entry.photo
-    return PhotoOut(
-        id=photo.id,
-        sol=photo.sol,
-        camera=PhotoCameraOut(
-            id=photo.camera.id,
-            name=photo.camera.code,
-            rover_id=item.rover.legacy_id,
-            full_name=photo.camera.name,
-        ),
-        img_src=entry.img_src,
-        earth_date=entry.earth_date,
-        rover=rover,
-    )
+    return {
+        "id": photo.id,
+        "sol": photo.sol,
+        "camera": {
+            "id": photo.camera.id,
+            "name": photo.camera.code,
+            "rover_id": item.rover.legacy_id,
+            "full_name": photo.camera.name,
+        },
+        "img_src": entry.img_src,
+        "earth_date": entry.earth_date,
+        "rover": rover,
+    }
 
 
-def manifest_out(item: LegacyManifest) -> ManifestOut:
+def manifest_dict(item: LegacyManifest) -> Json:
     rover = item.rover
-    return ManifestOut(
-        name=rover.name,
-        landing_date=rover.landing_date,
-        launch_date=rover.launch_date,
-        status=rover.status,
-        max_sol=item.counters.max_sol,
-        max_date=item.counters.max_date,
-        total_photos=item.counters.total_photos,
-        photos=[
-            ManifestSolOut(
-                sol=entry.sol,
-                earth_date=entry.earth_date,
-                total_photos=entry.total_photos,
-                cameras=entry.cameras,
-            )
+    return {
+        "name": rover.name,
+        "landing_date": rover.landing_date,
+        "launch_date": rover.launch_date,
+        "status": rover.status,
+        "max_sol": item.counters.max_sol,
+        "max_date": item.counters.max_date,
+        "total_photos": item.counters.total_photos,
+        "photos": [
+            {
+                "sol": entry.sol,
+                "earth_date": entry.earth_date,
+                "total_photos": entry.total_photos,
+                "cameras": list(entry.cameras),
+            }
             for entry in item.sols
         ],
-    )
+    }
