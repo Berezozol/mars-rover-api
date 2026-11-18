@@ -90,9 +90,9 @@ def rover_out(item: LegacyRover) -> RoverOut:
         landing_date=rover.landing_date,
         launch_date=rover.launch_date,
         status=rover.status,
-        max_sol=rover.full_max_sol,
-        max_date=rover.full_max_date,
-        total_photos=rover.full_total_photos,
+        max_sol=item.counters.max_sol,
+        max_date=item.counters.max_date,
+        total_photos=item.counters.total_photos,
         cameras=[RoverCameraOut(name=c.code, full_name=c.name) for c in item.cameras],
     )
 
@@ -131,9 +131,9 @@ def manifest_out(item: LegacyManifest) -> ManifestOut:
         landing_date=rover.landing_date,
         launch_date=rover.launch_date,
         status=rover.status,
-        max_sol=rover.full_max_sol,
-        max_date=rover.full_max_date,
-        total_photos=rover.full_total_photos,
+        max_sol=item.counters.max_sol,
+        max_date=item.counters.max_date,
+        total_photos=item.counters.total_photos,
         photos=[
             ManifestSolOut(
                 sol=entry.sol,

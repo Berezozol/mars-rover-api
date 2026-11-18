@@ -128,14 +128,100 @@
 
 ## Дополнительные данные (этап 7, сначала проверить)
 
-- **Погода Curiosity (REMS)** [не проверено]: `https://mars.nasa.gov/rss/api/?feed=weather&category=msl&feedtype=json` — найдено в 2021 году через инспектор страницы REMS. Неофициально.
-- **Положение Perseverance** [не проверено в 2026]: GeoJSON `https://mars.nasa.gov/mmgis-maps/M20/Layers/json/M20_waypoints.json` и `.../M20_traverse.json` (ещё использовались в ноябре 2025). Для Curiosity найти аналог через страницу `science.nasa.gov/mission/msl-curiosity/location-map/`.
+Проверено 2026-11-18, по одному запросу на адрес.
+
+- **Положение — работает у обоих.** GeoJSON `https://mars.nasa.gov/mmgis-maps/{M20|MSL}/Layers/json/{M20|MSL}_waypoints.json` (точки стоянок, ~600 КБ) и `..._traverse.json` (линия маршрута, 1,4–1,7 МБ). В точке: `sol`, `site`, `drive` (те же, что у снимков — можно связать фото с местом), `lat`, `lon`, `elev_geoid`, `easting`/`northing`, `roll`/`pitch`/`yaw`/`tilt`, `dist_m`, `dist_total_m`. Свежесть: M20 — до сола 2022 (последний сол снимков ~2031), MSL — до сола 5073.
+- **Погода Perseverance (MEDA)**: `https://mars.nasa.gov/rss/api/?feed=weather&category=mars2020&feedtype=json` отвечает, но отдаёт только 7 солов (1127–1133, апрель 2024), часть значений `--`: фид заморожен. Поля: `sol`, `terrestrial_date`, `ls`, `season`, `min_temp`, `max_temp`, `pressure`, `sunrise`, `sunset`.
+- **Погода Curiosity (REMS)**: `...?feed=weather&category=msl&feedtype=json` сломан — вместо данных ошибка WordPress.
+- Погода, видимо, доступна только из архивов PDS (Atmospheres Node) с задержкой в месяцы — не проверено.
 
 ## Spirit и Opportunity (MER, этап 8)
 
-Миссии завершены, новых снимков не будет — нужен разовый импорт.
-- Старый скрапер разбирал HTML-галерею `https://mars.nasa.gov/mer/gallery/all/` (`opportunity.html`, `spirit.html`, страницы по камерам и солам) [старый код]. Жива ли она сейчас — не проверено.
-- Запасной вариант — архивы NASA PDS (Imaging Node). Объём и формат выяснить на этапе 8.
+Разведка 2026-11-18 — **36 HTTP-запросов** (`scripts/probe_mer_sources.py`). Проверка по «ок» владельца (В4) 2026-11-18 — ещё **49 запросов** (`scripts/mer_fetch.py`, счётчик в `data/mer/requests.count`, жёсткий лимит 60): 20 GET — все индексы, 25 HEAD — browse-JPEG, 2 листинга (`mw`, `om`), 2 `aareadme.txt`. Всё ≤ 1 в секунду, `User-Agent: mars-rover-api-dev`, только `planetarydata.jpl.nasa.gov`. Дальше — офлайн по кэшу (`scripts/mer_index_stats.py`, сводка в `data/mer/stats.json`, ~15 с на все 10 файлов). Миссии завершены, новых снимков не будет — нужен разовый импорт.
+
+### Старая галерея — мертва [проверено]
+- `https://mars.nasa.gov/mer/gallery/all/` → `302` на `science.nasa.gov/mission/mars-exploration-rovers-spirit-and-opportunity/` (обычная страница миссии, без галереи).
+- `.../mer/gallery/all/opportunity.html` → `302` на поиск `science.nasa.gov/mars/resources/?search=spirit+opportunity&types=images` — «0 Search Results».
+- Старые адреса картинок тоже мертвы: `.../mer/gallery/all/1/f/001/1F128287243EFF0000P1214L0M1-BR.JPG` → `302` на ту же страницу миссии. Значит, `img_src` из старого API не открываются, и сохранить их «как было» нельзя. Копию в web.archive.org не проверяли [не проверено]: скрапить архив хуже, чем PDS.
+
+### PDS Imaging Node — источник [проверено]
+`https://pds-imaging.jpl.nasa.gov/data/mer/` → `302` на **`https://planetarydata.jpl.nasa.gov/img/data/mer/`** (дальше ходим сразу сюда). Обычные листинги каталогов (HTML «Index of»). Тома EDR: `mer{1|2}{xx}_0xxx`, где `1` — Opportunity (MER-1, MERB), `2` — Spirit (MER-2, MERA); `no` — Navcam, `ho` — Hazcam (передние и задние), `po` — Pancam, `mo` — Microscopic Imager, `do` — Descent (EDL). Каталоги `opportunity/`, `spirit/` — те же тома + `*_md5.txt`.
+
+**`mw` и `om` — не EDR** [проверено]: `aareadme.txt` обоих — «MER Operations Data Archives — Camera RDR Mosaics» (операционные мозаики MIPL; индекс там `index/index.tab`, поэтому `edrindex.lbl` → `404`). Для импорта снимков не нужны, в список томов не входят.
+
+Структура тома: `index/`, `data/solNNNN/edr/*.img` (сырые PDS-изображения, в браузере не открываются), `browse/solNNNN/edr/*.img.jpg`, `calib/`, `catalog/`, `document/`. Листинг `browse/` целиком не отдаётся за 60 с — ходить только в конкретный `solNNNN`.
+
+### Индекс `index/edrindex.tab` + `.lbl` [проверено на полных файлах]
+Скачаны все 10 пар (20 GET, 2–4 МБ/с, ~4 мин суммарно; 756 МБ в `data/mer/<том>/index/`, `data/` в `.gitignore`). У каждого `.tab` число строк = `ROWS` из `.lbl`, размер = `content-length`.
+
+Формат — **не тот, что обещает метка**:
+- Строки разделены `CRLF` и имеют **переменную длину**: у 55-колоночных томов ~910 байт вместо `ROW_BYTES = 933`, у Descent — 774 вместо 773. Поэтому **`ROWS × ROW_BYTES` ≠ размер файла** (Opportunity Pancam: 341 953 830 против настоящих 342 288 096). Целостность проверять по `content-length` и по числу строк = `ROWS`. `START_BYTE`/`BYTES` из метки для нарезки строки не годятся.
+- Поля через табуляцию, строки в кавычках и дополнены пробелами, числа без кавычек. `ROVER_MOTION_COUNTER` в метке — одна колонка с `ITEMS = 5`, а в файле это **5 полей через табуляцию**: в строке 59 полей при `COLUMNS = 55` (Descent: 52 при 48). Если раскрыть `ITEMS` в отдельные поля, сопоставление по именам из метки работает во всех 10 файлах (0 строк с другим числом полей).
+- `ROVER_MOTION_COUNTER` — всегда 5 целых (`2,0,0,1,0`, `2,0,2,1669,128`): первые два — site и drive.
+- Индекс почти отсортирован по солу (по одному нарушению порядка на марсоход), на порядок не опираться — группировать по солу.
+- **Повторённые строки:** у Opportunity **12 `PRODUCT_ID` встречаются дважды** (Navcam 3, Hazcam 2, Pancam 7; у Spirit — нет). Строки отличаются только `PRODUCT_CREATION_TIME` (2014/2015) и `TELEMETRY_SOURCE_NAME` (`..._Partial-35.pdat` / `-38`), путь и имя файла одни и те же — перевыпуск того же продукта. Брать строку с более поздним `PRODUCT_CREATION_TIME`; один `source_id` дважды в пачке upsert недопустим.
+
+**Descent (`do`) — другой набор колонок** [проверено]: 48 колонок, **нет `PATH_NAME` и `FILE_NAME`**; есть `PRODUCT_ID`, `PLANET_DAY_NUMBER` (= 1 у всех), `START_TIME`, `INSTRUMENT_ID = DESCAM`, `SPACECRAFT_CLOCK_START_COUNT`, `ROVER_MOTION_COUNTER`. 9 строк на марсоход: 3 `EDN` (256×1024, `4X1SUMMATION_FRAME`), 3 `ERP`, 3 `ETH`. Путь — `/<том>/data/sol0001/edr/` + `PRODUCT_ID` в нижнем регистре + `.img`; browse по этому правилу — `200` у обоих марсоходов.
+
+**Объём и типы продуктов** (полные индексы; тип — символы 12–14 `PRODUCT_ID`; длина `PRODUCT_ID` = 27 во всех 850 165 строках):
+
+| Том | строк | `ETH` | `EFF` | `ESF` | `EDN` | служебные `ERP/EHG/ERS/ECS` | солы |
+|---|---|---|---|---|---|---|---|
+| `mer1no` | 119 929 | 70 948 | 24 048 | 836 | 23 506 | 591 | 1–5086 |
+| `mer1ho` | 37 616 | 18 846 | 12 260 | 3 839 | 2 592 | 79 | 1–5104 |
+| `mer1po` | 366 510 | 188 678 | 47 555 | 74 253 | 17 168 | 38 856 | 1–5111 |
+| `mer1mo` | 24 765 | 13 011 | 11 448 | 94 | 27 | 185 | 2–5104 |
+| `mer1do` | 9 | 3 | — | — | 3 | 3 | 1 |
+| `mer2no` | 59 821 | 29 572 | 10 286 | 5 090 | 12 042 | 2 831 | 1–2186 |
+| `mer2ho` | 25 629 | 14 716 | 5 274 | 908 | 4 601 | 130 | 1–2174 |
+| `mer2po` | 203 550 | 102 050 | 29 449 | 39 440 | 11 682 | 20 929 | 1–2209 |
+| `mer2mo` | 12 327 | 6 153 | 5 933 | 120 | — | 121 | 2–2174 |
+| `mer2do` | 9 | 3 | — | — | 3 | 3 | 1 |
+
+Последний сол: Opportunity **5111** (Pancam; совпадает со старым `max_sol`), Spirit **2209** (2 подкадра Pancam; старый API помнится как 2208 [память]). Солов со снимками: Opportunity 4842, Spirit 2122. Самый большой сол: Opportunity 60 (346 продуктов-снимков), Spirit 433 (415).
+
+`INSTRUMENT_ID`: `NAVCAM_LEFT/RIGHT`, `FRONT_HAZCAM_LEFT/RIGHT`, `REAR_HAZCAM_LEFT/RIGHT`, `PANCAM_LEFT/RIGHT`, **`MI`**, **`DESCAM`**.
+
+### Ключ кадра и дедупликация [проверено на полных индексах]
+Ключ `pid[:11] + pid[14:25]` (без типа, создателя и версии), группировка внутри тома:
+- **Разные кадры не склеиваются:** ни в одной группе нет разных солов, инструментов, `SEQUENCE_ID`, `START_TIME` или полного `SPACECRAFT_CLOCK_START_COUNT` (с дробной частью).
+- **Копии не теряются:** ни один набор «инструмент + полный SCLK + фильтр» не распался на два ключа.
+- **Но склеивать почти нечего:** `EFF`, `ESF` и `EDN` одного кадра в индексе практически не встречаются вместе — у MER кадр передан одним продуктом. На 850 тыс. строк — 3 группы `ESF+EDN` (Pancam: 2 у Opportunity, 1 у Spirit) и 12 групп «тот же `PRODUCT_ID` дважды» (см. выше). Разных версий (`M1`/`M2`) одного кадра нет. Кадры только `EDN`/`ESF` — отдельные съёмки в уменьшенном виде или подкадром, а не копии полных.
+
+Кадров после дедупликации (по типу выбранного продукта):
+
+| Камера | Opportunity: кадров / `EFF` / `ESF` / `EDN` | Spirit: кадров / `EFF` / `ESF` / `EDN` |
+|---|---|---|
+| `NAVCAM` | 48 387 / 24 046 / 836 / 23 505 | 27 418 / 10 286 / 5 090 / 12 042 |
+| `FHAZ` + `RHAZ` | 12 740 + 5 949 / 12 259 / 3 838 / 2 592 | 7 432 + 3 351 / 5 274 / 908 / 4 601 |
+| из них `EFF` FHAZ / RHAZ | 7 761 / 4 498 | 3 378 / 1 896 |
+| `PANCAM` | 138 967 / 47 552 / 74 249 / 17 166 | 80 570 / 29 449 / 39 440 / 11 681 |
+| `MI` | 11 569 / 11 448 / 94 / 27 | 6 053 / 5 933 / 120 / 0 |
+| `ENTRY` | 3 / 0 / 0 / 3 | 3 / 0 / 0 / 3 |
+| **Всего** | **217 615 / 95 305** | **124 827 / 50 942** |
+| без `MI` (набор старого API) | 206 046 / 83 857 | 118 774 / 45 009 |
+| отброшено строк | 331 214 = `ETH` 291 486 + служебные 39 714 + склеено 14 | 176 509 = 152 494 + 24 014 + 1 |
+
+**Сравнение со старым API** (`total_photos` [память]: Opportunity ~198 439, Spirit ~124 550): все кадры без `MI` — 206 046 и 118 774 (+4 % и −5 %); только `EFF` — 83 857 и 45 009 (**42 % и 36 %**). Старая галерея, судя по числам, показывала снимки любого типа, а не только полные. Для В3: при v1 «только `full`» Spirit и Opportunity в v1 покажут меньше половины снимков старого API.
+
+### Browse-JPEG [проверено, 25 HEAD]
+Правило `PATH_NAME` с `/data/` → `/browse/` + `FILE_NAME` + `.jpg` (для Descent — путь по `PRODUCT_ID`, см. выше): **25 из 25 — `200 image/jpeg`**. Оба марсохода, все источники (`no`, `ho` передняя и задняя, `po`, `mo`, `do`), типы `EFF`/`ESF`/`EDN`, солы от ранних (1–84) до поздних (4763–5037 у Opportunity, 2080–2156 у Spirit). Размеры: `EFF` 68–202 КБ, `ESF` 0,8–18 КБ, `EDN` 1,3–19 КБ, Descent 6,5–8 КБ. Это выборка: что browse есть у **каждого** продукта — [не проверено], но пропусков в ней нет. Полноразмерных JPEG/PNG нет — только `.img`.
+
+**Лицензия/авторство:** в `aareadme.txt` томов (`mer1no`, `mer1mw`, `mer1om`) строки об авторстве нет; листинги PDS в подвале ссылаются на `jpl.nasa.gov/imagepolicy` (не PDS-хост, не запрашивали). Предлагаемый `credit`: `NASA/JPL-Caltech`, Pancam — `NASA/JPL-Caltech/Cornell`, MI — `NASA/JPL-Caltech/USGS` [не проверено: в документах томов не найдено].
+
+### Камеры против старого набора
+| Старый код | Источник в PDS | `INSTRUMENT_ID` |
+|---|---|---|
+| `FHAZ` | `ho` | `FRONT_HAZCAM_LEFT/RIGHT` [проверено] |
+| `RHAZ` | `ho` | `REAR_HAZCAM_LEFT/RIGHT` [проверено, оба марсохода] |
+| `NAVCAM` | `no` | `NAVCAM_LEFT/RIGHT` [проверено] |
+| `PANCAM` | `po` | `PANCAM_LEFT/RIGHT` [проверено] |
+| `ENTRY` | `do` | `DESCAM`, сол 1, 3 кадра `EDN` на марсоход [проверено] |
+| `MINITES` | — | Mini-TES — спектрометр, его данных в Imaging Node нет (Geosciences Node) [не проверено]; камера останется пустой |
+| — (в старом наборе нет) | `mo` | `MI` [проверено] — в старом API не было |
+
+### Импорт
+Источник — 10 файлов `edrindex.tab` + `.lbl` (5 томов × 2 марсохода), 756 МБ, 20 запросов; уже лежат в `data/mer/`. Загружать через команду приложения (`import-mer`, план — `docs/proposals/stage-8-mer-import.md`), не скриптом в обход синхронизации. Настоящие выборки для фикстур (метка + 9–30 строк на том: `EFF/ESF/EDN/ETH/ERP/EHG/ERS/ECS`, группы `ESF+EDN`, повторённые `PRODUCT_ID`) — `data/mer-samples/<том>/` (не в git).
 
 ## Старый API
 

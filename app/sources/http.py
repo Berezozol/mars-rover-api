@@ -7,6 +7,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable, Mapping
+from pathlib import Path
 from types import TracebackType
 from typing import Any, Self
 
@@ -86,6 +87,14 @@ class RateLimiter:
             self._last = target
 
 
+def _content_length(response: httpx.Response) -> int | None:
+    value = response.headers.get("Content-Length")
+    try:
+        return int(value) if value is not None else None
+    except ValueError:
+        return None
+
+
 def _is_retryable(exc: BaseException) -> bool:
     return isinstance(exc, httpx.TransportError | _RetryableStatusError)
 
@@ -128,6 +137,28 @@ class UpstreamClient:
 
     async def get_json(self, url: str, params: Mapping[str, str | int] | None = None) -> Any:
         """GET ``url`` and decode JSON; raises ``UpstreamError`` on any final failure."""
+        response = await self._with_retries(url, lambda: self._send(url, params))
+        return self._decode(url, response)
+
+    async def download(self, url: str, dest: Path) -> int:
+        """Stream ``url`` into ``dest`` and return the number of bytes written.
+
+        The body goes to ``dest`` + ``.part`` first and is renamed only when complete; a body
+        shorter or longer than its ``Content-Length`` is an ``IncompleteResponse``. Same
+        retries, rate limit and User-Agent as ``get_json``; raises ``UpstreamError`` on any
+        final failure (the ``.part`` file is then removed).
+        """
+        part = dest.with_name(dest.name + ".part")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            size = await self._with_retries(url, lambda: self._stream_to(url, part))
+        except BaseException:
+            part.unlink(missing_ok=True)
+            raise
+        part.replace(dest)
+        return size
+
+    async def _with_retries[T](self, url: str, call: Callable[[], Awaitable[T]]) -> T:
         retrying = AsyncRetrying(
             sleep=self._sleep,
             stop=stop_after_attempt(self._max_retries + 1),
@@ -139,18 +170,23 @@ class UpstreamClient:
         try:
             async for attempt in retrying:
                 with attempt:
-                    response = await self._send(url, params)
+                    result = await call()
         except _RetryableStatusError as exc:
             raise UpstreamError(url, exc.status) from exc
         except httpx.HTTPError as exc:
             # Transport errors after the last retry, and non-retryable ones
             # such as TooManyRedirects or DecodingError.
             raise UpstreamError(url, None, f"{type(exc).__name__}: {exc}") from exc
-        return self._decode(url, response)
+        return result
 
     async def _send(self, url: str, params: Mapping[str, str | int] | None) -> httpx.Response:
         await self._limiter.acquire()
         response = await self._http.get(url, params=dict(params) if params else None)
+        self._check_status(url, response)
+        return response
+
+    @staticmethod
+    def _check_status(url: str, response: httpx.Response) -> None:
         status = response.status_code
         if status in RETRYABLE_STATUSES or status >= 500:
             retry_after = None
@@ -159,7 +195,24 @@ class UpstreamClient:
             raise _RetryableStatusError(status, retry_after)
         if status >= 400:
             raise UpstreamError(url, status)
-        return response
+
+    async def _stream_to(self, url: str, part: Path) -> int:
+        await self._limiter.acquire()
+        # Identity encoding: the bytes on disk are the file itself and match Content-Length.
+        headers = {"Accept-Encoding": "identity"}
+        async with self._http.stream("GET", url, headers=headers) as response:
+            self._check_status(url, response)
+            expected = _content_length(response)
+            written = 0
+            with part.open("wb") as file:
+                async for chunk in response.aiter_raw():
+                    file.write(chunk)
+                    written += len(chunk)
+        if expected is not None and written != expected:
+            raise IncompleteResponse(
+                url, response.status_code, f"got {written} bytes, Content-Length {expected}"
+            )
+        return written
 
     def _backoff(self, state: RetryCallState) -> float:
         retry_index = state.attempt_number - 1

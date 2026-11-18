@@ -46,16 +46,25 @@ Python 3.13+, FastAPI, SQLAlchemy 2.0 (async) + asyncpg, Alembic, httpx + tenaci
 
 ## Команда ролей
 - `/stage <N>` — провести этап из `docs/PLAN.md`: план → моё «ок» → `backend-dev` и `qa-engineer` параллельно → прогон → `reviewer` → итог.
-- Роли по отдельности: `@agent-backend-dev`, `@agent-qa-engineer`, `@agent-reviewer`, `@agent-designer` (наброски фронтенда), `@agent-devops` (CI, образ, развёртывание), `@agent-frontend-dev` (фронтенд).
+- Роли по отдельности: `@agent-architect` (план этапа, модель данных, черновик контракта, ADR — до разработки), `@agent-backend-dev`, `@agent-qa-engineer`, `@agent-data-engineer` (проверка источников, загрузки, сверка, производительность на полном объёме), `@agent-reviewer`, `@agent-designer` (наброски фронтенда), `@agent-devops` (CI, образ, развёртывание), `@agent-frontend-dev` (фронтенд).
 
 Владение файлами, чтобы параллельная работа не конфликтовала:
 - `backend-dev` — `app/`, `migrations/`, `pyproject.toml`, `uv.lock`, `docker-compose.yml`, `.env.example`, `alembic.ini`;
 - `qa-engineer` — `tests/`, `scripts/record_fixtures.py`;
-- тимлид (основная сессия) — `docs/`, `README.md`, `CLAUDE.md`;
+- агенты не запускают команды в фоне (`run_in_background`): каждое промежуточное уведомление будит основную сессию и стоит токенов;
+- тимлид (основная сессия) — `docs/` (кроме перечисленного ниже), `README.md`, `CLAUDE.md`;
+- `architect` — `docs/ARCHITECTURE.md`, `docs/proposals/`;
+- `data-engineer` — `docs/DATA-SOURCES.md`, `docs/reports/`, `scripts/` (кроме `record_fixtures.py`);
 - `designer` — `design/` (HTML-макеты будущего фронтенда на данных v2);
 - `devops` — `Dockerfile`, `.dockerignore`, `.github/`, `deploy/` (образ, CI, продакшен-развёртывание, бэкапы, мониторинг);
 - `frontend-dev` — `frontend/` (веб-интерфейс Sol Index на API v2 по макетам из `design/`);
 - `reviewer` — ничего не меняет.
+
+## Автономия architect и data-engineer
+- Тимлид запускает `architect` и `data-engineer` сам, без моего «ок» на запуск. Мои «ок» на контракты, запросы к внешним сайтам, коммиты и удаление данных остаются в силе.
+- Бюджет: вместе не больше 5% недельного лимита токенов за неделю лимита. Тимлид смотрит недельный процент до запуска и после отчёта, разницу записывает в журнал расхода (память сессии). Это оценка: в разницу попадает и всё, что шло параллельно.
+- Если до запуска журнал показывает 5% или больше, или запуск очевидно не уложится в остаток, — эти роли запускаются только после моего «ок». Агент, который перевалил за порог во время работы, доводит текущую задачу до отчёта, новых не получает.
+- Счёт обнуляется вместе с недельным лимитом.
 
 ## Git
 Не коммитить и не пушить без моего «ок». В конце этапа предложи сообщение коммита.

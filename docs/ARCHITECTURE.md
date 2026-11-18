@@ -18,7 +18,8 @@
         ▼
  app/services/sync.py     инкрементальная синхронизация, upsert, сводки по солам
         ▼
- PostgreSQL       rovers · cameras · photos · sol_summaries · sync_runs
+ PostgreSQL       rovers · cameras · photos · sol_summaries · camera_sol_counts
+                  sol_source_counts · sync_runs
         ▲
  app/repositories/   запросы к БД
         ▲
@@ -35,7 +36,7 @@
 ```
 app/
   main.py              create_app(), lifespan, подключение роутеров, обработчики ошибок
-  cli.py               команды: sync, backfill
+  cli.py               команды: sync, backfill, reconcile
   core/
     config.py          Settings (pydantic-settings), все настройки только отсюда
     logging.py         структурные логи
@@ -47,15 +48,19 @@ app/
   db/
     session.py         async engine, фабрика сессий, зависимость get_session
     models.py          ORM-модели SQLAlchemy 2.0
-  repositories/        rovers.py, photos.py, sync_runs.py — только SQL, без логики
+  repositories/        rovers.py, photos.py, sync_runs.py, source_counts.py — только SQL, без логики
   sources/
     base.py            протокол SourceAdapter + dataclass PhotoRecord
     normalize.py       общие правила нормализации: "UNK"/null → None, числа-строки, время в UTC
     http.py            общий httpx-клиент: таймауты, ретраи, лимит частоты, User-Agent
     m2020.py           адаптер Perseverance
     msl.py             адаптер Curiosity
+    registry.py        какие марсоходы синхронизируются и каким адаптером
   services/
     sync.py            синхронизация марсохода
+    backfill.py        загрузка истории пачками с возобновлением (через SyncService)
+    reconcile.py       отчёт сверки
+    admin.py           admin-ручки: запуск синхронизации, журнал запусков
     scheduler.py       APScheduler: периодический инкремент по всем марсоходам
     legacy.py          логика чтения v1: фото, latest, манифест, группы камер, только полнокадровые
     v2.py              логика чтения v2: марсоходы, камеры со счётчиками, фото с фильтрами, latest, манифест

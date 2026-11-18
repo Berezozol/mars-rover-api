@@ -17,6 +17,8 @@ CAMERA_NAMES: dict[str, str] = {
     "PANCAM": "Panoramic Camera",
     "MINITES": "Miniature Thermal Emission Spectrometer (Mini-TES)",
     "ENTRY": "Entry, Descent, and Landing Camera",
+    # Spirit/Opportunity, not in the legacy API (PDS archive)
+    "MI": "Microscopic Imager",
     # Curiosity instrument codes from the current feed
     "FHAZ_LEFT_A": "Front Hazard Avoidance Camera - Left A",
     "FHAZ_RIGHT_A": "Front Hazard Avoidance Camera - Right A",

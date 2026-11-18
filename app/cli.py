@@ -10,6 +10,13 @@
 - ``reconcile --rover R [--offline] [--legacy-manifest PATH] [--output PATH]``: compare
   stored data with the source. Exit codes: 0 no unexplained differences, 1 otherwise,
   2 invalid input.
+- ``mer-download [--rover spirit|opportunity] [--force]``: download the PDS index files of
+  Spirit/Opportunity (both by default) into MER_CACHE_DIR; complete files are skipped.
+  Exit codes: 0 every file present and valid, 1 a download or check failed, 2 invalid input,
+  130 interrupted.
+- ``import-mer --rover spirit|opportunity [--from-sol A] [--to-sol B] [--batch-sols N]
+  [--no-resume]``: one-time import from the cached index files, offline; same batches,
+  resume and exit codes as ``backfill``, plus 2 when the cache is missing (run mer-download).
 """
 
 import argparse
@@ -17,6 +24,8 @@ import asyncio
 import json
 import logging
 import sys
+from collections.abc import Awaitable, Callable
+from contextlib import AsyncExitStack
 from pathlib import Path
 
 from app.core.config import Settings, get_settings
@@ -25,8 +34,11 @@ from app.core.logging import configure_logging
 from app.db.session import create_engine, create_session_factory
 from app.services import reconcile
 from app.services.backfill import BackfillOptions, BackfillResult, BackfillService
+from app.services.mer_download import download_indexes
 from app.services.sync import SyncResult, SyncService, compact_ranges
+from app.sources.base import SourceAdapter
 from app.sources.http import UpstreamClient, UpstreamError
+from app.sources.mer import ROVER_PREFIXES, MerAdapter
 from app.sources.registry import SYNCABLE_ROVERS, build_adapter
 
 logger = logging.getLogger(__name__)
@@ -43,6 +55,11 @@ EXIT_USAGE = 2
 
 _STATUS_EXIT_CODES = {"success": EXIT_SUCCESS, "partial": EXIT_PARTIAL, "failed": EXIT_FAILED}
 
+MER_ROVERS: tuple[str, ...] = tuple(ROVER_PREFIXES)
+
+AdapterBuilder = Callable[[AsyncExitStack], Awaitable[SourceAdapter]]
+BatchesCommand = Callable[[str, int, int | None, int, bool, Settings], Awaitable[int]]
+
 
 def _rover_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
@@ -50,6 +67,25 @@ def _rover_argument(parser: argparse.ArgumentParser) -> None:
         required=True,
         type=str.lower,
         help=f"rover slug, case-insensitive ({', '.join(SYNCABLE_ROVERS)})",
+    )
+
+
+def _batch_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--from-sol", type=int, default=0, help="lowest sol (default 0)")
+    parser.add_argument(
+        "--to-sol", type=int, default=None, help="highest sol (default: the source's latest)"
+    )
+    parser.add_argument(
+        "--batch-sols",
+        type=int,
+        default=None,
+        help="sols per batch, one sync run each (default: BACKFILL_BATCH_SOLS)",
+    )
+    parser.add_argument(
+        "--no-resume",
+        dest="resume",
+        action="store_false",
+        help="redo batches already loaded by a successful backfill run",
     )
 
 
@@ -72,22 +108,27 @@ def _build_parser() -> argparse.ArgumentParser:
         "backfill", help="load the full history in batches, from --to-sol down to --from-sol"
     )
     _rover_argument(backfill)
-    backfill.add_argument("--from-sol", type=int, default=0, help="lowest sol (default 0)")
-    backfill.add_argument(
-        "--to-sol", type=int, default=None, help="highest sol (default: the source's latest)"
+    _batch_arguments(backfill)
+
+    download = commands.add_parser(
+        "mer-download", help="download the Spirit/Opportunity PDS index files into the cache"
     )
-    backfill.add_argument(
-        "--batch-sols",
-        type=int,
+    download.add_argument(
+        "--rover",
+        type=str.lower,
+        choices=MER_ROVERS,
         default=None,
-        help="sols per batch, one sync run each (default: BACKFILL_BATCH_SOLS)",
+        help="one rover (default: both)",
     )
-    backfill.add_argument(
-        "--no-resume",
-        dest="resume",
-        action="store_false",
-        help="redo batches already loaded by a successful backfill run",
+    download.add_argument(
+        "--force", action="store_true", help="download again even if the files are complete"
     )
+
+    mer = commands.add_parser(
+        "import-mer", help="import Spirit/Opportunity from the cached PDS index files"
+    )
+    mer.add_argument("--rover", required=True, type=str.lower, choices=MER_ROVERS)
+    _batch_arguments(mer)
 
     rec = commands.add_parser("reconcile", help="compare stored photos with the source")
     rec.add_argument("--rover", required=True, type=str.lower, help="rover slug")
@@ -111,9 +152,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "sync":
         return _main_sync(args)
     if args.command == "backfill":
-        return _main_backfill(args)
+        return _main_batches(args, run_backfill_command)
     if args.command == "reconcile":
         return _main_reconcile(args)
+    if args.command == "mer-download":
+        return _main_mer_download(args)
+    if args.command == "import-mer":
+        return _main_batches(args, run_import_mer_command)
     parser.print_help(sys.stderr)
     return EXIT_FAILED
 
@@ -127,20 +172,33 @@ def _main_sync(args: argparse.Namespace) -> int:
     return asyncio.run(run_sync_command(args.rover, args.from_sol, args.to_sol, settings))
 
 
-def _main_backfill(args: argparse.Namespace) -> int:
+def _main_batches(args: argparse.Namespace, command: BatchesCommand) -> int:
+    """``backfill`` and ``import-mer``: same options, same exit codes."""
     settings = get_settings()
     configure_logging(settings.log_level)
     batch_sols = args.batch_sols if args.batch_sols is not None else settings.backfill_batch_sols
     try:
         return asyncio.run(
-            run_backfill_command(
-                args.rover, args.from_sol, args.to_sol, batch_sols, args.resume, settings
-            )
+            command(args.rover, args.from_sol, args.to_sol, batch_sols, args.resume, settings)
         )
     except KeyboardInterrupt:
         # The running sync run was marked failed on cancellation; a rerun resumes.
         print("interrupted: rerun the same command to resume", file=sys.stderr)
         return EXIT_INTERRUPTED
+
+
+def _main_mer_download(args: argparse.Namespace) -> int:
+    settings = get_settings()
+    configure_logging(settings.log_level)
+    rovers = [args.rover] if args.rover else list(MER_ROVERS)
+    try:
+        report = asyncio.run(download_indexes(rovers, settings, force=args.force))
+    except KeyboardInterrupt:
+        print("interrupted: rerun the same command to continue", file=sys.stderr)
+        return EXIT_INTERRUPTED
+    for line in report.lines():
+        print(line)
+    return EXIT_SUCCESS if report.ok else EXIT_REMAINING
 
 
 def _main_reconcile(args: argparse.Namespace) -> int:
@@ -195,13 +253,62 @@ async def run_backfill_command(
     settings: Settings,
 ) -> int:
     """Run a backfill and return the process exit code (cancellation propagates)."""
+
+    async def build(stack: AsyncExitStack) -> SourceAdapter:
+        # One client for the whole backfill: UPSTREAM_MAX_RPS holds across batches.
+        client = await stack.enter_async_context(UpstreamClient(settings))
+        return build_adapter(rover, client, settings)
+
+    return await _run_backfill(build, rover, from_sol, to_sol, batch_sols, resume, settings)
+
+
+async def run_import_mer_command(
+    rover: str,
+    from_sol: int,
+    to_sol: int | None,
+    batch_sols: int,
+    resume: bool,
+    settings: Settings,
+) -> int:
+    """Import Spirit/Opportunity from the index cache through the backfill machinery.
+
+    Exit codes as ``run_backfill_command``; 2 when the rover is not a MER rover or index
+    files are missing from the cache (checked before the database is touched).
+    """
+    try:
+        adapter = MerAdapter(rover, settings)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+    missing = adapter.missing_files()
+    if missing:
+        print(
+            f"error: {len(missing)} MER index file(s) missing, e.g. {missing[0]}", file=sys.stderr
+        )
+        print(f"hint: run `python -m app.cli mer-download --rover {rover}`", file=sys.stderr)
+        return EXIT_USAGE
+
+    async def build(_stack: AsyncExitStack) -> SourceAdapter:
+        return adapter
+
+    return await _run_backfill(build, rover, from_sol, to_sol, batch_sols, resume, settings)
+
+
+async def _run_backfill(
+    build: AdapterBuilder,
+    rover: str,
+    from_sol: int,
+    to_sol: int | None,
+    batch_sols: int,
+    resume: bool,
+    settings: Settings,
+) -> int:
     engine = create_engine(
         settings.database_url, connect_timeout=settings.db_connect_timeout_seconds
     )
     try:
-        # One client for the whole backfill: UPSTREAM_MAX_RPS holds across batches.
-        async with UpstreamClient(settings) as client:
-            adapter = build_adapter(rover, client, settings)
+        async with AsyncExitStack() as stack:
+            adapter = await build(stack)
             factory = create_session_factory(engine)
             service = BackfillService(SyncService(factory, settings), factory)
             options = BackfillOptions(

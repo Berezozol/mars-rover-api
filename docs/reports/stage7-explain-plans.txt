@@ -1,0 +1,1025 @@
+
+######## v1 photos sol (cur 0)  /api/v1/rovers/curiosity/photos?sol=0  HTTP 200
+
+-- SELECT rovers.id, rovers.legacy_id, rovers.name, rovers.mission, rovers.launch_date, rovers.landing_date, rovers.status, rovers.max_sol, rovers.max_date, rovers.total_photos, rovers.last_synced_at, rovers.full_max_sol, rovers.full_max_date, rovers.full_total_photos FROM rovers WHERE rovers.id = $1::VARCHAR
+-- params: ('curiosity',)
+Seq Scan on rovers  (cost=0.00..1.05 rows=1 width=75) (actual time=0.006..0.006 rows=1 loops=1)
+  Filter: (id = 'curiosity'::text)
+  Rows Removed by Filter: 3
+  Buffers: shared hit=1
+Planning:
+  Buffers: shared hit=115
+Planning Time: 0.872 ms
+Execution Time: 0.025 ms
+
+-- SELECT cameras.id, cameras.rover_id, cameras.code, cameras.name, cameras.sort_order FROM cameras WHERE cameras.rover_id = $1::VARCHAR ORDER BY cameras.sort_order
+-- params: ('curiosity',)
+Sort  (cost=1.92..1.96 rows=16 width=55) (actual time=0.061..0.062 rows=22 loops=1)
+  Sort Key: sort_order
+  Sort Method: quicksort  Memory: 26kB
+  Buffers: shared hit=4
+  ->  Seq Scan on cameras  (cost=0.00..1.60 rows=16 width=55) (actual time=0.017..0.019 rows=22 loops=1)
+        Filter: (rover_id = 'curiosity'::text)
+        Rows Removed by Filter: 32
+        Buffers: shared hit=1
+Planning:
+  Buffers: shared hit=64
+Planning Time: 0.471 ms
+Execution Time: 0.091 ms
+
+-- SELECT cameras.id, cameras.rover_id, cameras.code, cameras.name, cameras.sort_order, photos.id AS id_1, photos.rover_id AS rover_id_1, photos.camera_id, photos.source_id, photos.sol, photos.earth_date, photos.taken_at, photos.received_at, photos.sample_type, photos.img_full, photos.img_small, photos.img_medium, photos.img_large, photos.title, photos.caption, photos.credit, photos.source_link, photos.site, photos.drive, photos.extra, photos.created_at, photos.updated_at FROM photos JOIN cameras ON cameras.id = photos.camera_id WHERE photos.rover_id = $1::VARCHAR AND photos.sol = $2::INTEGER AND photos.sample_type = $3::VARCHAR ORDER BY cameras.sort_order, photos.id LIMIT ALL OFFSET $4::INTEGER
+-- params: ('curiosity', 0, 'full', 0)
+Sort  (cost=337.12..337.35 rows=92 width=1690) (actual time=6.862..7.041 rows=4370 loops=1)
+  Sort Key: cameras.sort_order, photos.id
+  Sort Method: quicksort  Memory: 3065kB
+  Buffers: shared hit=489
+  ->  Hash Join  (cost=2.50..334.12 rows=92 width=1690) (actual time=0.079..2.650 rows=4370 loops=1)
+        Hash Cond: (photos.camera_id = cameras.id)
+        Buffers: shared hit=486
+        ->  Index Scan using ix_photos_full_rover_id_sol_camera_id_id on photos  (cost=0.42..331.78 rows=92 width=1635) (actual time=0.025..1.193 rows=4370 loops=1)
+              Index Cond: ((rover_id = 'curiosity'::text) AND (sol = 0))
+              Buffers: shared hit=485
+        ->  Hash  (cost=1.48..1.48 rows=48 width=55) (actual time=0.025..0.026 rows=54 loops=1)
+              Buckets: 1024  Batches: 1  Memory Usage: 13kB
+              Buffers: shared hit=1
+              ->  Seq Scan on cameras  (cost=0.00..1.48 rows=48 width=55) (actual time=0.003..0.005 rows=54 loops=1)
+                    Buffers: shared hit=1
+Planning:
+  Buffers: shared hit=285
+Planning Time: 2.316 ms
+Execution Time: 7.685 ms
+
+######## v1 photos sol page (cur 0)  /api/v1/rovers/curiosity/photos?sol=0&page=1  HTTP 200
+
+-- SELECT rovers.id, rovers.legacy_id, rovers.name, rovers.mission, rovers.launch_date, rovers.landing_date, rovers.status, rovers.max_sol, rovers.max_date, rovers.total_photos, rovers.last_synced_at, rovers.full_max_sol, rovers.full_max_date, rovers.full_total_photos FROM rovers WHERE rovers.id = $1::VARCHAR
+-- params: ('curiosity',)
+Seq Scan on rovers  (cost=0.00..1.05 rows=1 width=75) (actual time=0.004..0.005 rows=1 loops=1)
+  Filter: (id = 'curiosity'::text)
+  Rows Removed by Filter: 3
+  Buffers: shared hit=1
+Planning Time: 0.032 ms
+Execution Time: 0.011 ms
+
+-- SELECT cameras.id, cameras.rover_id, cameras.code, cameras.name, cameras.sort_order FROM cameras WHERE cameras.rover_id = $1::VARCHAR ORDER BY cameras.sort_order
+-- params: ('curiosity',)
+Sort  (cost=1.92..1.96 rows=16 width=55) (actual time=0.023..0.024 rows=22 loops=1)
+  Sort Key: sort_order
+  Sort Method: quicksort  Memory: 26kB
+  Buffers: shared hit=1
+  ->  Seq Scan on cameras  (cost=0.00..1.60 rows=16 width=55) (actual time=0.004..0.006 rows=22 loops=1)
+        Filter: (rover_id = 'curiosity'::text)
+        Rows Removed by Filter: 32
+        Buffers: shared hit=1
+Planning Time: 0.028 ms
+Execution Time: 0.041 ms
+
+-- SELECT cameras.id, cameras.rover_id, cameras.code, cameras.name, cameras.sort_order, photos.id AS id_1, photos.rover_id AS rover_id_1, photos.camera_id, photos.source_id, photos.sol, photos.earth_date, photos.taken_at, photos.received_at, photos.sample_type, photos.img_full, photos.img_small, photos.img_medium, photos.img_large, photos.title, photos.caption, photos.credit, photos.source_link, photos.site, photos.drive, photos.extra, photos.created_at, photos.updated_at FROM photos JOIN cameras ON cameras.id = photos.camera_id WHERE photos.rover_id = $1::VARCHAR AND photos.sol = $2::INTEGER AND photos.sample_type = $3::VARCHAR ORDER BY cameras.sort_order, photos.id LIMIT $4::INTEGER OFFSET $5::INTEGER
+-- params: ('curiosity', 0, 'full', 25, 0)
+Limit  (cost=336.72..336.78 rows=25 width=1690) (actual time=4.327..4.330 rows=25 loops=1)
+  Buffers: shared hit=486
+  ->  Sort  (cost=336.72..336.95 rows=92 width=1690) (actual time=4.326..4.328 rows=25 loops=1)
+        Sort Key: cameras.sort_order, photos.id
+        Sort Method: top-N heapsort  Memory: 50kB
+        Buffers: shared hit=486
+        ->  Hash Join  (cost=2.50..334.12 rows=92 width=1690) (actual time=0.054..2.614 rows=4370 loops=1)
+              Hash Cond: (photos.camera_id = cameras.id)
+              Buffers: shared hit=486
+              ->  Index Scan using ix_photos_full_rover_id_sol_camera_id_id on photos  (cost=0.42..331.78 rows=92 width=1635) (actual time=0.018..0.834 rows=4370 loops=1)
+                    Index Cond: ((rover_id = 'curiosity'::text) AND (sol = 0))
+                    Buffers: shared hit=485
+              ->  Hash  (cost=1.48..1.48 rows=48 width=55) (actual time=0.017..0.018 rows=54 loops=1)
+                    Buckets: 1024  Batches: 1  Memory Usage: 13kB
+                    Buffers: shared hit=1
+                    ->  Seq Scan on cameras  (cost=0.00..1.48 rows=48 width=55) (actual time=0.002..0.004 rows=54 loops=1)
+                          Buffers: shared hit=1
+Planning:
+  Buffers: shared hit=4
+Planning Time: 0.216 ms
+Execution Time: 4.430 ms
+
+######## v1 photos sol (per 1717)  /api/v1/rovers/perseverance/photos?sol=1717  HTTP 200
+
+-- SELECT rovers.id, rovers.legacy_id, rovers.name, rovers.mission, rovers.launch_date, rovers.landing_date, rovers.status, rovers.max_sol, rovers.max_date, rovers.total_photos, rovers.last_synced_at, rovers.full_max_sol, rovers.full_max_date, rovers.full_total_photos FROM rovers WHERE rovers.id = $1::VARCHAR
+-- params: ('perseverance',)
+Seq Scan on rovers  (cost=0.00..1.05 rows=1 width=75) (actual time=0.005..0.006 rows=1 loops=1)
+  Filter: (id = 'perseverance'::text)
+  Rows Removed by Filter: 3
+  Buffers: shared hit=1
+Planning Time: 0.050 ms
+Execution Time: 0.012 ms
+
+-- SELECT cameras.id, cameras.rover_id, cameras.code, cameras.name, cameras.sort_order FROM cameras WHERE cameras.rover_id = $1::VARCHAR ORDER BY cameras.sort_order
+-- params: ('perseverance',)
+Sort  (cost=2.03..2.08 rows=20 width=55) (actual time=0.033..0.034 rows=20 loops=1)
+  Sort Key: sort_order
+  Sort Method: quicksort  Memory: 26kB
+  Buffers: shared hit=1
+  ->  Seq Scan on cameras  (cost=0.00..1.60 rows=20 width=55) (actual time=0.008..0.012 rows=20 loops=1)
+        Filter: (rover_id = 'perseverance'::text)
+        Rows Removed by Filter: 34
+        Buffers: shared hit=1
+Planning Time: 0.056 ms
+Execution Time: 0.057 ms
+
+-- SELECT cameras.id, cameras.rover_id, cameras.code, cameras.name, cameras.sort_order, photos.id AS id_1, photos.rover_id AS rover_id_1, photos.camera_id, photos.source_id, photos.sol, photos.earth_date, photos.taken_at, photos.received_at, photos.sample_type, photos.img_full, photos.img_small, photos.img_medium, photos.img_large, photos.title, photos.caption, photos.credit, photos.source_link, photos.site, photos.drive, photos.extra, photos.created_at, photos.updated_at FROM photos JOIN cameras ON cameras.id = photos.camera_id WHERE photos.rover_id = $1::VARCHAR AND photos.sol = $2::INTEGER AND photos.sample_type = $3::VARCHAR ORDER BY cameras.sort_order, photos.id LIMIT ALL OFFSET $4::INTEGER
+-- params: ('perseverance', 1717, 'full', 0)
+Sort  (cost=3311.48..3313.75 rows=908 width=1690) (actual time=23.104..24.689 rows=3950 loops=1)
+  Sort Key: cameras.sort_order, photos.id
+  Sort Method: external merge  Disk: 7528kB
+  Buffers: shared hit=2024, temp read=941 written=942
+  ->  Merge Join  (cost=0.56..3266.87 rows=908 width=1690) (actual time=0.042..3.563 rows=3950 loops=1)
+        Merge Cond: (photos.camera_id = cameras.id)
+        Buffers: shared hit=2024
+        ->  Index Scan using ix_photos_full_rover_id_sol_camera_id_id on photos  (cost=0.42..3260.51 rows=908 width=1635) (actual time=0.026..2.087 rows=3950 loops=1)
+              Index Cond: ((rover_id = 'perseverance'::text) AND (sol = 1717))
+              Buffers: shared hit=2022
+        ->  Index Scan using pk_cameras on cameras  (cost=0.14..12.86 rows=48 width=55) (actual time=0.012..0.014 rows=14 loops=1)
+              Buffers: shared hit=2
+Planning:
+  Buffers: shared hit=4
+Planning Time: 0.215 ms
+Execution Time: 27.164 ms
+
+######## v1 photos sol page (per 1717)  /api/v1/rovers/perseverance/photos?sol=1717&page=1  HTTP 200
+
+-- SELECT rovers.id, rovers.legacy_id, rovers.name, rovers.mission, rovers.launch_date, rovers.landing_date, rovers.status, rovers.max_sol, rovers.max_date, rovers.total_photos, rovers.last_synced_at, rovers.full_max_sol, rovers.full_max_date, rovers.full_total_photos FROM rovers WHERE rovers.id = $1::VARCHAR
+-- params: ('perseverance',)
+Seq Scan on rovers  (cost=0.00..1.05 rows=1 width=75) (actual time=0.006..0.007 rows=1 loops=1)
+  Filter: (id = 'perseverance'::text)
+  Rows Removed by Filter: 3
+  Buffers: shared hit=1
+Planning Time: 0.040 ms
+Execution Time: 0.015 ms
+
+-- SELECT cameras.id, cameras.rover_id, cameras.code, cameras.name, cameras.sort_order FROM cameras WHERE cameras.rover_id = $1::VARCHAR ORDER BY cameras.sort_order
+-- params: ('perseverance',)
+Sort  (cost=2.03..2.08 rows=20 width=55) (actual time=0.021..0.022 rows=20 loops=1)
+  Sort Key: sort_order
+  Sort Method: quicksort  Memory: 26kB
+  Buffers: shared hit=1
+  ->  Seq Scan on cameras  (cost=0.00..1.60 rows=20 width=55) (actual time=0.004..0.007 rows=20 loops=1)
+        Filter: (rover_id = 'perseverance'::text)
+        Rows Removed by Filter: 34
+        Buffers: shared hit=1
+Planning Time: 0.030 ms
+Execution Time: 0.038 ms
+
+-- SELECT cameras.id, cameras.rover_id, cameras.code, cameras.name, cameras.sort_order, photos.id AS id_1, photos.rover_id AS rover_id_1, photos.camera_id, photos.source_id, photos.sol, photos.earth_date, photos.taken_at, photos.received_at, photos.sample_type, photos.img_full, photos.img_small, photos.img_medium, photos.img_large, photos.title, photos.caption, photos.credit, photos.source_link, photos.site, photos.drive, photos.extra, photos.created_at, photos.updated_at FROM photos JOIN cameras ON cameras.id = photos.camera_id WHERE photos.rover_id = $1::VARCHAR AND photos.sol = $2::INTEGER AND photos.sample_type = $3::VARCHAR ORDER BY cameras.sort_order, photos.id LIMIT $4::INTEGER OFFSET $5::INTEGER
+-- params: ('perseverance', 1717, 'full', 25, 0)
+Limit  (cost=3292.49..3292.56 rows=25 width=1690) (actual time=4.281..4.283 rows=25 loops=1)
+  Buffers: shared hit=2024
+  ->  Sort  (cost=3292.49..3294.76 rows=908 width=1690) (actual time=4.280..4.281 rows=25 loops=1)
+        Sort Key: cameras.sort_order, photos.id
+        Sort Method: top-N heapsort  Memory: 75kB
+        Buffers: shared hit=2024
+        ->  Merge Join  (cost=0.56..3266.87 rows=908 width=1690) (actual time=0.035..2.711 rows=3950 loops=1)
+              Merge Cond: (photos.camera_id = cameras.id)
+              Buffers: shared hit=2024
+              ->  Index Scan using ix_photos_full_rover_id_sol_camera_id_id on photos  (cost=0.42..3260.51 rows=908 width=1635) (actual time=0.018..1.260 rows=3950 loops=1)
+                    Index Cond: ((rover_id = 'perseverance'::text) AND (sol = 1717))
+                    Buffers: shared hit=2022
+              ->  Index Scan using pk_cameras on cameras  (cost=0.14..12.86 rows=48 width=55) (actual time=0.013..0.015 rows=14 loops=1)
+                    Buffers: shared hit=2
+Planning:
+  Buffers: shared hit=4
+Planning Time: 0.206 ms
+Execution Time: 4.388 ms
+
+######## v1 photos earth_date (cur)  /api/v1/rovers/curiosity/photos?earth_date=2012-08-06  HTTP 200
+
+-- SELECT rovers.id, rovers.legacy_id, rovers.name, rovers.mission, rovers.launch_date, rovers.landing_date, rovers.status, rovers.max_sol, rovers.max_date, rovers.total_photos, rovers.last_synced_at, rovers.full_max_sol, rovers.full_max_date, rovers.full_total_photos FROM rovers WHERE rovers.id = $1::VARCHAR
+-- params: ('curiosity',)
+Seq Scan on rovers  (cost=0.00..1.05 rows=1 width=75) (actual time=0.006..0.007 rows=1 loops=1)
+  Filter: (id = 'curiosity'::text)
+  Rows Removed by Filter: 3
+  Buffers: shared hit=1
+Planning Time: 0.045 ms
+Execution Time: 0.015 ms
+
+-- SELECT cameras.id, cameras.rover_id, cameras.code, cameras.name, cameras.sort_order FROM cameras WHERE cameras.rover_id = $1::VARCHAR ORDER BY cameras.sort_order
+-- params: ('curiosity',)
+Sort  (cost=1.92..1.96 rows=16 width=55) (actual time=0.022..0.023 rows=22 loops=1)
+  Sort Key: sort_order
+  Sort Method: quicksort  Memory: 26kB
+  Buffers: shared hit=1
+  ->  Seq Scan on cameras  (cost=0.00..1.60 rows=16 width=55) (actual time=0.006..0.008 rows=22 loops=1)
+        Filter: (rover_id = 'curiosity'::text)
+        Rows Removed by Filter: 32
+        Buffers: shared hit=1
+Planning Time: 0.038 ms
+Execution Time: 0.042 ms
+
+-- SELECT cameras.id, cameras.rover_id, cameras.code, cameras.name, cameras.sort_order, photos.id AS id_1, photos.rover_id AS rover_id_1, photos.camera_id, photos.source_id, photos.sol, photos.earth_date, photos.taken_at, photos.received_at, photos.sample_type, photos.img_full, photos.img_small, photos.img_medium, photos.img_large, photos.title, photos.caption, photos.credit, photos.source_link, photos.site, photos.drive, photos.extra, photos.created_at, photos.updated_at FROM photos JOIN cameras ON cameras.id = photos.camera_id WHERE photos.rover_id = $1::VARCHAR AND photos.sol = $2::INTEGER AND photos.sample_type = $3::VARCHAR ORDER BY cameras.sort_order, photos.id LIMIT ALL OFFSET $4::INTEGER
+-- params: ('curiosity', 0, 'full', 0)
+Sort  (cost=337.12..337.35 rows=92 width=1690) (actual time=6.557..6.740 rows=4370 loops=1)
+  Sort Key: cameras.sort_order, photos.id
+  Sort Method: quicksort  Memory: 3065kB
+  Buffers: shared hit=486
+  ->  Hash Join  (cost=2.50..334.12 rows=92 width=1690) (actual time=0.061..2.476 rows=4370 loops=1)
+        Hash Cond: (photos.camera_id = cameras.id)
+        Buffers: shared hit=486
+        ->  Index Scan using ix_photos_full_rover_id_sol_camera_id_id on photos  (cost=0.42..331.78 rows=92 width=1635) (actual time=0.020..0.927 rows=4370 loops=1)
+              Index Cond: ((rover_id = 'curiosity'::text) AND (sol = 0))
+              Buffers: shared hit=485
+        ->  Hash  (cost=1.48..1.48 rows=48 width=55) (actual time=0.018..0.019 rows=54 loops=1)
+              Buckets: 1024  Batches: 1  Memory Usage: 13kB
+              Buffers: shared hit=1
+              ->  Seq Scan on cameras  (cost=0.00..1.48 rows=48 width=55) (actual time=0.003..0.005 rows=54 loops=1)
+                    Buffers: shared hit=1
+Planning:
+  Buffers: shared hit=4
+Planning Time: 0.209 ms
+Execution Time: 7.291 ms
+
+######## v1 manifest (cur)  /api/v1/manifests/curiosity  HTTP 200
+
+-- SELECT rovers.id, rovers.legacy_id, rovers.name, rovers.mission, rovers.launch_date, rovers.landing_date, rovers.status, rovers.max_sol, rovers.max_date, rovers.total_photos, rovers.last_synced_at, rovers.full_max_sol, rovers.full_max_date, rovers.full_total_photos FROM rovers WHERE rovers.id = $1::VARCHAR
+-- params: ('curiosity',)
+Seq Scan on rovers  (cost=0.00..1.05 rows=1 width=75) (actual time=0.006..0.006 rows=1 loops=1)
+  Filter: (id = 'curiosity'::text)
+  Rows Removed by Filter: 3
+  Buffers: shared hit=1
+Planning Time: 0.043 ms
+Execution Time: 0.013 ms
+
+-- SELECT sol_summaries.rover_id, sol_summaries.sol, sol_summaries.earth_date, sol_summaries.total_photos, sol_summaries.cameras, sol_summaries.full_photos, sol_summaries.full_cameras FROM sol_summaries WHERE sol_summaries.rover_id = $1::VARCHAR AND sol_summaries.full_photos > $2::INTEGER ORDER BY sol_summaries.sol
+-- params: ('curiosity', 0)
+Sort  (cost=649.21..660.63 rows=4568 width=294) (actual time=2.620..2.819 rows=4580 loops=1)
+  Sort Key: sol
+  Sort Method: quicksort  Memory: 1625kB
+  Buffers: shared hit=272
+  ->  Seq Scan on sol_summaries  (cost=0.00..371.54 rows=4568 width=294) (actual time=0.012..1.094 rows=4580 loops=1)
+        Filter: ((full_photos > 0) AND (rover_id = 'curiosity'::text))
+        Rows Removed by Filter: 2075
+        Buffers: shared hit=272
+Planning:
+  Buffers: shared hit=51
+Planning Time: 0.489 ms
+Execution Time: 3.206 ms
+
+######## v1 manifest (per)  /api/v1/manifests/perseverance  HTTP 200
+
+-- SELECT rovers.id, rovers.legacy_id, rovers.name, rovers.mission, rovers.launch_date, rovers.landing_date, rovers.status, rovers.max_sol, rovers.max_date, rovers.total_photos, rovers.last_synced_at, rovers.full_max_sol, rovers.full_max_date, rovers.full_total_photos FROM rovers WHERE rovers.id = $1::VARCHAR
+-- params: ('perseverance',)
+Seq Scan on rovers  (cost=0.00..1.05 rows=1 width=75) (actual time=0.006..0.007 rows=1 loops=1)
+  Filter: (id = 'perseverance'::text)
+  Rows Removed by Filter: 3
+  Buffers: shared hit=1
+Planning Time: 0.049 ms
+Execution Time: 0.015 ms
+
+-- SELECT sol_summaries.rover_id, sol_summaries.sol, sol_summaries.earth_date, sol_summaries.total_photos, sol_summaries.cameras, sol_summaries.full_photos, sol_summaries.full_cameras FROM sol_summaries WHERE sol_summaries.rover_id = $1::VARCHAR AND sol_summaries.full_photos > $2::INTEGER ORDER BY sol_summaries.sol
+-- params: ('perseverance', 0)
+Sort  (cost=479.52..484.46 rows=1973 width=294) (actual time=1.547..1.631 rows=1965 loops=1)
+  Sort Key: sol
+  Sort Method: quicksort  Memory: 714kB
+  Buffers: shared hit=272
+  ->  Seq Scan on sol_summaries  (cost=0.00..371.54 rows=1973 width=294) (actual time=0.005..0.821 rows=1965 loops=1)
+        Filter: ((full_photos > 0) AND (rover_id = 'perseverance'::text))
+        Rows Removed by Filter: 4690
+        Buffers: shared hit=272
+Planning Time: 0.039 ms
+Execution Time: 1.810 ms
+
+######## v1 latest (cur)  /api/v1/rovers/curiosity/latest_photos  HTTP 200
+
+-- SELECT rovers.id, rovers.legacy_id, rovers.name, rovers.mission, rovers.launch_date, rovers.landing_date, rovers.status, rovers.max_sol, rovers.max_date, rovers.total_photos, rovers.last_synced_at, rovers.full_max_sol, rovers.full_max_date, rovers.full_total_photos FROM rovers WHERE rovers.id = $1::VARCHAR
+-- params: ('curiosity',)
+Seq Scan on rovers  (cost=0.00..1.05 rows=1 width=75) (actual time=0.004..0.004 rows=1 loops=1)
+  Filter: (id = 'curiosity'::text)
+  Rows Removed by Filter: 3
+  Buffers: shared hit=1
+Planning Time: 0.024 ms
+Execution Time: 0.009 ms
+
+-- SELECT cameras.id, cameras.rover_id, cameras.code, cameras.name, cameras.sort_order FROM cameras WHERE cameras.rover_id = $1::VARCHAR ORDER BY cameras.sort_order
+-- params: ('curiosity',)
+Sort  (cost=1.92..1.96 rows=16 width=55) (actual time=0.017..0.018 rows=22 loops=1)
+  Sort Key: sort_order
+  Sort Method: quicksort  Memory: 26kB
+  Buffers: shared hit=1
+  ->  Seq Scan on cameras  (cost=0.00..1.60 rows=16 width=55) (actual time=0.004..0.006 rows=22 loops=1)
+        Filter: (rover_id = 'curiosity'::text)
+        Rows Removed by Filter: 32
+        Buffers: shared hit=1
+Planning Time: 0.028 ms
+Execution Time: 0.034 ms
+
+-- SELECT cameras.id, cameras.rover_id, cameras.code, cameras.name, cameras.sort_order, photos.id AS id_1, photos.rover_id AS rover_id_1, photos.camera_id, photos.source_id, photos.sol, photos.earth_date, photos.taken_at, photos.received_at, photos.sample_type, photos.img_full, photos.img_small, photos.img_medium, photos.img_large, photos.title, photos.caption, photos.credit, photos.source_link, photos.site, photos.drive, photos.extra, photos.created_at, photos.updated_at FROM photos JOIN cameras ON cameras.id = photos.camera_id WHERE photos.rover_id = $1::VARCHAR AND photos.sol = $2::INTEGER AND photos.sample_type = $3::VARCHAR ORDER BY cameras.sort_order, photos.id LIMIT ALL OFFSET $4::INTEGER
+-- params: ('curiosity', 5077, 'full', 0)
+Sort  (cost=337.12..337.35 rows=92 width=1690) (actual time=0.083..0.083 rows=2 loops=1)
+  Sort Key: cameras.sort_order, photos.id
+  Sort Method: quicksort  Memory: 27kB
+  Buffers: shared hit=6
+  ->  Hash Join  (cost=2.50..334.12 rows=92 width=1690) (actual time=0.071..0.073 rows=2 loops=1)
+        Hash Cond: (photos.camera_id = cameras.id)
+        Buffers: shared hit=6
+        ->  Index Scan using ix_photos_full_rover_id_sol_camera_id_id on photos  (cost=0.42..331.78 rows=92 width=1635) (actual time=0.029..0.030 rows=2 loops=1)
+              Index Cond: ((rover_id = 'curiosity'::text) AND (sol = 5077))
+              Buffers: shared hit=5
+        ->  Hash  (cost=1.48..1.48 rows=48 width=55) (actual time=0.019..0.020 rows=54 loops=1)
+              Buckets: 1024  Batches: 1  Memory Usage: 13kB
+              Buffers: shared hit=1
+              ->  Seq Scan on cameras  (cost=0.00..1.48 rows=48 width=55) (actual time=0.002..0.004 rows=54 loops=1)
+                    Buffers: shared hit=1
+Planning:
+  Buffers: shared hit=4
+Planning Time: 0.195 ms
+Execution Time: 0.151 ms
+
+######## v1 latest (per)  /api/v1/rovers/perseverance/latest_photos  HTTP 200
+
+-- SELECT rovers.id, rovers.legacy_id, rovers.name, rovers.mission, rovers.launch_date, rovers.landing_date, rovers.status, rovers.max_sol, rovers.max_date, rovers.total_photos, rovers.last_synced_at, rovers.full_max_sol, rovers.full_max_date, rovers.full_total_photos FROM rovers WHERE rovers.id = $1::VARCHAR
+-- params: ('perseverance',)
+Seq Scan on rovers  (cost=0.00..1.05 rows=1 width=75) (actual time=0.004..0.004 rows=1 loops=1)
+  Filter: (id = 'perseverance'::text)
+  Rows Removed by Filter: 3
+  Buffers: shared hit=1
+Planning Time: 0.030 ms
+Execution Time: 0.009 ms
+
+-- SELECT cameras.id, cameras.rover_id, cameras.code, cameras.name, cameras.sort_order FROM cameras WHERE cameras.rover_id = $1::VARCHAR ORDER BY cameras.sort_order
+-- params: ('perseverance',)
+Sort  (cost=2.03..2.08 rows=20 width=55) (actual time=0.019..0.020 rows=20 loops=1)
+  Sort Key: sort_order
+  Sort Method: quicksort  Memory: 26kB
+  Buffers: shared hit=1
+  ->  Seq Scan on cameras  (cost=0.00..1.60 rows=20 width=55) (actual time=0.004..0.006 rows=20 loops=1)
+        Filter: (rover_id = 'perseverance'::text)
+        Rows Removed by Filter: 34
+        Buffers: shared hit=1
+Planning Time: 0.031 ms
+Execution Time: 0.037 ms
+
+-- SELECT cameras.id, cameras.rover_id, cameras.code, cameras.name, cameras.sort_order, photos.id AS id_1, photos.rover_id AS rover_id_1, photos.camera_id, photos.source_id, photos.sol, photos.earth_date, photos.taken_at, photos.received_at, photos.sample_type, photos.img_full, photos.img_small, photos.img_medium, photos.img_large, photos.title, photos.caption, photos.credit, photos.source_link, photos.site, photos.drive, photos.extra, photos.created_at, photos.updated_at FROM photos JOIN cameras ON cameras.id = photos.camera_id WHERE photos.rover_id = $1::VARCHAR AND photos.sol = $2::INTEGER AND photos.sample_type = $3::VARCHAR ORDER BY cameras.sort_order, photos.id LIMIT ALL OFFSET $4::INTEGER
+-- params: ('perseverance', 2031, 'full', 0)
+Sort  (cost=272.43..272.62 rows=74 width=1690) (actual time=0.077..0.078 rows=6 loops=1)
+  Sort Key: cameras.sort_order, photos.id
+  Sort Method: quicksort  Memory: 35kB
+  Buffers: shared hit=6
+  ->  Hash Join  (cost=2.50..270.14 rows=74 width=1690) (actual time=0.061..0.066 rows=6 loops=1)
+        Hash Cond: (photos.camera_id = cameras.id)
+        Buffers: shared hit=6
+        ->  Index Scan using ix_photos_full_rover_id_sol_camera_id_id on photos  (cost=0.42..267.84 rows=74 width=1635) (actual time=0.021..0.023 rows=6 loops=1)
+              Index Cond: ((rover_id = 'perseverance'::text) AND (sol = 2031))
+              Buffers: shared hit=5
+        ->  Hash  (cost=1.48..1.48 rows=48 width=55) (actual time=0.019..0.019 rows=54 loops=1)
+              Buckets: 1024  Batches: 1  Memory Usage: 13kB
+              Buffers: shared hit=1
+              ->  Seq Scan on cameras  (cost=0.00..1.48 rows=48 width=55) (actual time=0.002..0.004 rows=54 loops=1)
+                    Buffers: shared hit=1
+Planning:
+  Buffers: shared hit=4
+Planning Time: 0.190 ms
+Execution Time: 0.145 ms
+
+######## v2 photos sol (cur 0)  /api/v2/rovers/curiosity/photos?sol=0  HTTP 200
+
+-- SELECT rovers.id, rovers.legacy_id, rovers.name, rovers.mission, rovers.launch_date, rovers.landing_date, rovers.status, rovers.max_sol, rovers.max_date, rovers.total_photos, rovers.last_synced_at, rovers.full_max_sol, rovers.full_max_date, rovers.full_total_photos FROM rovers WHERE rovers.id = $1::VARCHAR
+-- params: ('curiosity',)
+Seq Scan on rovers  (cost=0.00..1.05 rows=1 width=75) (actual time=0.005..0.005 rows=1 loops=1)
+  Filter: (id = 'curiosity'::text)
+  Rows Removed by Filter: 3
+  Buffers: shared hit=1
+Planning Time: 0.032 ms
+Execution Time: 0.011 ms
+
+-- SELECT sol_summaries.total_photos FROM sol_summaries WHERE sol_summaries.rover_id = $1::VARCHAR AND sol_summaries.sol = $2::INTEGER
+-- params: ('curiosity', 0)
+Index Scan using pk_sol_summaries on sol_summaries  (cost=0.28..8.30 rows=1 width=4) (actual time=0.027..0.028 rows=1 loops=1)
+  Index Cond: ((rover_id = 'curiosity'::text) AND (sol = 0))
+  Buffers: shared hit=3
+Planning Time: 0.031 ms
+Execution Time: 0.043 ms
+
+-- SELECT photos.id, photos.rover_id, photos.camera_id, photos.source_id, photos.sol, photos.earth_date, photos.taken_at, photos.received_at, photos.sample_type, photos.img_full, photos.img_small, photos.img_medium, photos.img_large, photos.title, photos.caption, photos.credit, photos.source_link, photos.site, photos.drive, photos.extra, photos.created_at, photos.updated_at FROM photos WHERE photos.rover_id = $1::VARCHAR AND photos.sol = $2::INTEGER ORDER BY photos.sol DESC, photos.taken_at DESC, photos.id DESC LIMIT $3::INTEGER OFFSET $4::INTEGER
+-- params: ('curiosity', 0, 25, 0)
+Limit  (cost=0.43..90.54 rows=25 width=1635) (actual time=0.028..0.038 rows=25 loops=1)
+  Buffers: shared hit=17
+  ->  Index Scan using ix_photos_rover_id_sol_taken_at on photos  (cost=0.43..602.36 rows=167 width=1635) (actual time=0.027..0.036 rows=25 loops=1)
+        Index Cond: ((rover_id = 'curiosity'::text) AND (sol = 0))
+        Buffers: shared hit=17
+Planning:
+  Buffers: shared hit=13
+Planning Time: 0.138 ms
+Execution Time: 0.059 ms
+
+-- SELECT cameras.id, cameras.rover_id, cameras.code, cameras.name, cameras.sort_order FROM cameras WHERE cameras.id IN ($1::INTEGER, $2::INTEGER, $3::INTEGER, $4::INTEGER, $5::INTEGER, $6::INTEGER)
+-- params: (41, 54, 53, 51, 52, 23)
+Seq Scan on cameras  (cost=0.00..1.84 rows=6 width=55) (actual time=0.006..0.008 rows=6 loops=1)
+  Filter: (id = ANY ('{41,54,53,51,52,23}'::integer[]))
+  Rows Removed by Filter: 48
+  Buffers: shared hit=1
+Planning Time: 0.041 ms
+Execution Time: 0.012 ms
+
+######## v2 photos sol (per 1717)  /api/v2/rovers/perseverance/photos?sol=1717&page=20  HTTP 200
+
+-- SELECT rovers.id, rovers.legacy_id, rovers.name, rovers.mission, rovers.launch_date, rovers.landing_date, rovers.status, rovers.max_sol, rovers.max_date, rovers.total_photos, rovers.last_synced_at, rovers.full_max_sol, rovers.full_max_date, rovers.full_total_photos FROM rovers WHERE rovers.id = $1::VARCHAR
+-- params: ('perseverance',)
+Seq Scan on rovers  (cost=0.00..1.05 rows=1 width=75) (actual time=0.003..0.004 rows=1 loops=1)
+  Filter: (id = 'perseverance'::text)
+  Rows Removed by Filter: 3
+  Buffers: shared hit=1
+Planning Time: 0.025 ms
+Execution Time: 0.009 ms
+
+-- SELECT sol_summaries.total_photos FROM sol_summaries WHERE sol_summaries.rover_id = $1::VARCHAR AND sol_summaries.sol = $2::INTEGER
+-- params: ('perseverance', 1717)
+Index Scan using pk_sol_summaries on sol_summaries  (cost=0.28..8.30 rows=1 width=4) (actual time=0.021..0.022 rows=1 loops=1)
+  Index Cond: ((rover_id = 'perseverance'::text) AND (sol = 1717))
+  Buffers: shared hit=3
+Planning Time: 0.040 ms
+Execution Time: 0.040 ms
+
+-- SELECT photos.id, photos.rover_id, photos.camera_id, photos.source_id, photos.sol, photos.earth_date, photos.taken_at, photos.received_at, photos.sample_type, photos.img_full, photos.img_small, photos.img_medium, photos.img_large, photos.title, photos.caption, photos.credit, photos.source_link, photos.site, photos.drive, photos.extra, photos.created_at, photos.updated_at FROM photos WHERE photos.rover_id = $1::VARCHAR AND photos.sol = $2::INTEGER ORDER BY photos.sol DESC, photos.taken_at DESC, photos.id DESC LIMIT $3::INTEGER OFFSET $4::INTEGER
+-- params: ('perseverance', 1717, 25, 475)
+Limit  (cost=1701.03..1790.53 rows=25 width=1635) (actual time=0.173..0.180 rows=25 loops=1)
+  Buffers: shared hit=352
+  ->  Index Scan using ix_photos_rover_id_sol_taken_at on photos  (cost=0.43..5889.87 rows=1645 width=1635) (actual time=0.031..0.166 rows=500 loops=1)
+        Index Cond: ((rover_id = 'perseverance'::text) AND (sol = 1717))
+        Buffers: shared hit=352
+Planning Time: 0.075 ms
+Execution Time: 0.207 ms
+
+-- SELECT cameras.id, cameras.rover_id, cameras.code, cameras.name, cameras.sort_order FROM cameras WHERE cameras.id IN ($1::INTEGER, $2::INTEGER)
+-- params: (9, 8)
+Seq Scan on cameras  (cost=0.00..1.60 rows=2 width=55) (actual time=0.006..0.007 rows=2 loops=1)
+  Filter: (id = ANY ('{9,8}'::integer[]))
+  Rows Removed by Filter: 52
+  Buffers: shared hit=1
+Planning Time: 0.040 ms
+Execution Time: 0.012 ms
+
+######## v2 photos camera (cur NAV_RIGHT_B)  /api/v2/rovers/curiosity/photos?camera=NAV_RIGHT_B  HTTP 200
+
+-- SELECT rovers.id, rovers.legacy_id, rovers.name, rovers.mission, rovers.launch_date, rovers.landing_date, rovers.status, rovers.max_sol, rovers.max_date, rovers.total_photos, rovers.last_synced_at, rovers.full_max_sol, rovers.full_max_date, rovers.full_total_photos FROM rovers WHERE rovers.id = $1::VARCHAR
+-- params: ('curiosity',)
+Seq Scan on rovers  (cost=0.00..1.05 rows=1 width=75) (actual time=0.026..0.026 rows=1 loops=1)
+  Filter: (id = 'curiosity'::text)
+  Rows Removed by Filter: 3
+  Buffers: shared read=1
+Planning Time: 0.037 ms
+Execution Time: 0.033 ms
+
+-- SELECT cameras.id, cameras.rover_id, cameras.code, cameras.name, cameras.sort_order FROM cameras WHERE cameras.rover_id = $1::VARCHAR ORDER BY cameras.sort_order
+-- params: ('curiosity',)
+Sort  (cost=1.92..1.96 rows=16 width=55) (actual time=0.025..0.026 rows=22 loops=1)
+  Sort Key: sort_order
+  Sort Method: quicksort  Memory: 26kB
+  Buffers: shared hit=1
+  ->  Seq Scan on cameras  (cost=0.00..1.60 rows=16 width=55) (actual time=0.006..0.008 rows=22 loops=1)
+        Filter: (rover_id = 'curiosity'::text)
+        Rows Removed by Filter: 32
+        Buffers: shared hit=1
+Planning Time: 0.047 ms
+Execution Time: 0.044 ms
+
+-- SELECT count(photos.id) AS count_1 FROM photos JOIN cameras ON cameras.id = photos.camera_id WHERE photos.rover_id = $1::VARCHAR AND cameras.code IN ($2::VARCHAR)
+-- params: ('curiosity', 'NAV_RIGHT_B')
+Aggregate  (cost=62041.51..62041.52 rows=1 width=8) (actual time=173.609..173.611 rows=1 loops=1)
+  Buffers: shared hit=7 read=34232 written=8
+  ->  Nested Loop  (cost=358.60..62002.74 rows=15505 width=8) (actual time=13.550..166.050 rows=180917 loops=1)
+        Buffers: shared hit=7 read=34232 written=8
+        ->  Seq Scan on cameras  (cost=0.00..1.60 rows=1 width=4) (actual time=0.004..0.008 rows=1 loops=1)
+              Filter: (code = 'NAV_RIGHT_B'::text)
+              Rows Removed by Filter: 53
+              Buffers: shared hit=1
+        ->  Bitmap Heap Scan on photos  (cost=358.60..61800.00 rows=20114 width=12) (actual time=13.543..154.168 rows=180917 loops=1)
+              Recheck Cond: ((rover_id = 'curiosity'::text) AND (cameras.id = camera_id))
+              Heap Blocks: exact=33932
+              Buffers: shared hit=6 read=34232 written=8
+              ->  Bitmap Index Scan on ix_photos_rover_id_camera_id_sol  (cost=0.00..353.57 rows=20114 width=0) (actual time=9.712..9.712 rows=180917 loops=1)
+                    Index Cond: ((rover_id = 'curiosity'::text) AND (camera_id = cameras.id))
+                    Buffers: shared read=306
+Planning:
+  Buffers: shared hit=6 read=4
+Planning Time: 0.245 ms
+Execution Time: 174.096 ms
+
+-- SELECT photos.id, photos.rover_id, photos.camera_id, photos.source_id, photos.sol, photos.earth_date, photos.taken_at, photos.received_at, photos.sample_type, photos.img_full, photos.img_small, photos.img_medium, photos.img_large, photos.title, photos.caption, photos.credit, photos.source_link, photos.site, photos.drive, photos.extra, photos.created_at, photos.updated_at FROM photos JOIN cameras ON cameras.id = photos.camera_id WHERE photos.rover_id = $1::VARCHAR AND cameras.code IN ($4::VARCHAR) ORDER BY photos.sol DESC, photos.taken_at DESC, photos.id DESC LIMIT $2::INTEGER OFFSET $3::INTEGER
+-- params: ('curiosity', 25, 0, 'NAV_RIGHT_B')
+Limit  (cost=0.43..1514.55 rows=25 width=1635) (actual time=0.138..0.186 rows=25 loops=1)
+  Buffers: shared hit=73 read=29
+  ->  Nested Loop  (cost=0.43..939058.98 rows=15505 width=1635) (actual time=0.137..0.184 rows=25 loops=1)
+        Join Filter: (cameras.id = photos.camera_id)
+        Rows Removed by Join Filter: 201
+        Buffers: shared hit=73 read=29
+        ->  Index Scan using ix_photos_rover_id_sol_taken_at on photos  (cost=0.43..927894.03 rows=744223 width=1635) (actual time=0.029..0.116 rows=226 loops=1)
+              Index Cond: (rover_id = 'curiosity'::text)
+              Buffers: shared hit=72 read=29
+        ->  Materialize  (cost=0.00..1.60 rows=1 width=4) (actual time=0.000..0.000 rows=1 loops=226)
+              Buffers: shared hit=1
+              ->  Seq Scan on cameras  (cost=0.00..1.60 rows=1 width=4) (actual time=0.014..0.015 rows=1 loops=1)
+                    Filter: (code = 'NAV_RIGHT_B'::text)
+                    Rows Removed by Filter: 53
+                    Buffers: shared hit=1
+Planning:
+  Buffers: shared hit=4
+Planning Time: 0.203 ms
+Execution Time: 0.245 ms
+
+-- SELECT cameras.id, cameras.rover_id, cameras.code, cameras.name, cameras.sort_order FROM cameras WHERE cameras.id IN ($1::INTEGER)
+-- params: (47,)
+Seq Scan on cameras  (cost=0.00..1.60 rows=1 width=55) (actual time=0.005..0.006 rows=1 loops=1)
+  Filter: (id = 47)
+  Rows Removed by Filter: 53
+  Buffers: shared hit=1
+Planning Time: 0.038 ms
+Execution Time: 0.010 ms
+
+######## v2 photos camera (per MCZ_LEFT)  /api/v2/rovers/perseverance/photos?camera=MCZ_LEFT  HTTP 200
+
+-- SELECT rovers.id, rovers.legacy_id, rovers.name, rovers.mission, rovers.launch_date, rovers.landing_date, rovers.status, rovers.max_sol, rovers.max_date, rovers.total_photos, rovers.last_synced_at, rovers.full_max_sol, rovers.full_max_date, rovers.full_total_photos FROM rovers WHERE rovers.id = $1::VARCHAR
+-- params: ('perseverance',)
+Seq Scan on rovers  (cost=0.00..1.05 rows=1 width=75) (actual time=0.010..0.010 rows=1 loops=1)
+  Filter: (id = 'perseverance'::text)
+  Rows Removed by Filter: 3
+  Buffers: shared read=1
+Planning Time: 0.038 ms
+Execution Time: 0.017 ms
+
+-- SELECT cameras.id, cameras.rover_id, cameras.code, cameras.name, cameras.sort_order FROM cameras WHERE cameras.rover_id = $1::VARCHAR ORDER BY cameras.sort_order
+-- params: ('perseverance',)
+Sort  (cost=2.03..2.08 rows=20 width=55) (actual time=0.023..0.024 rows=20 loops=1)
+  Sort Key: sort_order
+  Sort Method: quicksort  Memory: 26kB
+  Buffers: shared hit=1
+  ->  Seq Scan on cameras  (cost=0.00..1.60 rows=20 width=55) (actual time=0.004..0.007 rows=20 loops=1)
+        Filter: (rover_id = 'perseverance'::text)
+        Rows Removed by Filter: 34
+        Buffers: shared hit=1
+Planning Time: 0.031 ms
+Execution Time: 0.041 ms
+
+-- SELECT count(photos.id) AS count_1 FROM photos JOIN cameras ON cameras.id = photos.camera_id WHERE photos.rover_id = $1::VARCHAR AND cameras.code IN ($2::VARCHAR)
+-- params: ('perseverance', 'MCZ_LEFT')
+Aggregate  (cost=51822.54..51822.55 rows=1 width=8) (actual time=281.992..281.993 rows=1 loops=1)
+  Buffers: shared hit=14 read=79969 written=13
+  ->  Nested Loop  (cost=291.12..51791.20 rows=12536 width=8) (actual time=23.289..273.317 rows=179348 loops=1)
+        Buffers: shared hit=14 read=79969 written=13
+        ->  Seq Scan on cameras  (cost=0.00..1.60 rows=1 width=4) (actual time=0.003..0.008 rows=1 loops=1)
+              Filter: (code = 'MCZ_LEFT'::text)
+              Rows Removed by Filter: 53
+              Buffers: shared hit=1
+        ->  Bitmap Heap Scan on photos  (cost=291.12..51626.97 rows=16263 width=12) (actual time=23.282..260.905 rows=179348 loops=1)
+              Recheck Cond: ((rover_id = 'perseverance'::text) AND (cameras.id = camera_id))
+              Rows Removed by Index Recheck: 58931
+              Heap Blocks: exact=46480 lossy=33219
+              Buffers: shared hit=13 read=79969 written=13
+              ->  Bitmap Index Scan on ix_photos_rover_id_camera_id_sol  (cost=0.00..287.06 rows=16263 width=0) (actual time=17.899..17.899 rows=179348 loops=1)
+                    Index Cond: ((rover_id = 'perseverance'::text) AND (camera_id = cameras.id))
+                    Buffers: shared read=283
+Planning:
+  Buffers: shared hit=4
+Planning Time: 0.181 ms
+Execution Time: 282.948 ms
+
+-- SELECT photos.id, photos.rover_id, photos.camera_id, photos.source_id, photos.sol, photos.earth_date, photos.taken_at, photos.received_at, photos.sample_type, photos.img_full, photos.img_small, photos.img_medium, photos.img_large, photos.title, photos.caption, photos.credit, photos.source_link, photos.site, photos.drive, photos.extra, photos.created_at, photos.updated_at FROM photos JOIN cameras ON cameras.id = photos.camera_id WHERE photos.rover_id = $1::VARCHAR AND cameras.code IN ($4::VARCHAR) ORDER BY photos.sol DESC, photos.taken_at DESC, photos.id DESC LIMIT $2::INTEGER OFFSET $3::INTEGER
+-- params: ('perseverance', 25, 0, 'MCZ_LEFT')
+Limit  (cost=0.43..1847.39 rows=25 width=1635) (actual time=0.066..0.110 rows=25 loops=1)
+  Buffers: shared hit=23 read=18
+  ->  Nested Loop  (cost=0.43..926143.63 rows=12536 width=1635) (actual time=0.065..0.108 rows=25 loops=1)
+        Join Filter: (cameras.id = photos.camera_id)
+        Rows Removed by Join Filter: 30
+        Buffers: shared hit=23 read=18
+        ->  Index Scan using ix_photos_rover_id_sol_taken_at on photos  (cost=0.43..917116.05 rows=601732 width=1635) (actual time=0.028..0.066 rows=55 loops=1)
+              Index Cond: (rover_id = 'perseverance'::text)
+              Buffers: shared hit=22 read=18
+        ->  Materialize  (cost=0.00..1.60 rows=1 width=4) (actual time=0.000..0.001 rows=1 loops=55)
+              Buffers: shared hit=1
+              ->  Seq Scan on cameras  (cost=0.00..1.60 rows=1 width=4) (actual time=0.018..0.021 rows=1 loops=1)
+                    Filter: (code = 'MCZ_LEFT'::text)
+                    Rows Removed by Filter: 53
+                    Buffers: shared hit=1
+Planning:
+  Buffers: shared hit=3 read=1
+Planning Time: 0.217 ms
+Execution Time: 0.172 ms
+
+-- SELECT cameras.id, cameras.rover_id, cameras.code, cameras.name, cameras.sort_order FROM cameras WHERE cameras.id IN ($1::INTEGER)
+-- params: (9,)
+Seq Scan on cameras  (cost=0.00..1.60 rows=1 width=55) (actual time=0.019..0.020 rows=1 loops=1)
+  Filter: (id = 9)
+  Rows Removed by Filter: 53
+  Buffers: shared hit=1
+Planning Time: 0.022 ms
+Execution Time: 0.025 ms
+
+######## v2 photos sample_type (cur subframe)  /api/v2/rovers/curiosity/photos?sample_type=subframe  HTTP 200
+
+-- SELECT rovers.id, rovers.legacy_id, rovers.name, rovers.mission, rovers.launch_date, rovers.landing_date, rovers.status, rovers.max_sol, rovers.max_date, rovers.total_photos, rovers.last_synced_at, rovers.full_max_sol, rovers.full_max_date, rovers.full_total_photos FROM rovers WHERE rovers.id = $1::VARCHAR
+-- params: ('curiosity',)
+Seq Scan on rovers  (cost=0.00..1.05 rows=1 width=75) (actual time=0.008..0.008 rows=1 loops=1)
+  Filter: (id = 'curiosity'::text)
+  Rows Removed by Filter: 3
+  Buffers: shared hit=1
+Planning Time: 0.047 ms
+Execution Time: 0.017 ms
+
+-- SELECT count(photos.id) AS count_1 FROM photos WHERE photos.rover_id = $1::VARCHAR AND photos.sample_type = $2::VARCHAR
+-- params: ('curiosity', 'subframe')
+Finalize Aggregate  (cost=257878.84..257878.85 rows=1 width=8) (actual time=189.788..196.897 rows=1 loops=1)
+  Buffers: shared hit=15915 read=232294
+  ->  Gather  (cost=257878.62..257878.83 rows=2 width=8) (actual time=189.639..196.882 rows=3 loops=1)
+        Workers Planned: 2
+        Workers Launched: 2
+        Buffers: shared hit=15915 read=232294
+        ->  Partial Aggregate  (cost=256878.62..256878.63 rows=1 width=8) (actual time=176.101..176.102 rows=1 loops=3)
+              Buffers: shared hit=15915 read=232294
+              ->  Parallel Seq Scan on photos  (cost=0.00..256621.22 rows=102961 width=8) (actual time=4.718..170.274 rows=155875 loops=3)
+                    Filter: ((rover_id = 'curiosity'::text) AND (sample_type = 'subframe'::text))
+                    Rows Removed by Filter: 301218
+                    Buffers: shared hit=15915 read=232294
+Planning Time: 0.069 ms
+JIT:
+  Functions: 17
+  Options: Inlining false, Optimization false, Expressions true, Deforming true
+  Timing: Generation 1.578 ms, Inlining 0.000 ms, Optimization 0.774 ms, Emission 13.243 ms, Total 15.596 ms
+Execution Time: 211.861 ms
+
+-- SELECT photos.id, photos.rover_id, photos.camera_id, photos.source_id, photos.sol, photos.earth_date, photos.taken_at, photos.received_at, photos.sample_type, photos.img_full, photos.img_small, photos.img_medium, photos.img_large, photos.title, photos.caption, photos.credit, photos.source_link, photos.site, photos.drive, photos.extra, photos.created_at, photos.updated_at FROM photos WHERE photos.rover_id = $1::VARCHAR AND photos.sample_type = $2::VARCHAR ORDER BY photos.sol DESC, photos.taken_at DESC, photos.id DESC LIMIT $3::INTEGER OFFSET $4::INTEGER
+-- params: ('curiosity', 'subframe', 25, 0)
+Limit  (cost=0.43..94.49 rows=25 width=1635) (actual time=0.086..0.097 rows=25 loops=1)
+  Buffers: shared hit=98
+  ->  Index Scan using ix_photos_rover_id_sol_taken_at on photos  (cost=0.43..929754.59 rows=247107 width=1635) (actual time=0.085..0.095 rows=25 loops=1)
+        Index Cond: (rover_id = 'curiosity'::text)
+        Filter: (sample_type = 'subframe'::text)
+        Rows Removed by Filter: 190
+        Buffers: shared hit=98
+Planning Time: 0.108 ms
+Execution Time: 0.141 ms
+
+-- SELECT cameras.id, cameras.rover_id, cameras.code, cameras.name, cameras.sort_order FROM cameras WHERE cameras.id IN ($1::INTEGER, $2::INTEGER, $3::INTEGER)
+-- params: (47, 46, 40)
+Seq Scan on cameras  (cost=0.00..1.66 rows=3 width=55) (actual time=0.006..0.007 rows=3 loops=1)
+  Filter: (id = ANY ('{47,46,40}'::integer[]))
+  Rows Removed by Filter: 51
+  Buffers: shared hit=1
+Planning Time: 0.028 ms
+Execution Time: 0.011 ms
+
+######## v2 photos sample_type (cur full)  /api/v2/rovers/curiosity/photos?sample_type=full  HTTP 200
+
+-- SELECT rovers.id, rovers.legacy_id, rovers.name, rovers.mission, rovers.launch_date, rovers.landing_date, rovers.status, rovers.max_sol, rovers.max_date, rovers.total_photos, rovers.last_synced_at, rovers.full_max_sol, rovers.full_max_date, rovers.full_total_photos FROM rovers WHERE rovers.id = $1::VARCHAR
+-- params: ('curiosity',)
+Seq Scan on rovers  (cost=0.00..1.05 rows=1 width=75) (actual time=0.006..0.007 rows=1 loops=1)
+  Filter: (id = 'curiosity'::text)
+  Rows Removed by Filter: 3
+  Buffers: shared hit=1
+Planning Time: 0.037 ms
+Execution Time: 0.013 ms
+
+-- SELECT count(photos.id) AS count_1 FROM photos WHERE photos.rover_id = $1::VARCHAR AND photos.sample_type = $2::VARCHAR
+-- params: ('curiosity', 'full')
+Finalize Aggregate  (cost=71283.51..71283.52 rows=1 width=8) (actual time=23.481..28.811 rows=1 loops=1)
+  Buffers: shared hit=10709 read=1
+  ->  Gather  (cost=71283.29..71283.50 rows=2 width=8) (actual time=23.331..28.805 rows=3 loops=1)
+        Workers Planned: 2
+        Workers Launched: 2
+        Buffers: shared hit=10709 read=1
+        ->  Partial Aggregate  (cost=70283.29..70283.30 rows=1 width=8) (actual time=11.650..11.650 rows=1 loops=3)
+              Buffers: shared hit=10709 read=1
+              ->  Parallel Index Only Scan using ix_photos_full_rover_id_sol_camera_id_id on photos  (cost=0.42..69855.13 rows=171265 width=8) (actual time=0.058..9.782 rows=52148 loops=3)
+                    Index Cond: (rover_id = 'curiosity'::text)
+                    Heap Fetches: 31995
+                    Buffers: shared hit=10709 read=1
+Planning Time: 0.061 ms
+Execution Time: 28.882 ms
+
+-- SELECT photos.id, photos.rover_id, photos.camera_id, photos.source_id, photos.sol, photos.earth_date, photos.taken_at, photos.received_at, photos.sample_type, photos.img_full, photos.img_small, photos.img_medium, photos.img_large, photos.title, photos.caption, photos.credit, photos.source_link, photos.site, photos.drive, photos.extra, photos.created_at, photos.updated_at FROM photos WHERE photos.rover_id = $1::VARCHAR AND photos.sample_type = $2::VARCHAR ORDER BY photos.sol DESC, photos.taken_at DESC, photos.id DESC LIMIT $3::INTEGER OFFSET $4::INTEGER
+-- params: ('curiosity', 'full', 25, 0)
+Limit  (cost=0.43..56.98 rows=25 width=1635) (actual time=0.025..0.037 rows=25 loops=1)
+  Buffers: shared hit=14
+  ->  Index Scan using ix_photos_rover_id_sol_taken_at on photos  (cost=0.43..929754.59 rows=411035 width=1635) (actual time=0.024..0.035 rows=25 loops=1)
+        Index Cond: (rover_id = 'curiosity'::text)
+        Filter: (sample_type = 'full'::text)
+        Buffers: shared hit=14
+Planning Time: 0.121 ms
+Execution Time: 0.080 ms
+
+-- SELECT cameras.id, cameras.rover_id, cameras.code, cameras.name, cameras.sort_order FROM cameras WHERE cameras.id IN ($1::INTEGER, $2::INTEGER, $3::INTEGER, $4::INTEGER)
+-- params: (41, 23, 40, 39)
+Seq Scan on cameras  (cost=0.00..1.72 rows=4 width=55) (actual time=0.006..0.008 rows=4 loops=1)
+  Filter: (id = ANY ('{41,23,40,39}'::integer[]))
+  Rows Removed by Filter: 50
+  Buffers: shared hit=1
+Planning Time: 0.029 ms
+Execution Time: 0.012 ms
+
+######## v2 photos sample_type (per full)  /api/v2/rovers/perseverance/photos?sample_type=full  HTTP 200
+
+-- SELECT rovers.id, rovers.legacy_id, rovers.name, rovers.mission, rovers.launch_date, rovers.landing_date, rovers.status, rovers.max_sol, rovers.max_date, rovers.total_photos, rovers.last_synced_at, rovers.full_max_sol, rovers.full_max_date, rovers.full_total_photos FROM rovers WHERE rovers.id = $1::VARCHAR
+-- params: ('perseverance',)
+Seq Scan on rovers  (cost=0.00..1.05 rows=1 width=75) (actual time=0.005..0.006 rows=1 loops=1)
+  Filter: (id = 'perseverance'::text)
+  Rows Removed by Filter: 3
+  Buffers: shared hit=1
+Planning Time: 0.037 ms
+Execution Time: 0.011 ms
+
+-- SELECT count(photos.id) AS count_1 FROM photos WHERE photos.rover_id = $1::VARCHAR AND photos.sample_type = $2::VARCHAR
+-- params: ('perseverance', 'full')
+Finalize Aggregate  (cost=61606.68..61606.69 rows=1 width=8) (actual time=45.663..51.521 rows=1 loops=1)
+  Buffers: shared hit=5240
+  ->  Gather  (cost=61606.46..61606.67 rows=2 width=8) (actual time=45.545..51.517 rows=3 loops=1)
+        Workers Planned: 2
+        Workers Launched: 2
+        Buffers: shared hit=5240
+        ->  Partial Aggregate  (cost=60606.46..60606.47 rows=1 width=8) (actual time=33.938..33.938 rows=1 loops=3)
+              Buffers: shared hit=5240
+              ->  Parallel Index Only Scan using ix_photos_full_rover_id_sol_camera_id_id on photos  (cost=0.42..60260.28 rows=138473 width=8) (actual time=0.037..27.177 rows=193164 loops=3)
+                    Index Cond: (rover_id = 'perseverance'::text)
+                    Heap Fetches: 0
+                    Buffers: shared hit=5240
+Planning Time: 0.066 ms
+Execution Time: 51.592 ms
+
+-- SELECT photos.id, photos.rover_id, photos.camera_id, photos.source_id, photos.sol, photos.earth_date, photos.taken_at, photos.received_at, photos.sample_type, photos.img_full, photos.img_small, photos.img_medium, photos.img_large, photos.title, photos.caption, photos.credit, photos.source_link, photos.site, photos.drive, photos.extra, photos.created_at, photos.updated_at FROM photos WHERE photos.rover_id = $1::VARCHAR AND photos.sample_type = $2::VARCHAR ORDER BY photos.sol DESC, photos.taken_at DESC, photos.id DESC LIMIT $3::INTEGER OFFSET $4::INTEGER
+-- params: ('perseverance', 'full', 25, 0)
+Limit  (cost=0.43..69.53 rows=25 width=1635) (actual time=0.025..0.080 rows=25 loops=1)
+  Buffers: shared hit=19
+  ->  Index Scan using ix_photos_rover_id_sol_taken_at on photos  (cost=0.43..918620.38 rows=332336 width=1635) (actual time=0.024..0.077 rows=25 loops=1)
+        Index Cond: (rover_id = 'perseverance'::text)
+        Filter: (sample_type = 'full'::text)
+        Buffers: shared hit=19
+Planning Time: 0.121 ms
+Execution Time: 0.127 ms
+
+-- SELECT cameras.id, cameras.rover_id, cameras.code, cameras.name, cameras.sort_order FROM cameras WHERE cameras.id IN ($1::INTEGER, $2::INTEGER, $3::INTEGER)
+-- params: (16, 9, 8)
+Seq Scan on cameras  (cost=0.00..1.66 rows=3 width=55) (actual time=0.006..0.008 rows=3 loops=1)
+  Filter: (id = ANY ('{16,9,8}'::integer[]))
+  Rows Removed by Filter: 51
+  Buffers: shared hit=1
+Planning Time: 0.034 ms
+Execution Time: 0.013 ms
+
+######## v2 photos no filter (cur)  /api/v2/rovers/curiosity/photos  HTTP 200
+
+-- SELECT rovers.id, rovers.legacy_id, rovers.name, rovers.mission, rovers.launch_date, rovers.landing_date, rovers.status, rovers.max_sol, rovers.max_date, rovers.total_photos, rovers.last_synced_at, rovers.full_max_sol, rovers.full_max_date, rovers.full_total_photos FROM rovers WHERE rovers.id = $1::VARCHAR
+-- params: ('curiosity',)
+Seq Scan on rovers  (cost=0.00..1.05 rows=1 width=75) (actual time=0.005..0.005 rows=1 loops=1)
+  Filter: (id = 'curiosity'::text)
+  Rows Removed by Filter: 3
+  Buffers: shared hit=1
+Planning Time: 0.034 ms
+Execution Time: 0.011 ms
+
+-- SELECT coalesce(sum(sol_summaries.total_photos), $1::INTEGER) AS coalesce_1 FROM sol_summaries WHERE sol_summaries.rover_id = $2::VARCHAR
+-- params: (0, 'curiosity')
+Aggregate  (cost=366.53..366.54 rows=1 width=8) (actual time=0.990..0.990 rows=1 loops=1)
+  Buffers: shared hit=272
+  ->  Seq Scan on sol_summaries  (cost=0.00..354.95 rows=4634 width=4) (actual time=0.005..0.770 rows=4690 loops=1)
+        Filter: (rover_id = 'curiosity'::text)
+        Rows Removed by Filter: 1965
+        Buffers: shared hit=272
+Planning:
+  Buffers: shared hit=3
+Planning Time: 0.064 ms
+Execution Time: 0.998 ms
+
+-- SELECT photos.id, photos.rover_id, photos.camera_id, photos.source_id, photos.sol, photos.earth_date, photos.taken_at, photos.received_at, photos.sample_type, photos.img_full, photos.img_small, photos.img_medium, photos.img_large, photos.title, photos.caption, photos.credit, photos.source_link, photos.site, photos.drive, photos.extra, photos.created_at, photos.updated_at FROM photos WHERE photos.rover_id = $1::VARCHAR ORDER BY photos.sol DESC, photos.taken_at DESC, photos.id DESC LIMIT $2::INTEGER OFFSET $3::INTEGER
+-- params: ('curiosity', 25, 0)
+Limit  (cost=0.43..31.60 rows=25 width=1635) (actual time=0.029..0.037 rows=25 loops=1)
+  Buffers: shared hit=14
+  ->  Index Scan using ix_photos_rover_id_sol_taken_at on photos  (cost=0.43..927894.03 rows=744223 width=1635) (actual time=0.028..0.035 rows=25 loops=1)
+        Index Cond: (rover_id = 'curiosity'::text)
+        Buffers: shared hit=14
+Planning Time: 0.081 ms
+Execution Time: 0.068 ms
+
+-- SELECT cameras.id, cameras.rover_id, cameras.code, cameras.name, cameras.sort_order FROM cameras WHERE cameras.id IN ($1::INTEGER, $2::INTEGER, $3::INTEGER, $4::INTEGER)
+-- params: (41, 23, 40, 39)
+Seq Scan on cameras  (cost=0.00..1.72 rows=4 width=55) (actual time=0.007..0.008 rows=4 loops=1)
+  Filter: (id = ANY ('{41,23,40,39}'::integer[]))
+  Rows Removed by Filter: 50
+  Buffers: shared hit=1
+Planning Time: 0.029 ms
+Execution Time: 0.013 ms
+
+######## v2 manifest (cur)  /api/v2/rovers/curiosity/manifest  HTTP 200
+
+-- SELECT rovers.id, rovers.legacy_id, rovers.name, rovers.mission, rovers.launch_date, rovers.landing_date, rovers.status, rovers.max_sol, rovers.max_date, rovers.total_photos, rovers.last_synced_at, rovers.full_max_sol, rovers.full_max_date, rovers.full_total_photos FROM rovers WHERE rovers.id = $1::VARCHAR
+-- params: ('curiosity',)
+Seq Scan on rovers  (cost=0.00..1.05 rows=1 width=75) (actual time=0.008..0.008 rows=1 loops=1)
+  Filter: (id = 'curiosity'::text)
+  Rows Removed by Filter: 3
+  Buffers: shared hit=1
+Planning Time: 0.056 ms
+Execution Time: 0.017 ms
+
+-- SELECT cameras.rover_id, count(cameras.id) AS count_1 FROM cameras WHERE cameras.rover_id = $1::VARCHAR GROUP BY cameras.rover_id
+-- params: ('curiosity',)
+GroupAggregate  (cost=0.00..1.65 rows=1 width=19) (actual time=0.009..0.010 rows=1 loops=1)
+  Buffers: shared hit=1
+  ->  Seq Scan on cameras  (cost=0.00..1.60 rows=16 width=15) (actual time=0.005..0.007 rows=22 loops=1)
+        Filter: (rover_id = 'curiosity'::text)
+        Rows Removed by Filter: 32
+        Buffers: shared hit=1
+Planning:
+  Buffers: shared hit=5
+Planning Time: 0.076 ms
+Execution Time: 0.019 ms
+
+-- SELECT sol_summaries.rover_id, sol_summaries.sol, sol_summaries.earth_date, sol_summaries.total_photos, sol_summaries.cameras, sol_summaries.full_photos, sol_summaries.full_cameras FROM sol_summaries WHERE sol_summaries.rover_id = $1::VARCHAR ORDER BY sol_summaries.sol DESC
+-- params: ('curiosity',)
+Sort  (cost=637.12..648.70 rows=4634 width=294) (actual time=2.431..2.696 rows=4690 loops=1)
+  Sort Key: sol DESC
+  Sort Method: quicksort  Memory: 1639kB
+  Buffers: shared hit=272
+  ->  Seq Scan on sol_summaries  (cost=0.00..354.95 rows=4634 width=294) (actual time=0.005..0.766 rows=4690 loops=1)
+        Filter: (rover_id = 'curiosity'::text)
+        Rows Removed by Filter: 1965
+        Buffers: shared hit=272
+Planning Time: 0.036 ms
+Execution Time: 3.045 ms
+
+######## v2 manifest (per)  /api/v2/rovers/perseverance/manifest  HTTP 200
+
+-- SELECT rovers.id, rovers.legacy_id, rovers.name, rovers.mission, rovers.launch_date, rovers.landing_date, rovers.status, rovers.max_sol, rovers.max_date, rovers.total_photos, rovers.last_synced_at, rovers.full_max_sol, rovers.full_max_date, rovers.full_total_photos FROM rovers WHERE rovers.id = $1::VARCHAR
+-- params: ('perseverance',)
+Seq Scan on rovers  (cost=0.00..1.05 rows=1 width=75) (actual time=0.006..0.007 rows=1 loops=1)
+  Filter: (id = 'perseverance'::text)
+  Rows Removed by Filter: 3
+  Buffers: shared hit=1
+Planning Time: 0.042 ms
+Execution Time: 0.014 ms
+
+-- SELECT cameras.rover_id, count(cameras.id) AS count_1 FROM cameras WHERE cameras.rover_id = $1::VARCHAR GROUP BY cameras.rover_id
+-- params: ('perseverance',)
+GroupAggregate  (cost=0.00..1.66 rows=1 width=19) (actual time=0.010..0.010 rows=1 loops=1)
+  Buffers: shared hit=1
+  ->  Seq Scan on cameras  (cost=0.00..1.60 rows=20 width=15) (actual time=0.005..0.007 rows=20 loops=1)
+        Filter: (rover_id = 'perseverance'::text)
+        Rows Removed by Filter: 34
+        Buffers: shared hit=1
+Planning Time: 0.035 ms
+Execution Time: 0.020 ms
+
+-- SELECT sol_summaries.rover_id, sol_summaries.sol, sol_summaries.earth_date, sol_summaries.total_photos, sol_summaries.cameras, sol_summaries.full_photos, sol_summaries.full_cameras FROM sol_summaries WHERE sol_summaries.rover_id = $1::VARCHAR ORDER BY sol_summaries.sol DESC
+-- params: ('perseverance',)
+Sort  (cost=464.73..469.74 rows=2002 width=294) (actual time=1.478..1.587 rows=1965 loops=1)
+  Sort Key: sol DESC
+  Sort Method: quicksort  Memory: 714kB
+  Buffers: shared hit=272
+  ->  Seq Scan on sol_summaries  (cost=0.00..354.95 rows=2002 width=294) (actual time=0.005..0.721 rows=1965 loops=1)
+        Filter: (rover_id = 'perseverance'::text)
+        Rows Removed by Filter: 4690
+        Buffers: shared hit=272
+Planning Time: 0.028 ms
+Execution Time: 1.774 ms
+
+######## v2 cameras (cur)  /api/v2/rovers/curiosity/cameras  HTTP 200
+
+-- SELECT rovers.id, rovers.legacy_id, rovers.name, rovers.mission, rovers.launch_date, rovers.landing_date, rovers.status, rovers.max_sol, rovers.max_date, rovers.total_photos, rovers.last_synced_at, rovers.full_max_sol, rovers.full_max_date, rovers.full_total_photos FROM rovers WHERE rovers.id = $1::VARCHAR
+-- params: ('curiosity',)
+Seq Scan on rovers  (cost=0.00..1.05 rows=1 width=75) (actual time=0.004..0.004 rows=1 loops=1)
+  Filter: (id = 'curiosity'::text)
+  Rows Removed by Filter: 3
+  Buffers: shared hit=1
+Planning Time: 0.031 ms
+Execution Time: 0.010 ms
+
+-- SELECT cameras.id, cameras.rover_id, cameras.code, cameras.name, cameras.sort_order, coalesce(anon_1.total, $1::INTEGER) AS coalesce_1 FROM cameras LEFT OUTER JOIN (SELECT camera_sol_counts.camera_id AS camera_id, sum(camera_sol_counts.total_photos) AS total FROM camera_sol_counts WHERE camera_sol_counts.rover_id = $2::VARCHAR GROUP BY camera_sol_counts.camera_id) AS anon_1 ON anon_1.camera_id = cameras.id WHERE cameras.rover_id = $3::VARCHAR ORDER BY cameras.code
+-- params: (0, 'curiosity', 'curiosity')
+Sort  (cost=1208.13..1208.17 rows=16 width=63) (actual time=6.244..6.245 rows=22 loops=1)
+  Sort Key: cameras.code
+  Sort Method: quicksort  Memory: 26kB
+  Buffers: shared hit=385
+  ->  Hash Right Join  (cost=1206.96..1207.81 rows=16 width=63) (actual time=6.174..6.182 rows=22 loops=1)
+        Hash Cond: (camera_sol_counts.camera_id = cameras.id)
+        Buffers: shared hit=382
+        ->  HashAggregate  (cost=1205.16..1205.53 rows=37 width=12) (actual time=6.140..6.142 rows=17 loops=1)
+              Group Key: camera_sol_counts.camera_id
+              Batches: 1  Memory Usage: 24kB
+              Buffers: shared hit=381
+              ->  Seq Scan on camera_sol_counts  (cost=0.00..1025.62 rows=35908 width=8) (actual time=0.483..2.791 rows=37426 loops=1)
+                    Filter: (rover_id = 'curiosity'::text)
+                    Rows Removed by Filter: 14259
+                    Buffers: shared hit=381
+        ->  Hash  (cost=1.60..1.60 rows=16 width=55) (actual time=0.015..0.015 rows=22 loops=1)
+              Buckets: 1024  Batches: 1  Memory Usage: 10kB
+              Buffers: shared hit=1
+              ->  Seq Scan on cameras  (cost=0.00..1.60 rows=16 width=55) (actual time=0.004..0.006 rows=22 loops=1)
+                    Filter: (rover_id = 'curiosity'::text)
+                    Rows Removed by Filter: 32
+                    Buffers: shared hit=1
+Planning:
+  Buffers: shared hit=31
+Planning Time: 0.358 ms
+Execution Time: 6.316 ms
+
+######## v2 cameras (per)  /api/v2/rovers/perseverance/cameras  HTTP 200
+
+-- SELECT rovers.id, rovers.legacy_id, rovers.name, rovers.mission, rovers.launch_date, rovers.landing_date, rovers.status, rovers.max_sol, rovers.max_date, rovers.total_photos, rovers.last_synced_at, rovers.full_max_sol, rovers.full_max_date, rovers.full_total_photos FROM rovers WHERE rovers.id = $1::VARCHAR
+-- params: ('perseverance',)
+Seq Scan on rovers  (cost=0.00..1.05 rows=1 width=75) (actual time=0.004..0.004 rows=1 loops=1)
+  Filter: (id = 'perseverance'::text)
+  Rows Removed by Filter: 3
+  Buffers: shared hit=1
+Planning Time: 0.036 ms
+Execution Time: 0.010 ms
+
+-- SELECT cameras.id, cameras.rover_id, cameras.code, cameras.name, cameras.sort_order, coalesce(anon_1.total, $1::INTEGER) AS coalesce_1 FROM cameras LEFT OUTER JOIN (SELECT camera_sol_counts.camera_id AS camera_id, sum(camera_sol_counts.total_photos) AS total FROM camera_sol_counts WHERE camera_sol_counts.rover_id = $2::VARCHAR GROUP BY camera_sol_counts.camera_id) AS anon_1 ON anon_1.camera_id = cameras.id WHERE cameras.rover_id = $3::VARCHAR ORDER BY cameras.code
+-- params: (0, 'perseverance', 'perseverance')
+Sort  (cost=1107.07..1107.12 rows=20 width=63) (actual time=3.774..3.776 rows=20 loops=1)
+  Sort Key: cameras.code
+  Sort Method: quicksort  Memory: 26kB
+  Buffers: shared hit=382
+  ->  Hash Right Join  (cost=1105.78..1106.63 rows=20 width=63) (actual time=3.749..3.758 rows=20 loops=1)
+        Hash Cond: (camera_sol_counts.camera_id = cameras.id)
+        Buffers: shared hit=382
+        ->  HashAggregate  (cost=1103.93..1104.30 rows=37 width=12) (actual time=3.723..3.725 rows=20 loops=1)
+              Group Key: camera_sol_counts.camera_id
+              Batches: 1  Memory Usage: 24kB
+              Buffers: shared hit=381
+              ->  Seq Scan on camera_sol_counts  (cost=0.00..1025.62 rows=15662 width=8) (actual time=0.002..2.422 rows=14259 loops=1)
+                    Filter: (rover_id = 'perseverance'::text)
+                    Rows Removed by Filter: 37426
+                    Buffers: shared hit=381
+        ->  Hash  (cost=1.60..1.60 rows=20 width=55) (actual time=0.015..0.015 rows=20 loops=1)
+              Buckets: 1024  Batches: 1  Memory Usage: 10kB
+              Buffers: shared hit=1
+              ->  Seq Scan on cameras  (cost=0.00..1.60 rows=20 width=55) (actual time=0.004..0.007 rows=20 loops=1)
+                    Filter: (rover_id = 'perseverance'::text)
+                    Rows Removed by Filter: 34
+                    Buffers: shared hit=1
+Planning Time: 0.075 ms
+Execution Time: 3.841 ms
+
+######## v2 latest (cur)  /api/v2/rovers/curiosity/photos/latest  HTTP 200
+
+-- SELECT rovers.id, rovers.legacy_id, rovers.name, rovers.mission, rovers.launch_date, rovers.landing_date, rovers.status, rovers.max_sol, rovers.max_date, rovers.total_photos, rovers.last_synced_at, rovers.full_max_sol, rovers.full_max_date, rovers.full_total_photos FROM rovers WHERE rovers.id = $1::VARCHAR
+-- params: ('curiosity',)
+Seq Scan on rovers  (cost=0.00..1.05 rows=1 width=75) (actual time=0.005..0.005 rows=1 loops=1)
+  Filter: (id = 'curiosity'::text)
+  Rows Removed by Filter: 3
+  Buffers: shared hit=1
+Planning Time: 0.027 ms
+Execution Time: 0.011 ms
+
+-- SELECT sol_summaries.total_photos FROM sol_summaries WHERE sol_summaries.rover_id = $1::VARCHAR AND sol_summaries.sol = $2::INTEGER
+-- params: ('curiosity', 5077)
+Index Scan using pk_sol_summaries on sol_summaries  (cost=0.28..8.30 rows=1 width=4) (actual time=0.024..0.024 rows=1 loops=1)
+  Index Cond: ((rover_id = 'curiosity'::text) AND (sol = 5077))
+  Buffers: shared hit=3
+Planning Time: 0.027 ms
+Execution Time: 0.042 ms
+
+-- SELECT photos.id, photos.rover_id, photos.camera_id, photos.source_id, photos.sol, photos.earth_date, photos.taken_at, photos.received_at, photos.sample_type, photos.img_full, photos.img_small, photos.img_medium, photos.img_large, photos.title, photos.caption, photos.credit, photos.source_link, photos.site, photos.drive, photos.extra, photos.created_at, photos.updated_at FROM photos WHERE photos.rover_id = $1::VARCHAR AND photos.sol = $2::INTEGER ORDER BY photos.sol DESC, photos.taken_at DESC, photos.id DESC LIMIT $3::INTEGER OFFSET $4::INTEGER
+-- params: ('curiosity', 5077, 25, 0)
+Limit  (cost=0.43..90.54 rows=25 width=1635) (actual time=0.026..0.028 rows=2 loops=1)
+  Buffers: shared hit=5
+  ->  Index Scan using ix_photos_rover_id_sol_taken_at on photos  (cost=0.43..602.36 rows=167 width=1635) (actual time=0.026..0.027 rows=2 loops=1)
+        Index Cond: ((rover_id = 'curiosity'::text) AND (sol = 5077))
+        Buffers: shared hit=5
+Planning Time: 0.067 ms
+Execution Time: 0.055 ms
+
+-- SELECT cameras.id, cameras.rover_id, cameras.code, cameras.name, cameras.sort_order FROM cameras WHERE cameras.id IN ($1::INTEGER)
+-- params: (41,)
+Seq Scan on cameras  (cost=0.00..1.60 rows=1 width=55) (actual time=0.006..0.007 rows=1 loops=1)
+  Filter: (id = 41)
+  Rows Removed by Filter: 53
+  Buffers: shared hit=1
+Planning Time: 0.020 ms
+Execution Time: 0.012 ms
+
+######## v2 latest (per)  /api/v2/rovers/perseverance/photos/latest  HTTP 200
+
+-- SELECT rovers.id, rovers.legacy_id, rovers.name, rovers.mission, rovers.launch_date, rovers.landing_date, rovers.status, rovers.max_sol, rovers.max_date, rovers.total_photos, rovers.last_synced_at, rovers.full_max_sol, rovers.full_max_date, rovers.full_total_photos FROM rovers WHERE rovers.id = $1::VARCHAR
+-- params: ('perseverance',)
+Seq Scan on rovers  (cost=0.00..1.05 rows=1 width=75) (actual time=0.004..0.005 rows=1 loops=1)
+  Filter: (id = 'perseverance'::text)
+  Rows Removed by Filter: 3
+  Buffers: shared hit=1
+Planning Time: 0.027 ms
+Execution Time: 0.011 ms
+
+-- SELECT sol_summaries.total_photos FROM sol_summaries WHERE sol_summaries.rover_id = $1::VARCHAR AND sol_summaries.sol = $2::INTEGER
+-- params: ('perseverance', 2031)
+Index Scan using pk_sol_summaries on sol_summaries  (cost=0.28..8.30 rows=1 width=4) (actual time=0.025..0.025 rows=1 loops=1)
+  Index Cond: ((rover_id = 'perseverance'::text) AND (sol = 2031))
+  Buffers: shared hit=3
+Planning Time: 0.025 ms
+Execution Time: 0.043 ms
+
+-- SELECT photos.id, photos.rover_id, photos.camera_id, photos.source_id, photos.sol, photos.earth_date, photos.taken_at, photos.received_at, photos.sample_type, photos.img_full, photos.img_small, photos.img_medium, photos.img_large, photos.title, photos.caption, photos.credit, photos.source_link, photos.site, photos.drive, photos.extra, photos.created_at, photos.updated_at FROM photos WHERE photos.rover_id = $1::VARCHAR AND photos.sol = $2::INTEGER ORDER BY photos.sol DESC, photos.taken_at DESC, photos.id DESC LIMIT $3::INTEGER OFFSET $4::INTEGER
+-- params: ('perseverance', 2031, 25, 0)
+Limit  (cost=0.43..90.83 rows=25 width=1635) (actual time=0.027..0.029 rows=6 loops=1)
+  Buffers: shared hit=5
+  ->  Index Scan using ix_photos_rover_id_sol_taken_at on photos  (cost=0.43..488.62 rows=135 width=1635) (actual time=0.027..0.028 rows=6 loops=1)
+        Index Cond: ((rover_id = 'perseverance'::text) AND (sol = 2031))
+        Buffers: shared hit=5
+Planning Time: 0.064 ms
+Execution Time: 0.057 ms
+
+-- SELECT cameras.id, cameras.rover_id, cameras.code, cameras.name, cameras.sort_order FROM cameras WHERE cameras.id IN ($1::INTEGER)
+-- params: (16,)
+Seq Scan on cameras  (cost=0.00..1.60 rows=1 width=55) (actual time=0.005..0.007 rows=1 loops=1)
+  Filter: (id = 16)
+  Rows Removed by Filter: 53
+  Buffers: shared hit=1
+Planning Time: 0.028 ms
+Execution Time: 0.012 ms

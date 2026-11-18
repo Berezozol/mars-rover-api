@@ -60,7 +60,7 @@
  "source": {"id": "LRF_2031_0847237865_241EBY_N0930000SCAM01031_0100I4J",
             "link": "https://mars.nasa.gov/mars2020/multimedia/raw-images/LRF_..."}}
 ```
-`img_src` всегда равен `images.full`. У Curiosity `small`, `medium` и `large` — `null`.
+`img_src` всегда равен `images.full`. У Curiosity `small`, `medium` и `large` — `null`. У Spirit и Opportunity `images.full` — уменьшенный JPEG архива NASA PDS (низкое разрешение), `small`, `medium`, `large` и `title` — `null`, `source.link` — исходный продукт PDS `.img`.
 
 **PhotoDetail** = Photo + `caption`, `received_at`, `site`, `drive`, `extra` (объект с техническими полями источника).
 
@@ -135,4 +135,4 @@
 
 ## Черновики (уточнить перед своим этапом)
 
-- **Погода и положение** (этап 10): `/api/v2/rovers/{rover}/weather`, `/api/v2/rovers/{rover}/location` — после проверки источников.
+- **Положение** (этап 10): `/api/v2/rovers/{rover}/location`, `/api/v2/rovers/{rover}/traverse`, координаты в карточке снимка — контракт согласовать перед этапом. Погода отложена: живых источников нет (`DATA-SOURCES.md`).

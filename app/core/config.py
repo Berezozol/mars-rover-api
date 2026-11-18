@@ -1,6 +1,7 @@
 """Application settings. Every configurable value is read from here."""
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, SecretStr, field_validator
@@ -48,6 +49,11 @@ class Settings(BaseSettings):
     # The Perseverance feed caps `num` at 100.
     m2020_page_size: int = Field(default=100, ge=1, le=100)
     msl_page_size: int = Field(default=200, ge=1)
+
+    # Spirit/Opportunity: one-time import from the PDS Imaging Node index files (stage 8).
+    mer_pds_base_url: str = "https://planetarydata.jpl.nasa.gov/img/data/mer/"
+    # Local cache of <volume>/index/edrindex.{lbl,tab}; filled by `mer-download`.
+    mer_cache_dir: Path = Path("data/mer")
 
     admin_token: SecretStr | None = None
     cors_origins: list[str] = ["*"]

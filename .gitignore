@@ -16,3 +16,7 @@ CLAUDE.local.md
 .idea/
 .vscode/
 setup-log.txt
+
+# Local data caches (MER PDS index files, samples)
+data/
+.backfill-*.log

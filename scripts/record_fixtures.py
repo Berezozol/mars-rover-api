@@ -7,7 +7,10 @@ the observed feed behaviour (filtering, pagination, field values).
 
 Usage::
 
-    uv run python scripts/record_fixtures.py [--raw-dir DIR] [--part all|base|m2020-range]
+    uv run python scripts/record_fixtures.py [--raw-dir DIR] [--part all|base|m2020-range|mer]
+
+``--part mer`` makes no requests: it copies the real MER index samples prepared by
+data-engineer (``data/mer-samples/<volume>/``) into ``tests/fixtures/upstream/mer/``.
 
 ``--raw-dir`` optionally stores full untrimmed responses and the summary
 outside the repository for analysis. Untrimmed responses are never written
@@ -19,6 +22,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import re
 import sys
 import time
 from collections import Counter
@@ -323,17 +327,50 @@ def record_msl(rec: Recorder, summary: dict[str, Any]) -> None:
     }
 
 
+MER_DIR = FIXTURES_DIR / "mer"
+MER_SAMPLES_DIR = ROOT / "data" / "mer-samples"
+_ROWS_RE = re.compile(rb"^(\s*(?:ROWS|FILE_RECORDS)\s*=\s*)(\d+)", re.MULTILINE)
+
+
+def build_mer_fixtures(samples_dir: Path = MER_SAMPLES_DIR, out_dir: Path = MER_DIR) -> None:
+    """Copy real MER index samples into the fixture cache layout (offline, no requests).
+
+    ``samples_dir/<volume>/edrindex.{lbl,tab}`` (real label + real rows selected by
+    data-engineer from the full PDS indexes) becomes
+    ``out_dir/<volume>/index/edrindex.{lbl,tab}`` - the MER_CACHE_DIR layout. The only
+    change is ``ROWS`` / ``FILE_RECORDS`` in the label, set to the number of rows kept; the
+    bytes of the rows (CRLF, tabs, quotes, padding) and the wrong ``ROW_BYTES`` /
+    ``START_BYTE`` values of the label are kept as they are.
+    """
+    volumes = sorted(p for p in samples_dir.iterdir() if (p / "edrindex.tab").is_file())
+    if not volumes:
+        raise SystemExit(f"no MER samples in {samples_dir}")
+    for volume in volumes:
+        table = (volume / "edrindex.tab").read_bytes()
+        rows = table.count(b"\r\n")
+        label = _ROWS_RE.sub(rb"\g<1>" + str(rows).encode(), (volume / "edrindex.lbl").read_bytes())
+        target = out_dir / volume.name / "index"
+        target.mkdir(parents=True, exist_ok=True)
+        (target / "edrindex.tab").write_bytes(table)
+        (target / "edrindex.lbl").write_bytes(label)
+        logger.info("wrote %s: %d rows", target, rows)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--raw-dir", type=Path, default=None, help="dir for untrimmed dumps")
     parser.add_argument(
         "--part",
-        choices=["all", "base", "m2020-range"],
+        choices=["all", "base", "m2020-range", "mer"],
         default="all",
-        help="which group of requests to record (default: all)",
+        help="which group of requests to record (default: all); "
+        "'mer' copies data/mer-samples into tests/fixtures/upstream/mer offline",
     )
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    if args.part == "mer":
+        build_mer_fixtures()
+        return
     settings = Settings()
 
     summary: dict[str, Any] = {}

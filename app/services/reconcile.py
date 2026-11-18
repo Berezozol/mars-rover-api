@@ -8,7 +8,8 @@ Unexplained differences (they make the CLI exit with 1):
 - a sol whose per-sol ``source_total`` is known and differs from ``received``;
 - a sol in [0, max_sol] without data that failed in sync_runs (see
   ``_classify_missing``) or was never fetched;
-- with a legacy manifest: a sol where our v1 full-frame count is below the old API's.
+- with a legacy manifest: a sol where our v1 count (full frames, or every frame for the
+  rovers v1 shows them for) is below the old API's.
 
 The overall source total is informational: the live feed keeps growing.
 """
@@ -26,6 +27,7 @@ from app.repositories import photos as photos_repo
 from app.repositories import rovers as rovers_repo
 from app.repositories import source_counts as counts_repo
 from app.repositories import sync_runs as runs_repo
+from app.services.legacy import shows_all_frames
 from app.services.sync import compact_ranges
 
 LIST_LIMIT = 20
@@ -196,8 +198,10 @@ async def build_report(
         runs_superseded=superseded,
     )
     if legacy_manifest is not None:
-        full = {sol: counts[1] for sol, counts in summaries.items()}
-        report.legacy = compare_legacy(full, legacy_manifest)
+        # v1 counts: every frame for the rovers v1 shows them for, else full frames.
+        column = 0 if shows_all_frames(rover_id) else 1
+        v1_counts = {sol: counts[column] for sol, counts in summaries.items()}
+        report.legacy = compare_legacy(v1_counts, legacy_manifest)
     return report
 
 
@@ -283,7 +287,7 @@ def _fetched_by(row: SolSourceCount, run: SyncRun) -> bool:
 
 
 def compare_legacy(ours: dict[int, int], legacy: dict[int, int]) -> LegacyComparison:
-    """Per-sol v1 full-frame counts against the old API manifest."""
+    """Per-sol v1 counts against the old API manifest."""
     comparison = LegacyComparison(sols_compared=len(legacy))
     for sol in sorted(legacy):
         diff = LegacyDiff(sol, ours.get(sol, 0), legacy[sol])

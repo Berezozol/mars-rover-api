@@ -110,3 +110,25 @@ def test_legacy_sol_for_date_before_landing_returns_none(days_before: int) -> No
 
 def test_legacy_sol_for_date_landing_day_returns_sol_zero() -> None:
     assert legacy_sol_for_date(CURIOSITY_LANDING, CURIOSITY_LANDING) == 0
+
+
+# Stage 8 vectors for Spirit and Opportunity (docs/proposals/stage-8-mer-import.md, section 3;
+# the last rows match the old API's max_sol / max_date).
+MER_VECTORS = [
+    ("spirit", 1, date(2004, 1, 5)),
+    ("spirit", 100, date(2004, 4, 15)),
+    ("spirit", 2208, date(2010, 3, 21)),
+    ("opportunity", 1, date(2004, 1, 26)),
+    ("opportunity", 1000, date(2006, 11, 17)),
+    ("opportunity", 5111, date(2018, 6, 11)),
+]
+
+
+@pytest.mark.parametrize(
+    ("rover", "sol", "expected"), MER_VECTORS, ids=[f"{r}-sol{s}" for r, s, _ in MER_VECTORS]
+)
+def test_legacy_earth_date_mer_vector_returns_expected_date(
+    rover: str, sol: int, expected: date
+) -> None:
+    assert legacy_earth_date(LANDINGS[rover], sol) == expected
+    assert legacy_sol_for_date(LANDINGS[rover], expected) == sol
