@@ -20,7 +20,7 @@
 [CmdletBinding()]
 param(
     # Directory with compose.yml and .env.
-    [string]$ComposeDir = $PSScriptRoot,
+    [string]$ComposeDir = '',
     # Compose project name (`name:` in compose.yml).
     [string]$ProjectName = 'mars',
     # Compose service of the database.
@@ -37,6 +37,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
+
+# $PSScriptRoot is empty in param() defaults under Windows PowerShell 5.1 with -File.
+if (-not $ComposeDir) { $ComposeDir = Split-Path -Parent $MyInvocation.MyCommand.Path }
 
 if (-not $BackupDir) { $BackupDir = Join-Path $ComposeDir 'backups' }
 if (-not (Test-Path -LiteralPath $BackupDir)) {

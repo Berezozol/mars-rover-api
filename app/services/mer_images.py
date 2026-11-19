@@ -69,6 +69,20 @@ def convert_pds3_to_jpeg(data: bytes) -> bytes:
     return encode_jpeg(stretch_to_8bit(image.pixels))
 
 
+def _remove_quietly(path: Path) -> None:
+    """Delete ``path``; any OSError (not only a missing file) is logged, never raised.
+
+    ``unlink(missing_ok=True)`` still raises NotADirectoryError on Linux when a parent of the
+    path is a regular file.
+    """
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
+    except OSError:
+        logger.warning("Cannot remove %s", path.name)
+
+
 class ImageDiskCache:
     """JPEG files by key in one directory, bounded by ``max_bytes``.
 
@@ -85,7 +99,7 @@ class ImageDiskCache:
         try:
             self._dir.mkdir(parents=True, exist_ok=True)
             for orphan in self._dir.glob(f".*{_TMP_MARK}*"):
-                orphan.unlink(missing_ok=True)
+                _remove_quietly(orphan)
         except OSError:
             logger.exception("Cannot prepare the image cache directory %s", self._dir)
 
@@ -122,22 +136,26 @@ class ImageDiskCache:
                 self._evict(keep=path)
         except OSError:
             logger.exception("Cannot cache image %s", key)
-            tmp.unlink(missing_ok=True)
+            _remove_quietly(tmp)
 
     def _evict(self, keep: Path) -> None:
         """Delete least recently used files until the total is within the limit."""
         entries: list[tuple[float, int, Path]] = []
         total = 0
-        with os.scandir(self._dir) as it:
-            for entry in it:
-                if not entry.name.endswith(_SUFFIX) or entry.name.startswith("."):
-                    continue
-                try:
-                    stat = entry.stat()
-                except OSError:
-                    continue
-                total += stat.st_size
-                entries.append((stat.st_mtime, stat.st_size, Path(entry.path)))
+        try:
+            with os.scandir(self._dir) as it:
+                for entry in it:
+                    if not entry.name.endswith(_SUFFIX) or entry.name.startswith("."):
+                        continue
+                    try:
+                        stat = entry.stat()
+                    except OSError:
+                        continue
+                    total += stat.st_size
+                    entries.append((stat.st_mtime, stat.st_size, Path(entry.path)))
+        except OSError:
+            logger.warning("Cannot list the image cache directory %s", self._dir)
+            return
         for _mtime, size, path in sorted(entries):
             if total <= self._max_bytes:
                 break
