@@ -3,7 +3,7 @@
 Usage:
     uv run python deploy/smoke.py https://mars-api.example.ts.net
 
-Needs only httpx and the standard library. Sends 14 requests (11 of them count against the
+Needs only httpx and the standard library. Sends 16 requests (12 of them count against the
 per-IP rate limit of 60/min), never follows redirects. With --with-mer-image it also
 fetches a full-size Opportunity image (a PDS download and conversion, one more request).
 Exit code 0 when every check passes, 1 otherwise.
@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from collections.abc import Callable
 from typing import Any
@@ -105,6 +106,21 @@ class Smoke:
         _status(r, 200)
         ctype = r.headers.get("content-type", "")
         _expect(ctype.startswith("text/html"), f"content-type {ctype!r}, expected text/html")
+        _expect('id="app"' in r.text, 'no id="app": image built without the frontend dist?')
+        match = re.search(r'src="(/assets/[^"]+\.js)"', r.text)
+        _expect(match is not None, "no /assets/*.js script in index.html")
+        asset = self.get(match.group(1))
+        _status(asset, 200)
+        cache = asset.headers.get("cache-control", "")
+        _expect("immutable" in cache, f"{match.group(1)}: Cache-Control {cache!r}, no immutable")
+        return f"{len(r.content)} bytes, asset {match.group(1)}"
+
+    def developers_page(self) -> str:
+        r = self.get("/developers")
+        _status(r, 200)
+        ctype = r.headers.get("content-type", "")
+        _expect(ctype.startswith("text/html"), f"content-type {ctype!r}, expected text/html")
+        _expect('id="app"' not in r.text, "/developers serves the interface, not the dev page")
         return f"{len(r.content)} bytes"
 
     def health_sync(self) -> str:
@@ -240,6 +256,7 @@ def main(argv: list[str] | None = None) -> int:
     checks: list[tuple[str, Callable[[], str]]] = [
         ("GET /health -> 200", smoke.health),
         ("GET / -> 200 text/html", smoke.home_page),
+        ("GET /developers -> 200 text/html", smoke.developers_page),
         ("GET /health/sync -> 200 or 503", smoke.health_sync),
         ("v1 photos curiosity sol=1000 camera=fhaz", smoke.v1_photos),
         ("v1 rovers", smoke.v1_rovers),

@@ -1,8 +1,8 @@
 """Migration round trips: downgrade to base / step by step, then upgrade back to head.
 
-These tests drop and recreate the whole schema of the shared, session-scoped test database
-(`migrated_db`). They are therefore NOT safe under pytest-xdist or alongside any other
-process using TEST_DATABASE_URL. Safety measures:
+These tests drop and recreate the whole schema of the session-scoped test database
+(`migrated_db`; a private database per worker under pytest-xdist). They are NOT safe
+alongside any other process using the same database. Safety measures:
 - the `migrations_roundtrip` marker makes conftest run them after all other tests;
 - every test restores the database to head (with seed data) in `finally`;
 - they are sync on purpose: migrations/env.py calls asyncio.run() itself.

@@ -17,6 +17,8 @@ env:
   UV_VERSION: "0.13.8"
   # Same Python as the production image (Dockerfile).
   PYTHON_VERSION: "3.13"
+  # Same Node major as the frontend stage of the Dockerfile.
+  NODE_VERSION: "26"
 
 jobs:
   checks:
@@ -79,8 +81,45 @@ jobs:
       - name: Models match migrations (no drift)
         run: uv run alembic check
 
+      # xdist: each worker clones a template database (CREATE DATABASE ... TEMPLATE), which the
+      # `mars` role may do as the superuser of the service container.
       - name: Tests
-        run: uv run pytest -q
+        run: uv run pytest -q -n 4
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
 
   docker:
     name: Docker build
@@ -106,3 +145,6 @@ jobs:
 
       - name: Smoke test (app imports as the image user)
         run: docker run --rm mars-rover-api:ci python -c "import app.main"
+
+      - name: Smoke test (built frontend is in the image)
+        run: docker run --rm mars-rover-api:ci test -f /app/frontend/dist/index.html

@@ -19,11 +19,12 @@ Python 3.13+, FastAPI, SQLAlchemy 2.0 (async) + asyncpg, Alembic, httpx + tenaci
 - зависимости: `uv sync`; добавить пакет: `uv add <pkg>` (dev: `uv add --dev <pkg>`)
 - миграции: `uv run alembic upgrade head`; новая: `uv run alembic revision --autogenerate -m "<msg>"`
 - сервер: `uv run uvicorn app.main:app --reload`
-- тесты: `uv run pytest -q`; по слоям: `-m unit`, `-m integration`, `-m api`. Тестовую БД мигрирует сама фикстура `migrated_db` — подключай её в тестах, которым нужна база
+- тесты: `uv run pytest -q -n 12` (параллельно, у каждого воркера своя БД `mars_test_gwN`, ~3 мин; без `-n` — последовательно, ~16 мин); по слоям: `-m unit`, `-m integration`, `-m api`. Тестовую БД мигрирует сама фикстура `migrated_db` — подключай её в тестах, которым нужна база.
+- фронтенд (`frontend/`, Node 26): `npm ci`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run build` → `frontend/dist`, сервер раздаёт его на `/`; `npm run dev` — с прокси на `127.0.0.1:8000`
 - линтер: `uv run ruff check .` и `uv run ruff format .`
 - синхронизация: `uv run python -m app.cli sync --rover perseverance --from-sol 2029 --to-sol 2031`
 
-Работаем на Windows: в командах — только `uv run ...` и `docker compose ...`, без make и bash-специфики.
+Работаем на Windows: в командах — только `uv run ...`, `docker compose ...` и `npm ...` в `frontend/`, без make и bash-специфики.
 
 ## Старый проект
 Оригинал — `github.com/corincerami/mars-photo-api` (Ruby, GPL-3.0, архив с 2025-10-08). Его можно склонировать рядом (`../mars-photo-api-legacy`) и читать для сверки поведения. Код оттуда не копируем — только поведение, описанное в `LEGACY-API.md`.

@@ -21,8 +21,12 @@ docker build -t mars-rover-api .
 
 The image: `python:3.13-slim` (pinned), runtime dependencies only (`uv sync --frozen --no-dev`),
 non-root user `app` (uid 10001), port 8000, `HEALTHCHECK` on `/health` (unhealthy when the
-database is unreachable). It contains `app/`, `migrations/` and `alembic.ini`; no `.env`, no
-tests.
+database is unreachable). It contains `app/`, `migrations/`, `alembic.ini` and the built web
+interface (`/app/frontend/dist`); no `.env`, no tests, no Node.
+
+The interface is built inside the image: a `node:26` stage runs `npm ci` and `npm run build` in
+`frontend/` and only `dist/` is copied into the runtime stage (`FRONTEND_DIST_DIR`, set to
+`/app/frontend/dist` in the image).
 
 ## Run against the local dev database
 
@@ -437,6 +441,21 @@ The stale-data path (`/health/sync` -> `503`, freshness alert) needs no breakage
 temporarily set `SYNC_STALE_HOURS=1` while the last success is older than an hour, or just
 watch it after a missed day. Revert afterwards.
 
+## Web interface (Sol Index)
+
+`update.ps1` rebuilds the image together with the interface (`docker build` runs the npm build
+stage), so Node is not needed on the laptop. The npm layer is cached while
+`frontend/package.json` and `package-lock.json` are unchanged; a frontend-only change rebuilds
+just the `npm run build` step.
+
+Addresses: `/` is the interface, `/developers` the page for developers (API links, examples),
+`/docs` the Swagger UI; `/api/*`, `/mars-photos/*`, `/health` are unchanged.
+
+Check after a rollout: `uv run python deploy/smoke.py <url>` (covers `/` and `/developers`), then
+open `/` in a browser and load a sol. If `/` answers 404 or the old developers page, the image
+has no `dist/`: `docker compose exec app ls /app/frontend/dist` must show `index.html` and
+`assets/`.
+
 ## Smoke test
 
 From any machine with the repository and uv (outside the laptop is best: it also checks Funnel):
@@ -445,8 +464,10 @@ From any machine with the repository and uv (outside the laptop is best: it also
 uv run python deploy/smoke.py https://mars-api.sungrazing-menkent.ts.net
 ```
 
-14 requests (11 count against the per-IP limit of 60/min), redirects are not followed. Checks:
-`/health` 200; `/` 200 HTML; `/health/sync` 200 or 503 (body printed, 503 is a warning, not a
+16 requests (12 count against the per-IP limit of 60/min), redirects are not followed. Checks:
+`/health` 200; `/` 200 HTML containing `id="app"` (the Sol Index interface, not the old
+developers page) and one `/assets/*.js` from it with `Cache-Control: immutable`; `/developers`
+200 HTML without `id="app"`; `/health/sync` 200 or 503 (body printed, 503 is a warning, not a
 failure); v1 photos Curiosity sol 1000 FHAZ = 2 photos dated 2015-05-30; v1 rovers = 4; v1
 Perseverance manifest; v2 rovers = 4; v2 photo `per_page=1` and its `/image` redirect `302`;
 `/api/v1/rovers/curiosity/` -> `307` with an `https://` `Location` (proves `X-Forwarded-Proto`

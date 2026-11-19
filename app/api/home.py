@@ -1,4 +1,7 @@
-"""Public landing page ``GET /`` (docs/API.md, "GET /"): static HTML, not rate limited."""
+"""Developer page ``GET /developers`` (docs/API.md): static HTML, not rate limited.
+
+Without a web interface build it is also served at ``/``.
+"""
 
 import html
 from functools import lru_cache
@@ -11,7 +14,11 @@ from fastapi.responses import HTMLResponse
 PAGE_PATH = Path(__file__).resolve().parent.parent / "static" / "index.html"
 PAGE_CACHE_CONTROL = "public, max-age=3600"
 
+_METHODS = ["GET", "HEAD"]
+
+# ``/developers`` always; ``/`` only when there is no web interface build (create_app).
 router = APIRouter()
+root_router = APIRouter()
 
 
 @lru_cache(maxsize=1)
@@ -29,7 +36,6 @@ def render_home(origin: str) -> str:
     return _page_template().substitute(origin=html.escape(origin, quote=True))
 
 
-@router.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
 async def home(request: Request) -> HTMLResponse:
     response = HTMLResponse(
         render_home(request_origin(request)),
@@ -39,3 +45,7 @@ async def home(request: Request) -> HTMLResponse:
         # Same headers as GET (Content-Length included), no body.
         response.body = b""
     return response
+
+
+router.add_api_route("/developers", home, methods=_METHODS, include_in_schema=False)
+root_router.add_api_route("/", home, methods=_METHODS, include_in_schema=False)

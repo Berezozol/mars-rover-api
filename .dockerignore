@@ -1,4 +1,5 @@
 # Allow-list: only what the image needs reaches the build context.
+# frontend/ sources and lock file are included; node_modules and dist are not.
 # Notably excluded: .env (secrets), .venv, .python-version, tests, docs, design, .git.
 *
 !app/
@@ -6,6 +7,11 @@
 !alembic.ini
 !pyproject.toml
 !uv.lock
+!frontend/
 
 **/__pycache__/
 **/*.py[cod]
+frontend/node_modules/
+frontend/dist/
+frontend/.env*
+!frontend/.env.example

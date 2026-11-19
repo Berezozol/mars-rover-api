@@ -1,4 +1,4 @@
-"""Public landing page GET / (docs/API.md "GET /"; stage 9).
+"""Developer page GET /developers (docs/API.md "GET /developers"; stage 9, moved from / in 10).
 
 HTML in English: what the service is and that it is unofficial, how to migrate (change the
 host), differences from the old API, v1 and v2 examples built from the request host, a link
@@ -29,7 +29,11 @@ async def site(app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
 
 @pytest.fixture
 async def page(site: httpx.AsyncClient) -> httpx.Response:
-    return await site.get("/")
+    return await site.get("/developers")
+
+
+def test_developers_page_links_to_web_interface(page: httpx.Response) -> None:
+    assert re.search(r"""href=["'](https?://[^"']*)?/["']""", page.text), "link to /"
 
 
 def test_landing_returns_200_html(page: httpx.Response) -> None:
@@ -70,7 +74,7 @@ async def test_landing_examples_follow_another_host(app: FastAPI) -> None:
     other = "another-host.example.test"
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url=f"http://{other}") as client:
-        text = (await client.get("/")).text
+        text = (await client.get("/developers")).text
 
     assert f"{other}/api/v1/" in text
     assert f"{other}/api/v2/" in text
@@ -93,7 +97,7 @@ def test_landing_has_no_external_images_or_scripts(page: httpx.Response) -> None
 
 
 async def test_landing_head_returns_headers_without_body(site: httpx.AsyncClient) -> None:
-    response = await site.head("/")
+    response = await site.head("/developers")
 
     assert response.status_code == 200
     assert response.content == b""
@@ -104,7 +108,7 @@ async def test_landing_head_returns_headers_without_body(site: httpx.AsyncClient
 async def test_landing_is_not_in_openapi(site: httpx.AsyncClient) -> None:
     paths = (await site.get("/openapi.json")).json()["paths"]
 
-    assert "/" not in paths
+    assert "/developers" not in paths
 
 
 async def raw_get(app: FastAPI, path: str, headers: list[tuple[bytes, bytes]]) -> tuple[int, str]:
@@ -148,7 +152,7 @@ async def raw_get(app: FastAPI, path: str, headers: list[tuple[bytes, bytes]]) -
 )
 async def test_landing_hostile_host_header_is_not_reflected_raw(app: FastAPI, host: bytes) -> None:
     """A hostile Host is either escaped or not used at all (falls back to a safe origin)."""
-    status, text = await raw_get(app, "/", [(b"host", host)])
+    status, text = await raw_get(app, "/developers", [(b"host", host)])
 
     assert status == 200, text
     assert "<script>alert(1)" not in text
@@ -158,7 +162,7 @@ async def test_landing_hostile_host_header_is_not_reflected_raw(app: FastAPI, ho
 
 
 async def test_landing_raw_host_header_is_used_in_examples(app: FastAPI) -> None:
-    status, text = await raw_get(app, "/", [(b"host", b"good.example.test")])
+    status, text = await raw_get(app, "/developers", [(b"host", b"good.example.test")])
 
     assert status == 200
     assert "good.example.test/api/v2/" in text

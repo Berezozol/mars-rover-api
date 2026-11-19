@@ -1,5 +1,13 @@
 """Shared fixtures.
 
+Parallel run (pytest-xdist): `uv run pytest -q -p no:cacheprovider -n 12`. Every worker gets
+its own database `<TEST_DATABASE_URL name>_<worker>` (e.g. mars_test_gw0), cloned with
+CREATE DATABASE ... TEMPLATE from `<name>_template`, which is migrated once per run under a
+Postgres advisory lock (no races between workers). Stale databases of earlier runs are
+dropped and recreated. Without xdist the plain TEST_DATABASE_URL database is used. All
+temporary directories come from `tmp_path` / `tmp_path_factory` (unique per worker). Do not
+run the suite twice at the same time against one Postgres. Timings: tests/README.md.
+
 - `settings` points the app at the test database (TEST_DATABASE_URL), never the dev one,
   with the per-IP rate limit switched off (RATE_LIMIT_ENABLED=false) and no /health/sync
   response cache (HEALTH_SYNC_CACHE_SECONDS=0); the MER image cache lives in a temp dir
@@ -21,7 +29,9 @@
   `httpx.ASGITransport` clients are not affected.
 """
 
+import asyncio
 import itertools
+import os
 from collections.abc import AsyncIterator, Callable, Iterator
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -49,7 +59,7 @@ ROUNDTRIP_MARKER = "migrations_roundtrip"
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers",
-        f"{ROUNDTRIP_MARKER}: drops and recreates the test schema; runs last, not xdist-safe",
+        f"{ROUNDTRIP_MARKER}: drops and recreates the schema; runs last (own DB per xdist worker)",
     )
 
 
@@ -69,13 +79,112 @@ def _guard_test_database(base: Settings) -> None:
         )
 
 
+# Arbitrary constant: key of the Postgres advisory lock that serializes database provisioning.
+_PROVISION_LOCK_KEY = 7_345_001
+_TEMPLATE_READY_MARKER = "mars-test-template.ready"
+
+
+def _quote_ident(name: str) -> str:
+    return '"' + name.replace('"', '""') + '"'
+
+
+def _alembic_config_for(url: str) -> AlembicConfig:
+    cfg = AlembicConfig(str(ROOT / "alembic.ini"))
+    cfg.set_main_option("script_location", str(ROOT / "migrations"))
+    # "%" must be escaped for configparser interpolation.
+    cfg.set_main_option("sqlalchemy.url", url.replace("%", "%%"))
+    return cfg
+
+
+async def _provision_worker_database(
+    base_url: str, template: str, worker_db: str, marker: Path
+) -> None:
+    """Migrate the template once per run, then clone it as the worker's database.
+
+    Everything runs under one advisory lock: workers queue up, the first one builds the
+    template (the marker file in the shared base temp dir says "already built in this run"),
+    the others only clone. Cloning needs no other session on the template, hence the lock
+    also serializes the clones.
+    """
+    admin_url = make_url(base_url).set(database="postgres")
+    engine = create_async_engine(admin_url, isolation_level="AUTOCOMMIT", poolclass=NullPool)
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT pg_advisory_lock(:k)"), {"k": _PROVISION_LOCK_KEY})
+            try:
+                if not marker.exists():  # noqa: ASYNC240 (tiny local file)
+                    await conn.execute(
+                        text(f"DROP DATABASE IF EXISTS {_quote_ident(template)} WITH (FORCE)")
+                    )
+                    await conn.execute(text(f"CREATE DATABASE {_quote_ident(template)}"))
+                    template_url = make_url(base_url).set(database=template)
+                    url = template_url.render_as_string(hide_password=False)
+                    # migrations/env.py calls asyncio.run() itself: run it off this loop.
+                    await asyncio.to_thread(command.upgrade, _alembic_config_for(url), "head")
+                    marker.write_text("ready", encoding="utf-8")  # noqa: ASYNC240
+                await conn.execute(
+                    text(f"DROP DATABASE IF EXISTS {_quote_ident(worker_db)} WITH (FORCE)")
+                )
+                await conn.execute(
+                    text(
+                        f"CREATE DATABASE {_quote_ident(worker_db)} "
+                        f"TEMPLATE {_quote_ident(template)}"
+                    )
+                )
+            finally:
+                await conn.execute(
+                    text("SELECT pg_advisory_unlock(:k)"), {"k": _PROVISION_LOCK_KEY}
+                )
+    finally:
+        await engine.dispose()
+
+
+async def _drop_database(base_url: str, name: str) -> None:
+    admin_url = make_url(base_url).set(database="postgres")
+    engine = create_async_engine(admin_url, isolation_level="AUTOCOMMIT", poolclass=NullPool)
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text(f"DROP DATABASE IF EXISTS {_quote_ident(name)} WITH (FORCE)"))
+    finally:
+        await engine.dispose()
+
+
 @pytest.fixture(scope="session")
-def settings(tmp_path_factory: pytest.TempPathFactory) -> Settings:
+def test_database_url(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
+    """URL of this process's test database.
+
+    Plain run: TEST_DATABASE_URL itself. Under xdist: a private `<name>_<worker>` clone.
+    """
+    base = get_settings()
+    _guard_test_database(base)
+    worker = os.environ.get("PYTEST_XDIST_WORKER")
+    if not worker:
+        yield base.test_database_url
+        return
+    base_url = make_url(base.test_database_url)
+    name = base_url.database or "mars_test"
+    worker_db = f"{name}_{worker}"
+    marker = tmp_path_factory.getbasetemp().parent / _TEMPLATE_READY_MARKER
+    asyncio.run(
+        _provision_worker_database(base.test_database_url, f"{name}_template", worker_db, marker)
+    )
+    try:
+        yield base_url.set(database=worker_db).render_as_string(hide_password=False)
+    finally:
+        asyncio.run(_drop_database(base.test_database_url, worker_db))
+
+
+@pytest.fixture(scope="session")
+def settings(tmp_path_factory: pytest.TempPathFactory, test_database_url: str) -> Settings:
     base = get_settings()
     _guard_test_database(base)
     return base.model_copy(
         update={
-            "database_url": base.test_database_url,
+            "database_url": test_database_url,
+            # Stage 10: no built web interface in the suite by default (the developer's own
+            # frontend/dist must not change what `/` returns); tests of the interface build
+            # a fake dist in tmp_path and pass `frontend_dist_dir`.
+            "frontend_dist_dir": tmp_path_factory.mktemp("no-frontend") / "dist",
             "environment": "test",
             "sync_enabled": False,
             # Stage 9: the per-IP limit is off for the suite; rate-limit tests build their own
@@ -93,11 +202,7 @@ def settings(tmp_path_factory: pytest.TempPathFactory) -> Settings:
 @pytest.fixture(scope="session")
 def alembic_cfg(settings: Settings) -> AlembicConfig:
     _guard_test_database(get_settings())
-    cfg = AlembicConfig(str(ROOT / "alembic.ini"))
-    cfg.set_main_option("script_location", str(ROOT / "migrations"))
-    # "%" must be escaped for configparser interpolation.
-    cfg.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
-    return cfg
+    return _alembic_config_for(settings.database_url)
 
 
 @pytest.fixture(scope="session")
@@ -174,8 +279,8 @@ async def clean_db(
 ) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
     """Committed-data isolation: wipe sync data before and after the test, keep the seed.
 
-    NOT xdist-safe: it TRUNCATEs tables of the shared mars_test database, so tests using it
-    must not run in parallel with any other process using TEST_DATABASE_URL.
+    It TRUNCATEs tables of this process's test database: safe under xdist (one database per
+    worker), but not alongside another process using the same database.
     """
     await _clean_database(session_factory)
     try:

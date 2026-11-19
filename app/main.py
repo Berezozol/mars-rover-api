@@ -11,7 +11,9 @@ from starlette.middleware.gzip import DEFAULT_EXCLUDED_CONTENT_TYPES
 
 from app import __version__
 from app.api.caching import CachingMiddleware, VaryAcceptEncodingMiddleware
+from app.api.frontend import mount_frontend
 from app.api.health import router as health_router
+from app.api.home import root_router as root_home_router
 from app.api.home import router as home_router
 from app.api.legacy import router as legacy_router
 from app.api.ratelimit import RateLimitMiddleware
@@ -138,6 +140,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     register_exception_handlers(app)
 
     app.include_router(home_router)
+    if not mount_frontend(app, settings.frontend_dist_dir):
+        app.include_router(root_home_router)
     app.include_router(health_router)
     app.include_router(legacy_router, prefix="/api/v1")
     app.include_router(legacy_router, prefix="/mars-photos/api/v1", include_in_schema=False)

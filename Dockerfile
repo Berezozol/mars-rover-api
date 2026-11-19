@@ -7,8 +7,24 @@
 
 ARG PYTHON_IMAGE=python:3.13.18-slim-trixie
 ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.13.8
+ARG NODE_IMAGE=node:26.13.1-alpine
 
 FROM ${UV_IMAGE} AS uv
+
+# ---------------------------------------------------------------------------
+# Frontend: build the Sol Index UI into /frontend/dist (Node stays in this stage only)
+# ---------------------------------------------------------------------------
+FROM ${NODE_IMAGE} AS frontend
+
+WORKDIR /frontend
+
+# npm dependencies first, so source changes do not invalidate this layer.
+COPY frontend/package.json frontend/package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --no-audit --no-fund
+
+COPY frontend/ ./
+RUN npm run build
 
 # ---------------------------------------------------------------------------
 # Builder: resolve the locked runtime dependencies into /app/.venv
@@ -48,13 +64,16 @@ FROM ${PYTHON_IMAGE} AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/app/.venv/bin:${PATH}" \
-    FORWARDED_ALLOW_IPS=127.0.0.1
+    FORWARDED_ALLOW_IPS=127.0.0.1 \
+    FRONTEND_DIST_DIR=/app/frontend/dist
 
 RUN groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --no-create-home --shell /usr/sbin/nologin app
 
 WORKDIR /app
 COPY --from=builder /app /app
+# Built UI, served by the app at / (FRONTEND_DIST_DIR defaults to frontend/dist under /app).
+COPY --from=frontend /frontend/dist /app/frontend/dist
 
 # On-disk cache of converted MER images (MER_IMAGE_CACHE_DIR, default data/mer-images).
 # Writable by `app`; /app itself stays root-owned. A named volume mounted here inherits
