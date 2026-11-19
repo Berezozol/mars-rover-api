@@ -15,14 +15,14 @@
     powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\<user>\mars-server\backup.ps1
 
 .EXAMPLE
-    .\backup.ps1 -ComposeDir C:\Users\<user>\mars-server -ProjectName mars-server -Keep 7
+    .\backup.ps1 -ComposeDir C:\Users\<user>\mars-server -ProjectName mars -Keep 7
 #>
 [CmdletBinding()]
 param(
     # Directory with compose.yml and .env.
     [string]$ComposeDir = $PSScriptRoot,
     # Compose project name (`name:` in compose.yml).
-    [string]$ProjectName = 'mars-server',
+    [string]$ProjectName = 'mars',
     # Compose service of the database.
     [string]$Service = 'db',
     [string]$DbUser = 'mars',

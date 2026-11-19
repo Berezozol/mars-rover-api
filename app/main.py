@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from starlette.middleware.gzip import DEFAULT_EXCLUDED_CONTENT_TYPES
 
 from app import __version__
 from app.api.caching import CachingMiddleware, VaryAcceptEncodingMiddleware
@@ -25,6 +26,7 @@ from app.db.session import create_engine, create_session_factory
 from app.services.admin import AdapterFactory, cancel_background
 from app.services.alerts import AlertMonitor, TelegramNotifier
 from app.services.health import FreshnessCache
+from app.services.mer_images import MerImageService
 from app.services.scheduler import AlertScheduler, SyncScheduler
 from app.services.sync import SyncService
 from app.sources.base import SourceAdapter
@@ -47,6 +49,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     - ``rate_limiter`` (only with RATE_LIMIT_ENABLED) and ``admin_auth_limiter`` (only with
       admin enabled): ``RateLimiter`` instances; tests may replace their ``clock``.
     - ``alert_monitor``: ``AlertMonitor`` when Telegram alerts are configured, else None.
+    - ``mer_image_service``: ``MerImageService`` of the Spirit/Opportunity full frames (a stub
+      with ``async get_full_jpeg(photo) -> bytes`` also works; ``aclose()`` is optional).
     - ``health_sync_cache``: ``FreshnessCache`` of /health/sync (``ttl``, ``clock``, ``clear()``).
     """
     settings = settings or get_settings()
@@ -73,7 +77,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 try:
                     _stop_alerts(app)
                 finally:
-                    await _stop_sync(app)
+                    try:
+                        await _stop_converter(app)
+                    finally:
+                        await _stop_sync(app)
             finally:
                 await engine.dispose()
 
@@ -98,6 +105,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.sync_tasks = set()
     app.state.alert_monitor = _alert_monitor(app, settings)
     app.state.alert_scheduler = None
+    app.state.mer_image_service = MerImageService(settings)
     # /health/sync result cache (HEALTH_SYNC_CACHE_SECONDS; tests may clear() it or set ttl).
     app.state.health_sync_cache = FreshnessCache(settings.health_sync_cache_seconds)
     if settings.admin_enabled:
@@ -121,7 +129,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Outside the caching middleware: the ETag is computed on the uncompressed body, so it
     # does not depend on the encoding (see app.api.caching).
     app.add_middleware(
-        GZipMiddleware, minimum_size=GZIP_MINIMUM_SIZE, compresslevel=GZIP_COMPRESS_LEVEL
+        GZipMiddleware,
+        minimum_size=GZIP_MINIMUM_SIZE,
+        compresslevel=GZIP_COMPRESS_LEVEL,
+        exclude_content_types=(*DEFAULT_EXCLUDED_CONTENT_TYPES, "image/*"),
     )
     app.add_middleware(VaryAcceptEncodingMiddleware)
     register_exception_handlers(app)
@@ -179,6 +190,13 @@ def _start_scheduler(app: FastAPI, settings: Settings) -> None:
     """Start the periodic sync on the shared client and service."""
     app.state.scheduler = SyncScheduler(app.state.sync_service, app.state.upstream_client, settings)
     app.state.scheduler.start()
+
+
+async def _stop_converter(app: FastAPI) -> None:
+    """Cancel running conversions and close the converter's own upstream client."""
+    aclose = getattr(app.state.mer_image_service, "aclose", None)
+    if aclose is not None:
+        await aclose()
 
 
 async def _stop_sync(app: FastAPI) -> None:

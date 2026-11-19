@@ -73,6 +73,12 @@ the image.
 | `TELEGRAM_CHAT_ID` | no | chat (user or group) that receives alerts |
 | `TELEGRAM_API_BASE` | no | default `https://api.telegram.org` |
 | `ALERT_CHECK_INTERVAL_MINUTES` | no | default 60: how often stale data is checked; failed or partial syncs alert at once |
+| `MER_IMAGE_CACHE_DIR` | no | default `data/mer-images` (`/app/data/mer-images` in the image, writable by `app`): disk cache of Spirit/Opportunity full-size JPEGs converted from PDS `.img`. Laptop: a named volume is mounted there, keep the default |
+| `MER_IMAGE_CACHE_MAX_MB` | no | default 5120 (5 GB): cache size limit. The cache can be deleted at any time, it is rebuilt on demand |
+| `MER_CONVERT_CONCURRENCY` | no | default 2: simultaneous conversions (CPU and memory) |
+| `MER_CONVERT_TIMEOUT_SECONDS` | no | default 60: time limit of one conversion |
+| `MER_CONVERT_QUEUE` | no | default 8: conversions waiting for a free slot; beyond that the request is refused |
+| `MER_PDS_MAX_RPS` | no | default 2: requests per second to NASA PDS from all conversions together |
 
 The server runs a single uvicorn process (no `--workers`): the scheduler, the rate-limit counters
 and the alert state live in-process.
@@ -88,12 +94,16 @@ Internet --HTTPS--> Tailscale Funnel (TLS, on the laptop) --HTTP--> 127.0.0.1:80
     --> Docker Desktop port forward --> app container (uvicorn) --> db container (Postgres 16)
 ```
 
+Names: `mars-server` is only the directory on the laptop; the Compose project is `mars`
+(`name: mars` in `compose.yml`, `-ProjectName mars` in the scripts) and the database volume is
+`mars_pgdata` (explicit `name:`). Neither may be changed.
+
 Files (templates in `deploy/laptop/`, live copy outside the repository in
 `C:\Users\<user>\mars-server\`):
 
 | File | What |
 |---|---|
-| `compose.yml` | project `mars-server`: `db` (Postgres 16, volume, no published ports), `app` (`mars-rover-api:local`, `127.0.0.1:8000`), restart `unless-stopped`, log rotation 5 x 10 MB |
+| `compose.yml` | project `mars`: `db` (Postgres 16, volume, no published ports), `app` (`mars-rover-api:local`, `127.0.0.1:8000`), restart `unless-stopped`, log rotation 5 x 10 MB |
 | `.env` | from `.env.example`: `POSTGRES_PASSWORD`, `ADMIN_TOKEN`, Telegram, optional tuning. Never committed |
 | `backup.ps1` | `pg_dump -Fc` in the db container, `pg_restore --list` check, keeps 7 copies in `backups\`, log `backups\backup.log` |
 | `update.ps1` | pull, build, backup, migrate, restart, `/health` check |
@@ -254,10 +264,43 @@ If the new version does not start: `docker compose logs --tail 200 app`. To go b
 the previous commit and run `update.ps1 -SkipPull`. Migrations are not downgraded automatically;
 if a migration broke the data, restore the backup made by this run (step 3 of the script).
 
-When `compose.yml` itself changes in the repository, copy it to `mars-server` and run
+When `compose.yml` itself changes in the repository, apply the change to the live copy in `mars-server`
+(for the MER stage not by copying the whole file, see "MER image cache") and run
 `docker compose up -d` (it recreates only the changed services; the database volume stays).
 Stage 9 changes it: the db service gets the `./backups:/backups` mount that `backup.ps1` needs,
 and `FORWARDED_ALLOW_IPS` is no longer `*`. Run the client-IP checks of section 3 afterwards.
+
+### MER image cache
+
+`GET /api/v2/photos/{id}/image?size=full` for Spirit and Opportunity converts the PDS3 `.img`
+from NASA PDS to JPEG on the fly and keeps the result on disk.
+
+- Where: named volume `mer_images` (`mars_mer_images`), mounted in the `app`
+  container at `/app/data/mer-images`. It survives container recreation and `update.ps1`
+  (which never touches volumes). The image creates the directory owned by `app` (uid 10001);
+  a named volume, unlike a Windows bind mount, keeps that owner.
+- Limit: `MER_IMAGE_CACHE_MAX_MB` (default 5120 = 5 GB), see `.env.example`.
+- Size: `docker compose exec app du -sh /app/data/mer-images`, or
+  `docker system df -v` (look for the volume `mars_mer_images`).
+- Clear: the cache is only a copy, deleting it loses nothing (images are converted again on
+  request, so the first request of each image is slow):
+  `docker compose exec app sh -c "rm -rf /app/data/mer-images/*"`, or stop the app and remove the
+  volume: `docker compose down` then `docker volume rm mars_mer_images`
+  (never `docker compose down -v`: it would also delete `mars_pgdata`).
+- The cache is not part of the backups.
+
+Move to the laptop for this stage:
+
+1. `git pull` in the repository.
+2. Do not copy `compose.yml` over the live one. Carry over only two blocks from
+   `deploy\laptop\compose.yml`: in `app`, `volumes: - mer_images:/app/data/mer-images`, and in the
+   top-level `volumes:`, `mer_images: {name: mars_mer_images}`. The live file keeps `name: mars`
+   and `pgdata: {name: mars_pgdata}`: with another project name or volume name Compose creates an
+   empty database volume. Optional `MER_*` lines go to `.env` (see `.env.example`).
+3. Check before `update.ps1`, in `mars-server`:
+   `docker compose ls` (project `mars`), `docker volume ls` (`mars_pgdata` exists, no new
+   `*_pgdata`), `docker compose config` (volumes `mars_pgdata` and `mars_mer_images`, no errors).
+4. `update.ps1 -SkipPull` (build, backup, migrate, restart).
 
 ### 6. Backups and restore
 
@@ -271,7 +314,7 @@ Register-ScheduledTask -TaskName MarsServerBackup -Action $action -Trigger $trig
 ```
 
 `backup.ps1` parameters: `-ComposeDir` (default: its own directory), `-ProjectName`
-(`mars-server`), `-Service` (`db`), `-BackupDir` (`<ComposeDir>\backups`), `-ContainerBackupDir`
+(`mars`), `-Service` (`db`), `-BackupDir` (`<ComposeDir>\backups`), `-ContainerBackupDir`
 (`/backups`), `-Keep` (7). `compose.yml` bind-mounts `.\backups` into the db container as
 `/backups`, and `pg_dump` writes `mars-<yyyyMMdd-HHmmss>.dump` straight there: no temporary copy
 inside Docker Desktop's disk image (which would need twice the space and never shrinks). Free
@@ -312,7 +355,7 @@ docker compose logs --tail 100 db
 ```
 
 Logs rotate at 5 x 10 MB per container (they survive restarts, not `docker compose down`).
-Docker Desktop shows the same in Containers -> `mars-server`. Sync runs are also visible via
+Docker Desktop shows the same in Containers -> `mars`. Sync runs are also visible via
 admin: `GET /api/v2/admin/sync/runs` with the `X-Admin-Token` header.
 
 ## Monitoring
@@ -402,10 +445,13 @@ From any machine with the repository and uv (outside the laptop is best: it also
 uv run python deploy/smoke.py https://mars-api.sungrazing-menkent.ts.net
 ```
 
-13 requests (10 count against the per-IP limit of 60/min), redirects are not followed. Checks:
+14 requests (11 count against the per-IP limit of 60/min), redirects are not followed. Checks:
 `/health` 200; `/` 200 HTML; `/health/sync` 200 or 503 (body printed, 503 is a warning, not a
 failure); v1 photos Curiosity sol 1000 FHAZ = 2 photos dated 2015-05-30; v1 rovers = 4; v1
 Perseverance manifest; v2 rovers = 4; v2 photo `per_page=1` and its `/image` redirect `302`;
 `/api/v1/rovers/curiosity/` -> `307` with an `https://` `Location` (proves `X-Forwarded-Proto`
-is trusted); `If-None-Match` -> `304`; unknown rover -> `400 {"errors": "Invalid Rover Name"}`.
+is trusted); `If-None-Match` -> `304`; unknown rover -> `400 {"errors": "Invalid Rover Name"}`;
+an Opportunity sol 1 photo whose `images.full` points to our `/api/v2/photos/{id}/image?size=full`.
+The flag `--with-mer-image` adds a `GET` of that image (`200 image/jpeg`): it makes the server
+download and convert a PDS file, so use it after deploying the MER stage, not routinely.
 Exit code 0 when all pass, 1 otherwise.

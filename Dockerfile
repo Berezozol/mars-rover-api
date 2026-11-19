@@ -56,6 +56,11 @@ RUN groupadd --system --gid 10001 app \
 WORKDIR /app
 COPY --from=builder /app /app
 
+# On-disk cache of converted MER images (MER_IMAGE_CACHE_DIR, default data/mer-images).
+# Writable by `app`; /app itself stays root-owned. A named volume mounted here inherits
+# this owner on first use (deploy/laptop/compose.yml).
+RUN mkdir -p /app/data/mer-images && chown -R app:app /app/data
+
 USER app
 EXPOSE 8000
 

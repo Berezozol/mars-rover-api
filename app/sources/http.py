@@ -24,6 +24,7 @@ Clock = Callable[[], float]
 MAX_BACKOFF_SECONDS = 30.0
 RETRYABLE_STATUSES = frozenset({429})
 RETRY_AFTER_STATUSES = frozenset({429, 503})
+MAX_REDIRECTS = 5
 
 
 class UpstreamError(Exception):
@@ -109,6 +110,40 @@ def _content_length(response: httpx.Response) -> int | None:
         return None
 
 
+def _origin(url: httpx.URL) -> tuple[str, str, int | None]:
+    port = url.port or {"https": 443, "http": 80}.get(url.scheme)
+    return url.scheme, (url.host or "").lower(), port
+
+
+def _check_host(url: str, target: str, allowed_origin: str | None) -> None:
+    """Only https, and only the host and effective port of ``allowed_origin``."""
+    if allowed_origin is None:
+        return
+    scheme, host, port = _origin(httpx.URL(target))
+    _, allowed_origin, allowed_port = _origin(httpx.URL(allowed_origin))
+    if scheme != "https" or host != allowed_origin or port != allowed_port:
+        raise UpstreamError(url, None, "host is not allowed")
+
+
+async def _collect(url: str, response: httpx.Response, max_bytes: int) -> bytes:
+    """The body of a streamed response, capped at ``max_bytes`` and checked for completeness."""
+    expected = _content_length(response)
+    if expected is not None and expected > max_bytes:
+        raise UpstreamError(url, response.status_code, "response is too large")
+    chunks: list[bytes] = []
+    received = 0
+    async for chunk in response.aiter_raw():
+        received += len(chunk)
+        if received > max_bytes:
+            raise UpstreamError(url, response.status_code, "response is too large")
+        chunks.append(chunk)
+    if expected is not None and received != expected:
+        raise IncompleteResponse(
+            url, response.status_code, f"got {received} bytes, Content-Length {expected}"
+        )
+    return b"".join(chunks)
+
+
 def _is_retryable(exc: BaseException) -> bool:
     return isinstance(exc, httpx.TransportError | _RetryableStatusError)
 
@@ -179,6 +214,22 @@ class UpstreamClient:
         part.replace(dest)
         return size
 
+    async def get_bytes(
+        self, url: str, *, max_bytes: int, allowed_origin: str | None = None
+    ) -> bytes:
+        """GET ``url`` into memory (at most ``max_bytes``); ``UpstreamError`` on final failure.
+
+        Same retries, rate limit and User-Agent as ``get_json``; a body shorter or longer than
+        its ``Content-Length`` is an ``IncompleteResponse`` (retried), one over ``max_bytes``
+        a plain ``UpstreamError``. With ``allowed_origin`` (a URL) set, the first URL and every
+        redirect target must be https on its host and port (redirects are followed here).
+        """
+        return await self._with_retries(
+            url,
+            lambda: self._read_bytes(url, max_bytes, allowed_origin),
+            retryable=_is_download_retryable,
+        )
+
     async def _with_retries[T](
         self,
         url: str,
@@ -240,6 +291,23 @@ class UpstreamClient:
                 url, response.status_code, f"got {written} bytes, Content-Length {expected}"
             )
         return written
+
+    async def _read_bytes(self, url: str, max_bytes: int, allowed_origin: str | None) -> bytes:
+        current = url
+        for _ in range(MAX_REDIRECTS + 1):
+            _check_host(url, current, allowed_origin)
+            await self._limiter.acquire()
+            headers = {"Accept-Encoding": "identity"}
+            follow = allowed_origin is None
+            async with self._http.stream(
+                "GET", current, headers=headers, follow_redirects=follow
+            ) as response:
+                if not follow and response.is_redirect and "location" in response.headers:
+                    current = str(httpx.URL(current).join(response.headers["location"]))
+                    continue
+                self._check_status(url, response)
+                return await _collect(url, response, max_bytes)
+        raise UpstreamError(url, None, "too many redirects")
 
     def _backoff(self, state: RetryCallState) -> float:
         retry_index = state.attempt_number - 1

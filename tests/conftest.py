@@ -2,7 +2,8 @@
 
 - `settings` points the app at the test database (TEST_DATABASE_URL), never the dev one,
   with the per-IP rate limit switched off (RATE_LIMIT_ENABLED=false) and no /health/sync
-  response cache (HEALTH_SYNC_CACHE_SECONDS=0).
+  response cache (HEALTH_SYNC_CACHE_SECONDS=0); the MER image cache lives in a temp dir
+  (the `app` fixture uses a per-test one).
 - `alembic_cfg` is an Alembic config bound to the test database.
 - `migrated_db` applies all Alembic migrations to the test database once per session.
   Use it in every test that needs the database (integration and most api tests).
@@ -69,7 +70,7 @@ def _guard_test_database(base: Settings) -> None:
 
 
 @pytest.fixture(scope="session")
-def settings() -> Settings:
+def settings(tmp_path_factory: pytest.TempPathFactory) -> Settings:
     base = get_settings()
     _guard_test_database(base)
     return base.model_copy(
@@ -82,6 +83,9 @@ def settings() -> Settings:
             "rate_limit_enabled": False,
             # No /health/sync response cache: freshness tests change data between requests.
             "health_sync_cache_seconds": 0,
+            # Stage 9a: converted MER images are cached in a temporary directory, never in
+            # data/. The `app` fixture gives every test its own (empty) cache directory.
+            "mer_image_cache_dir": tmp_path_factory.mktemp("mer-images-session"),
         }
     )
 
@@ -216,10 +220,22 @@ def make_record() -> Callable[..., Any]:
 
 
 @pytest.fixture
-async def app(settings: Settings) -> AsyncIterator[FastAPI]:
-    application = create_app(settings)
-    yield application
-    await application.state.engine.dispose()
+async def app(settings: Settings, tmp_path: Path) -> AsyncIterator[FastAPI]:
+    # A fresh image cache per test: photo ids restart from 1 after every `clean_db`.
+    application = create_app(
+        settings.model_copy(update={"mer_image_cache_dir": tmp_path / "mer-images"})
+    )
+    try:
+        yield application
+    finally:
+        # Close the lazily created HTTP clients (shared upstream client, MER converter).
+        shared = getattr(application.state, "upstream_client", None)
+        if shared is not None:
+            await shared.aclose()
+        closer = getattr(getattr(application.state, "mer_image_service", None), "aclose", None)
+        if closer is not None:
+            await closer()
+        await application.state.engine.dispose()
 
 
 @pytest.fixture

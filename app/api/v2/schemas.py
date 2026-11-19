@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, PlainSerializer, StrictInt, S
 
 from app.api.v2.params import MAX_SOL
 from app.db.models import Photo, SolSummary, SyncRun
+from app.services import v2
 from app.services.admin import RunPage
 from app.services.v2 import CameraInfo, LatestPhotos, Manifest, PhotoPage, RoverInfo
 
@@ -157,7 +158,22 @@ def camera_out(info: CameraInfo) -> CameraOut:
     return CameraOut(code=info.camera.code, name=info.camera.name, total_photos=info.total_photos)
 
 
-def photo_dict(photo: Photo) -> Json:
+def _image_urls(photo: Photo, origin: str) -> tuple[str | None, str]:
+    """``(small, full)`` URLs; Spirit/Opportunity serve the full frame through our converter.
+
+    Their stored ``img_full`` is the PDS browse preview, so it becomes ``small`` here.
+    """
+    if photo.rover_id in v2.MER_ROVERS:
+        preview = photo.img_small or photo.img_full
+        if not photo.source_link:
+            return preview, photo.img_full
+        full = f"{origin}/api/v2/photos/{photo.id}/image?size=full"
+        return preview, full
+    return photo.img_small, photo.img_full
+
+
+def photo_dict(photo: Photo, origin: str) -> Json:
+    small, full = _image_urls(photo, origin)
     return {
         "id": photo.id,
         "rover": photo.rover_id,
@@ -167,21 +183,21 @@ def photo_dict(photo: Photo) -> Json:
         "camera": {"code": photo.camera.code, "name": photo.camera.name},
         "sample_type": photo.sample_type,
         "title": photo.title,
-        "img_src": photo.img_full,
+        "img_src": full,
         "images": {
-            "small": photo.img_small,
+            "small": small,
             "medium": photo.img_medium,
             "large": photo.img_large,
-            "full": photo.img_full,
+            "full": full,
         },
         "credit": photo.credit,
         "source": {"id": photo.source_id, "link": photo.source_link},
     }
 
 
-def photo_detail_out(photo: Photo) -> PhotoDetailOut:
+def photo_detail_out(photo: Photo, origin: str) -> PhotoDetailOut:
     return PhotoDetailOut(
-        **photo_dict(photo),
+        **photo_dict(photo, origin),
         caption=photo.caption,
         received_at=photo.received_at,
         site=photo.site,
@@ -190,20 +206,20 @@ def photo_detail_out(photo: Photo) -> PhotoDetailOut:
     )
 
 
-def photos_body(result: PhotoPage) -> Json:
+def photos_body(result: PhotoPage, origin: str) -> Json:
     return {
-        "items": [photo_dict(photo) for photo in result.items],
+        "items": [photo_dict(photo, origin) for photo in result.items],
         "page": result.page,
         "per_page": result.per_page,
         "total": result.total,
     }
 
 
-def latest_body(result: LatestPhotos) -> Json:
+def latest_body(result: LatestPhotos, origin: str) -> Json:
     page = result.photos
     return {
         "sol": result.sol,
-        "items": [photo_dict(photo) for photo in page.items],
+        "items": [photo_dict(photo, origin) for photo in page.items],
         "page": page.page,
         "per_page": page.per_page,
         "total": page.total,

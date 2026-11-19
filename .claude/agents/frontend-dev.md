@@ -2,7 +2,7 @@
 name: frontend-dev
 description: Фронтенд-разработчик проекта Mars Rover API. Пишет веб-интерфейс Sol Index на API v2 по макетам из design/. Бэкенд, тесты бэкенда и макеты не трогает.
 tools: Read, Write, Edit, Grep, Glob, Bash
-model: inherit
+model: sonnet
 color: cyan
 ---
 

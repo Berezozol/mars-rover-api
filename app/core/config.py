@@ -65,6 +65,17 @@ class Settings(BaseSettings):
     # A relative path is resolved against the project root, not the working directory.
     mer_cache_dir: Path = Path("data/mer")
 
+    # Full-size Spirit/Opportunity frames: PDS3 .img converted to JPEG on demand (stage 9a).
+    # A relative cache path is resolved against the project root.
+    mer_image_cache_dir: Path = Path("data/mer-images")
+    mer_image_cache_max_mb: int = Field(default=5120, ge=1)
+    mer_convert_concurrency: int = Field(default=2, ge=1)
+    mer_convert_timeout_seconds: float = Field(default=60, gt=0)
+    # Distinct frames waiting for a conversion slot; more get 503 converter_busy.
+    mer_convert_queue: int = Field(default=8, ge=0)
+    # Request rate to PDS of the converter's own client (not shared with the sync client).
+    mer_pds_max_rps: float = Field(default=2.0, gt=0)
+
     admin_token: SecretStr | None = None
     cors_origins: list[str] = ["*"]
 
@@ -88,9 +99,9 @@ class Settings(BaseSettings):
     telegram_api_base: str = "https://api.telegram.org"
     alert_check_interval_minutes: int = Field(default=60, ge=1)
 
-    @field_validator("mer_cache_dir", mode="after")
+    @field_validator("mer_cache_dir", "mer_image_cache_dir", mode="after")
     @classmethod
-    def _resolve_mer_cache_dir(cls, value: Path) -> Path:
+    def _resolve_cache_dir(cls, value: Path) -> Path:
         return value if value.is_absolute() else PROJECT_ROOT / value
 
     @field_validator("admin_token", mode="after")

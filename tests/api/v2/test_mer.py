@@ -1,9 +1,11 @@
 """API v2 for Spirit and Opportunity after the PDS import (stage 8).
 
-Contract: docs/API.md - Photo of Spirit/Opportunity: ``images.full`` (= ``img_src``) is the
-PDS browse JPEG, ``small``/``medium``/``large`` and ``title`` are null, ``source.link`` is
-the PDS ``.img`` product; filters ``camera`` and ``sample_type`` as for every rover; the
-image endpoint falls back to ``full`` for any size; ``status: complete``; admin sync of
+Contract: docs/API.md - Photo of Spirit/Opportunity (stage 9a): ``images.small`` is the PDS
+browse JPEG (preview), ``images.full`` (= ``img_src``) is our conversion
+``{origin}/api/v2/photos/{id}/image?size=full``, ``medium``/``large`` and ``title`` are null,
+``source.link`` is the PDS ``.img`` product; filters ``camera`` and ``sample_type`` as for
+every rover; ``size=small`` of the image endpoint redirects to the preview, other sizes are
+the conversion (tests/api/v2/test_mer_image.py); ``status: complete``; admin sync of
 Spirit/Opportunity stays ``422`` (no source to sync, one-time import only).
 Data: ``mer_world`` (tests/api/_mer.py).
 """
@@ -57,10 +59,12 @@ async def test_mer_photo_list_item_shape(client: httpx.AsyncClient, world: MerWo
     body = await get(client, "/rovers/spirit/photos", sol=386)
     [item] = body["items"]
     frame = world.frame("2N160633049EDNA2K1F0006R0M1")
+    photo_id = world.photo_ids[frame.source_id]
+    full = f"http://test/api/v2/photos/{photo_id}/image?size=full"
 
     assert body["total"] == 1
     assert item == {
-        "id": world.photo_ids[frame.source_id],
+        "id": photo_id,
         "rover": "spirit",
         "sol": 386,
         "earth_date": "2005-02-02",
@@ -68,8 +72,8 @@ async def test_mer_photo_list_item_shape(client: httpx.AsyncClient, world: MerWo
         "camera": {"code": "NAVCAM", "name": "Navigation Camera"},
         "sample_type": "downsampled",
         "title": None,
-        "img_src": frame.img_full,
-        "images": {"small": None, "medium": None, "large": None, "full": frame.img_full},
+        "img_src": full,
+        "images": {"small": frame.img_full, "medium": None, "large": None, "full": full},
         "credit": "NASA/JPL-Caltech",
         "source": {"id": frame.source_id, "link": frame.source_link},
     }
@@ -165,18 +169,39 @@ async def test_mer_latest_photos(client: httpx.AsyncClient, world: MerWorld, rov
     assert body["total"] == len(world.sol_frames(rover, MAX_PHOTO_SOL[rover]))
 
 
-@pytest.mark.parametrize("size", ["full", "large", "medium", "small", None])
-async def test_mer_image_redirects_to_browse_jpeg_for_any_size(
-    client: httpx.AsyncClient, world: MerWorld, size: str | None
+async def test_mer_image_small_redirects_to_the_browse_jpeg(
+    client: httpx.AsyncClient, world: MerWorld
 ) -> None:
     source_id = "1M192379108EFF64KWP2956M2M1"
-    query = {"size": size} if size else {}
 
-    response = await client.get(f"{V2}/photos/{world.photo_ids[source_id]}/image", params=query)
+    response = await client.get(
+        f"{V2}/photos/{world.photo_ids[source_id]}/image", params={"size": "small"}
+    )
 
     assert response.status_code == 302
     assert response.headers["location"] == world.frame(source_id).img_full
     assert response.headers["location"].endswith(".img.jpg")
+
+
+@pytest.mark.parametrize("rover", ROVERS)
+async def test_mer_photos_have_conversion_links_in_every_listing(
+    client: httpx.AsyncClient, world: MerWorld, rover: str
+) -> None:
+    """Photo of every endpoint: full = img_src = our conversion, small = the PDS preview."""
+    listing = (await get(client, f"/rovers/{rover}/photos", per_page=100))["items"]
+    latest = (await get(client, f"/rovers/{rover}/photos/latest"))["items"]
+    frames = {world.photo_ids[f.source_id]: f for f in world.frames[rover]}
+
+    assert listing and latest
+    for item in listing + latest:
+        link = f"http://test/api/v2/photos/{item['id']}/image?size=full"
+        assert item["img_src"] == link
+        assert item["images"] == {
+            "small": frames[item["id"]].img_full,
+            "medium": None,
+            "large": None,
+            "full": link,
+        }
 
 
 @pytest.mark.parametrize("rover", ROVERS)

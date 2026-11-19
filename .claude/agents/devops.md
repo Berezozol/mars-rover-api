@@ -2,7 +2,7 @@
 name: devops
 description: DevOps-инженер проекта Mars Rover API. Сборка образа приложения, CI на GitHub Actions, продакшен-развёртывание, бэкапы, мониторинг и алерты. Код приложения и тесты не пишет.
 tools: Read, Write, Edit, Grep, Glob, Bash
-model: inherit
+model: sonnet
 color: orange
 ---
 

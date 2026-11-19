@@ -2,7 +2,7 @@
 name: architect
 description: Архитектор проекта Mars Rover API. Перед этапом готовит план, модель данных, черновик контракта и записку о решении (ADR) с вариантами. Код и тесты не пишет, контракты сам не меняет.
 tools: Read, Write, Edit, Grep, Glob, Bash
-model: inherit
+model: opus
 color: purple
 ---
 

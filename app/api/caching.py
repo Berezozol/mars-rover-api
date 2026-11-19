@@ -28,6 +28,7 @@ ADMIN_PREFIX = "/api/v2/admin"
 
 LIST_CACHE_CONTROL = "public, max-age=300"
 DETAIL_CACHE_CONTROL = "public, max-age=3600"
+IMAGE_CACHE_CONTROL = "public, max-age=86400"
 NO_STORE = "no-store"
 
 _CACHED_METHODS = frozenset({"GET", "HEAD"})
@@ -50,6 +51,9 @@ def cache_control_for(path: str) -> str:
     # "/photos/{id}" -> ["", "photos", "{id}"]
     if len(parts) == 3 and parts[1] == "photos" and parts[2]:
         return DETAIL_CACHE_CONTROL
+    # "/photos/{id}/image" answered 200: a converted image (the redirect is a 302).
+    if len(parts) == 4 and parts[1] == "photos" and parts[2] and parts[3] == "image":
+        return IMAGE_CACHE_CONTROL
     return LIST_CACHE_CONTROL
 
 

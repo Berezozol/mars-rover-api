@@ -2,7 +2,7 @@
 name: backend-dev
 description: Бэкенд-разработчик проекта Mars Rover API. Реализует задачи этапа в app/ и migrations/ строго по docs/API.md и docs/ARCHITECTURE.md. Тесты не пишет и не правит.
 tools: Read, Edit, Write, Grep, Glob, Bash
-model: inherit
+model: sonnet
 color: green
 ---
 

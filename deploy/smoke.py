@@ -3,9 +3,10 @@
 Usage:
     uv run python deploy/smoke.py https://mars-api.example.ts.net
 
-Needs only httpx and the standard library. Sends 13 requests (10 of them count against the
-per-IP rate limit of 60/min), never follows redirects. Exit code 0 when every check passes,
-1 otherwise.
+Needs only httpx and the standard library. Sends 14 requests (11 of them count against the
+per-IP rate limit of 60/min), never follows redirects. With --with-mer-image it also
+fetches a full-size Opportunity image (a PDS download and conversion, one more request).
+Exit code 0 when every check passes, 1 otherwise.
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ V1_UNKNOWN_ROVER = "/api/v1/rovers/notarover/photos?sol=1000"
 V1_TRAILING_SLASH = "/api/v1/rovers/curiosity/"
 V2_ROVERS = "/api/v2/rovers"
 V2_PHOTOS = "/api/v2/rovers/curiosity/photos?per_page=1"
+V2_MER_PHOTOS = "/api/v2/rovers/opportunity/photos?sol=1&per_page=1"
 EXPECTED_ROVERS = {"curiosity", "opportunity", "perseverance", "spirit"}
 
 
@@ -70,6 +72,7 @@ class Smoke:
         self.requests = 0
         self.failures = 0
         self.photo_id: int | None = None
+        self.mer_photo_id: int | None = None
 
     def get(self, path: str, headers: dict[str, str] | None = None) -> httpx.Response:
         self.requests += 1
@@ -167,6 +170,29 @@ class Smoke:
         _expect(location.startswith(("https://", "http://")), f"Location {location!r}")
         return location
 
+    def v2_mer_full(self) -> str:
+        r = self.get(V2_MER_PHOTOS)
+        _status(r, 200)
+        items = _json(r).get("items")
+        _expect(isinstance(items, list) and len(items) == 1, f"items {items!r}, expected 1")
+        self.mer_photo_id = items[0]["id"]
+        full = items[0]["images"]["full"]
+        path = f"/api/v2/photos/{self.mer_photo_id}/image"
+        _expect(
+            urlsplit(full).path == path and "size=full" in full,
+            f"images.full {full!r}, expected our {path}?size=full",
+        )
+        return full
+
+    def v2_mer_image(self) -> str:
+        _expect(self.mer_photo_id is not None, "skipped: no MER photo id from the previous check")
+        r = self.get(f"/api/v2/photos/{self.mer_photo_id}/image?size=full")
+        _status(r, 200)
+        ctype = r.headers.get("content-type", "")
+        _expect(ctype.startswith("image/jpeg"), f"content-type {ctype!r}, expected image/jpeg")
+        _expect(r.content[:2] == b"\xff\xd8", "body is not a JPEG")
+        return f"{len(r.content)} bytes"
+
     def v1_trailing_slash(self) -> str:
         r = self.get(V1_TRAILING_SLASH)
         _status(r, 307)
@@ -197,6 +223,11 @@ class Smoke:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Smoke test of a deployed Mars Rover API.")
     parser.add_argument("base_url", help="for example https://mars-api.example.ts.net")
+    parser.add_argument(
+        "--with-mer-image",
+        action="store_true",
+        help="also GET the full-size Opportunity image (PDS download and conversion, slow)",
+    )
     parser.add_argument("--timeout", type=float, default=30.0, help="seconds per request")
     args = parser.parse_args(argv)
 
@@ -216,10 +247,13 @@ def main(argv: list[str] | None = None) -> int:
         ("v2 rovers", smoke.v2_rovers),
         ("v2 photos per_page=1", smoke.v2_photos),
         ("v2 image redirect -> 302", smoke.v2_image_redirect),
+        ("v2 opportunity images.full is ours", smoke.v2_mer_full),
         (redirect_name, smoke.v1_trailing_slash),
         ("If-None-Match -> 304", smoke.etag_not_modified),
         ("v1 unknown rover -> 400", smoke.v1_unknown_rover),
     ]
+    if args.with_mer_image:
+        checks.append(("v2 opportunity full image -> 200 jpeg", smoke.v2_mer_image))
     with smoke.client:
         for name, check in checks:
             smoke.run(name, check)

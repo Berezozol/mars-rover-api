@@ -27,6 +27,9 @@
   | 422 | `validation_error` | неверные параметры; `details` — список `{"field", "message"}` |
   | 401 | `unauthorized` | admin-ручка без верного `X-Admin-Token` |
   | 409 | `sync_in_progress` | синхронизация марсохода уже идёт |
+  | 502 | `upstream_error` | источник (NASA PDS) недоступен или отдал неразборчивые данные — конвертация снимка MER |
+  | 503 | `converter_busy` | очередь конвертации снимков MER заполнена; `Retry-After` |
+  | 504 | `upstream_timeout` | конвертация снимка MER не уложилась во время |
   | 429 | `rate_limited` | превышен лимит запросов (см. «Ограничение частоты») |
   | 503 | `db_unavailable` | база недоступна |
 - В каждом фото есть `credit` — авторство NASA/JPL-Caltech и партнёров.
@@ -61,7 +64,7 @@
  "source": {"id": "LRF_2031_0847237865_241EBY_N0930000SCAM01031_0100I4J",
             "link": "https://mars.nasa.gov/mars2020/multimedia/raw-images/LRF_..."}}
 ```
-`img_src` всегда равен `images.full`. У Curiosity `small`, `medium` и `large` — `null`. У Spirit и Opportunity `images.full` — уменьшенный JPEG архива NASA PDS (низкое разрешение), `small`, `medium`, `large` и `title` — `null`, `source.link` — исходный продукт PDS `.img`.
+`img_src` всегда равен `images.full`. У Curiosity `small`, `medium` и `large` — `null`. У Spirit и Opportunity (этап 9a, решение владельца): `images.small` — уменьшенный JPEG архива NASA PDS (превью), `images.full` (и `img_src`) — абсолютная ссылка на нашу конвертацию полного кадра `{origin}/api/v2/photos/{id}/image?size=full` (`origin` — от хоста текущего запроса, как на странице `/`), `medium`, `large` и `title` — `null`, `source.link` — исходный продукт PDS `.img`.
 
 **PhotoDetail** = Photo + `caption`, `received_at`, `site`, `drive`, `extra` (объект с техническими полями источника).
 
@@ -121,6 +124,17 @@
 `size` по умолчанию `full`. Ответ `302`, `Location` — URL NASA, `Cache-Control: public, max-age=86400`. Если нужного размера нет — редирект на `full`.
 `404 photo_not_found` · `422` на неверный `size`.
 
+**Spirit и Opportunity, `size=full` (этап 9a, решение владельца).** Полного JPEG у MER нет — только продукт PDS3 `.img`. Для них ответ — сама картинка, не редирект:
+- сервер скачивает `.img` по `source.link`, разбирает PDS3 (метка, растр; 8 или 16 бит), растягивает яркость по снимку (отсечка 0,5% самых тёмных и 0,5% самых светлых точек, линейно в 0–255) и отдаёт `200 image/jpeg`, качество 90;
+- `Cache-Control: public, max-age=86400`, слабый `ETag`, `304` по `If-None-Match`; `HEAD` — те же заголовки без тела;
+- готовые картинки хранятся в кэше на диске (`MER_IMAGE_CACHE_DIR`, лимит `MER_IMAGE_CACHE_MAX_MB`, по умолчанию 5120; при переполнении удаляются давно не запрошенные); повторный запрос отдаётся из кэша без обращения к PDS;
+- одновременно не больше `MER_CONVERT_CONCURRENCY` конвертаций (по умолчанию 2), в очереди ждут не больше `MER_CONVERT_QUEUE` запросов разных снимков (по умолчанию 8); сверх этого — сразу `503 converter_busy` с `Retry-After: 10` и `no-store`; одинаковые запросы одного снимка ждут одну конвертацию; запросы к PDS — через свой экземпляр клиента источников (ретраи, лимит `MER_PDS_MAX_RPS`, только хост `MER_PDS_BASE_URL`);
+- `size=small` → `302` на превью PDS; `medium` и `large` у MER нет → откат на `full` (конвертация), как у всех;
+- ошибки: PDS недоступен или вернул ошибку → `502 upstream_error`; не уложились в `MER_CONVERT_TIMEOUT_SECONDS` (по умолчанию 60) → `504 upstream_timeout`; файл не разбирается как PDS3-изображение → `502 upstream_error`. Ошибки не кэшируются, `Cache-Control: no-store`.
+- Curiosity и Perseverance — без изменений (`302`).
+- Снимок MER без `source.link` (исходного `.img` нет): `images.full` и `img_src` — превью PDS, `size=full` → `302` на превью.
+- Запросы к PDS у конвертера идут через свой экземпляр общего клиента источников со своим лимитом частоты (`MER_PDS_MAX_RPS`, по умолчанию 2) — синхронизация JPL с ним не делит лимит.
+
 ### `GET /api/v2/rovers/{rover}/manifest`
 Параметры: `from_sol`, `to_sol` (необязательные, ограничивают диапазон).
 ```json
@@ -167,4 +181,4 @@
 
 ## Черновики (уточнить перед своим этапом)
 
-- **Положение** (этап 10): `/api/v2/rovers/{rover}/location`, `/api/v2/rovers/{rover}/traverse`, координаты в карточке снимка — контракт согласовать перед этапом. Погода отложена: живых источников нет (`DATA-SOURCES.md`).
+- **Положение** (этап 11): `/api/v2/rovers/{rover}/location`, `/api/v2/rovers/{rover}/traverse`, координаты в карточке снимка — контракт согласовать перед этапом. Погода отложена: живых источников нет (`DATA-SOURCES.md`).

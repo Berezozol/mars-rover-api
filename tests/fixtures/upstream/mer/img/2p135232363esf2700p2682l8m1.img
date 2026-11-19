@@ -1,0 +1,476 @@
+PDS_VERSION_ID                    = PDS3
+
+/* FILE DATA ELEMENTS */
+
+RECORD_TYPE                       = FIXED_LENGTH
+RECORD_BYTES                      = 126
+FILE_RECORDS                      = 335
+LABEL_RECORDS                     = 173
+
+/* POINTERS TO DATA OBJECTS */
+
+^IMAGE_HEADER                     = 174
+^IMAGE                            = 273
+
+/* IDENTIFICATION DATA ELEMENTS */
+
+ DATA_SET_ID                      = "MER2-M-PANCAM-2-EDR-OPS-V1.0"
+ DATA_SET_NAME                    = "MER 2 MARS PANORAMIC CAMERA EDR OPS 
+                                     VERSION 1.0"
+ COMMAND_SEQUENCE_NUMBER          = 5
+ FRAME_ID                         = "LEFT"
+ FRAME_TYPE                       = STEREO
+ GEOMETRY_PROJECTION_TYPE         = RAW
+ IMAGE_ID                         = "1000001"
+ IMAGE_TYPE                       = REGULAR
+ INSTRUMENT_HOST_ID               = "MER2"
+ INSTRUMENT_HOST_NAME             = "MARS EXPLORATION ROVER 2"
+ INSTRUMENT_ID                    = "PANCAM_LEFT"
+ INSTRUMENT_NAME                  = "PANORAMIC CAMERA LEFT"
+ INSTRUMENT_SERIAL_NUMBER         = 104
+ INSTRUMENT_TYPE                  = "IMAGING CAMERA"
+ INSTRUMENT_VERSION_ID            = "FM"
+ LOCAL_TRUE_SOLAR_TIME            = "09:34:35"
+ MAGNET_ID                        = "NULL"
+ MISSION_NAME                     = "MARS EXPLORATION ROVER"
+ MISSION_PHASE_NAME               = "EXTENDED MISSION"
+ OBSERVATION_ID                   = "1862402048"
+ PLANET_DAY_NUMBER                = 100
+ PRODUCER_INSTITUTION_NAME        = "MULTIMISSION IMAGE PROCESSING SUBSYSTEM
+                                     , JET PROPULSION LAB"
+ PRODUCT_CREATION_TIME            = 2005-01-22T02:23:37.000
+ PRODUCT_ID                       = "2P135232363ESF2700P2682L8M1"
+ PRODUCT_VERSION_ID               = "V3.0 D-22846"
+ RELEASE_ID                       = "0003"
+ ROVER_MOTION_COUNTER             = (27,0,136,529,1614)
+ ROVER_MOTION_COUNTER_NAME        = (SITE,DRIVE,IDD,PMA,HGA)
+ SEQUENCE_ID                      = "p2682"
+ SEQUENCE_VERSION_ID              = "1"
+ SOLAR_LONGITUDE                  = 19.3817
+ SPACECRAFT_CLOCK_CNT_PARTITION   = 1
+ SPACECRAFT_CLOCK_START_COUNT     = "135232363.371"
+ SPACECRAFT_CLOCK_STOP_COUNT      = "135232363.872"
+ START_TIME                       = 2004-04-14T16:31:47.169
+ STOP_TIME                        = 2004-04-14T16:31:47.669
+ TARGET_NAME                      = MARS
+ TARGET_TYPE                      = PLANET
+
+/* TELEMETRY DATA ELEMENTS */
+
+ APPLICATION_PROCESS_ID           = 21
+ APPLICATION_PROCESS_NAME         = "PANCAM LEFT"
+ APPLICATION_PROCESS_SUBTYPE_ID   = 9
+ EARTH_RECEIVED_START_TIME        = 2004-04-17T00:58:43.049
+ EARTH_RECEIVED_STOP_TIME         = 2004-04-17T00:58:43.381
+ EXPECTED_PACKETS                 = "N/A"
+ PACKET_MAP_MASK                  = "N/A"
+ RECEIVED_PACKETS                 = "N/A"
+ SPICE_FILE_NAME                  = "chronos.mer"
+ TELEMETRY_PROVIDER_ID            = "SSW MER_DP"
+ TELEMETRY_SOURCE_NAME            = "021_009_p2682-001-0005_005_0135232363-095.dat"
+ TELEMETRY_SOURCE_TYPE            = "DATA PRODUCT"
+
+/* HISTORY DATA ELEMENTS */
+
+ PROCESSING_HISTORY_TEXT          = "CODMAC LEVEL 1 to LEVEL 2 CONVERSION 
+                                     VIA JPL/MIPL MERTELEMPROC"
+ SOFTWARE_NAME                    = MERTELEMPROC
+ SOFTWARE_VERSION_ID              = "V3.1 08-27-04"
+
+/* CAMERA_MODEL DATA ELEMENTS */
+
+GROUP                             = GEOMETRIC_CAMERA_MODEL
+  CALIBRATION_SOURCE_ID           = "183"
+  ^MODEL_DESC                     = "GEOMETRIC_CM.TXT"
+  MODEL_TYPE                      = CAHVOR
+  MODEL_COMPONENT_ID              = ("C","A","H","V","O","R")
+  MODEL_COMPONENT_NAME            = (CENTER,AXIS,HORIZONTAL,VERTICAL,
+                                     OPTICAL,RADIAL)
+  MODEL_COMPONENT_1               = (0.293955,0.0432859,-1.22483)
+  MODEL_COMPONENT_2               = (0.334528,-0.595342,-0.73052)
+  MODEL_COMPONENT_3               = (3144.79,1663.04,-52.1251)
+  MODEL_COMPONENT_4               = (1249.71,-2283.01,2424.24)
+  MODEL_COMPONENT_5               = (0.331939,-0.587459,-0.738045)
+  MODEL_COMPONENT_6               = (0.022997,0.024872,-0.407146)
+  FILTER_NAME                     = PANCAM_L8_440NM_SOL_ND5
+  REFERENCE_COORD_SYSTEM_INDEX    = (27,0,136,529,1614)
+  REFERENCE_COORD_SYSTEM_NAME     = ROVER_FRAME
+END_GROUP                         = GEOMETRIC_CAMERA_MODEL
+
+/* COORDINATE SYSTEM STATE: ROVER */
+
+GROUP                             = ROVER_COORDINATE_SYSTEM
+  COORDINATE_SYSTEM_INDEX         = (27,0,136,529,1614)
+  COORDINATE_SYSTEM_INDEX_NAME    = (SITE,DRIVE,IDD,PMA,HGA)
+  COORDINATE_SYSTEM_NAME          = ROVER_FRAME
+  ORIGIN_OFFSET_VECTOR            = (0.0,0.0,0.0)
+  ORIGIN_ROTATION_QUATERNION      = (0.458732,-0.0259089,0.00331728,0.888191)
+  POSITIVE_AZIMUTH_DIRECTION      = CLOCKWISE
+  POSITIVE_ELEVATION_DIRECTION    = UP
+  QUATERNION_MEASUREMENT_METHOD   = COARSE
+  REFERENCE_COORD_SYSTEM_INDEX    = 27
+  REFERENCE_COORD_SYSTEM_NAME     = SITE_FRAME
+END_GROUP                         = ROVER_COORDINATE_SYSTEM
+
+/* COORDINATE SYSTEM STATE: INSTRUMENT DEPLOYMENT DEVICE */
+
+GROUP                             = IDD_COORDINATE_SYSTEM
+  COORDINATE_SYSTEM_INDEX         = (27,0,136,529,1614)
+  COORDINATE_SYSTEM_INDEX_NAME    = (SITE,DRIVE,IDD,PMA,HGA)
+  COORDINATE_SYSTEM_NAME          = APXS_FRAME
+  ORIGIN_OFFSET_VECTOR            = (1.17992,0.0253419,0.168283)
+  ORIGIN_ROTATION_QUATERNION      = (0.635367,0.271865,0.104542,0.715171)
+  POSITIVE_AZIMUTH_DIRECTION      = CLOCKWISE
+  POSITIVE_ELEVATION_DIRECTION    = DOWN
+  REFERENCE_COORD_SYSTEM_INDEX    = (27,0,136,529,1614)
+  REFERENCE_COORD_SYSTEM_NAME     = ROVER_FRAME
+END_GROUP                         = IDD_COORDINATE_SYSTEM
+
+/* ARTICULATION DEVICE STATE: PANCAM MAST ASSEMBLY */
+
+GROUP                             = PMA_ARTICULATION_STATE
+  ARTICULATION_DEVICE_ID          = "PMA"
+  ARTICULATION_DEVICE_NAME        = "PANCAM MAST ASSEMBLY"
+  ARTICULATION_DEVICE_ANGLE       = (-1.08197 <rad>,0.761138 <rad>,
+                                     -1.08198 <rad>,0.761268 <rad>,
+                                     0.939843 <rad>,-1.57088 <rad>)
+  ARTICULATION_DEVICE_ANGLE_NAME  = ("AZIMUTH-MEASURED",
+                                     "ELEVATION-MEASURED",
+                                     "AZIMUTH-REQUESTED",
+                                     "ELEVATION-REQUESTED","AZIMUTH-INITIAL"
+                                     ,"ELEVATION-INITIAL")
+  ARTICULATION_DEVICE_MODE        = DEPLOYED
+END_GROUP                         = PMA_ARTICULATION_STATE
+
+/* ARTICULATION DEVICE STATE: HIGH GAIN ANTENNA */
+
+GROUP                             = HGA_ARTICULATION_STATE
+  ARTICULATION_DEVICE_ID          = "HGA"
+  ARTICULATION_DEVICE_NAME        = "HIGH GAIN ANTENNA"
+  ARTICULATION_DEVICE_ANGLE       = (0.523885 <rad>,0.523966 <rad>)
+  ARTICULATION_DEVICE_ANGLE_NAME  = (AZIMUTH,ELEVATION)
+END_GROUP                         = HGA_ARTICULATION_STATE
+
+/* ARTICULATION DEVICE STATE: FILTER */
+
+GROUP                             = FILTER_ARTICULATION_STATE
+  ARTICULATION_DEVICE_ID          = "FILTER"
+  ARTICULATION_DEVICE_NAME        = "FILTER ACTUATORS"
+  ARTICULATION_DEV_POSITION       = (8,8,17)
+  ARTICULATION_DEV_POSITION_ID    = ("PANCAM_L8_440NM_SOL_ND5",
+                                     "PANCAM_R8_880NM_SOL_ND5","MI_CLOSED")
+  ARTICULATION_DEV_POSITION_NAME  = ("LEFT PANCAM FILTER",
+                                     "RIGHT PANCAM FILTER","MI DUST COVER")
+END_GROUP                         = FILTER_ARTICULATION_STATE
+
+/* ARTICULATION DEVICE STATE: INSTRUMENT DEPLOYMENT DEVICE */
+
+GROUP                             = IDD_ARTICULATION_STATE
+  ARTICULATION_DEVICE_ID          = "IDD"
+  ARTICULATION_DEVICE_NAME        = "INSTRUMENT DEPLOYMENT DEVICE"
+  ARTICULATION_DEVICE_ANGLE       = (0.195885 <rad>,-0.220525 <rad>,
+                                     1.45929 <rad>,-0.19527 <rad>,
+                                     2.84613 <rad>,1e+30 <rad>,1e+30 <rad>,
+                                     1e+30 <rad>,1e+30 <rad>,1e+30 <rad>)
+  ARTICULATION_DEVICE_ANGLE_NAME  = ("JOINT 1 AZIMUTH-ENCODER",
+                                     "JOINT 2 ELEVATION-ENCODER",
+                                     "JOINT 3 ELBOW-ENCODER",
+                                     "JOINT 4 WRIST-ENCODER",
+                                     "JOINT 5 TURRET-ENCODER",
+                                     "JOINT 1 AZIMUTH-POTENTIOMETER",
+                                     "JOINT 2 ELEVATION-POTENTIOMETER",
+                                     "JOINT 3 ELBOW-POTENTIOMETER",
+                                     "JOINT 4 WRIST-POTENTIOMETER",
+                                     "JOINT 5 TURRET-POTENTIOMETER")
+  ARTICULATION_DEVICE_MODE        = "FREE SPACE"
+  ARTICULATION_DEVICE_TEMP        = (-51.2402 <degC>,-46.8253 <degC>)
+  ARTICULATION_DEVICE_TEMP_NAME   = ("AZIMUTH JOINT 1","TURRET JOINT 5")
+  ARTICULATION_DEV_VECTOR         = (-0.0490675,-0.0178777,0.998635)
+  ARTICULATION_DEV_INSTRUMENT_ID  = "APXS"
+  ARTICULATION_DEV_VECTOR_NAME    = GRAVITY
+  CONTACT_SENSOR_STATE            = ("NO CONTACT","NO CONTACT",CONTACT,
+                                     CONTACT,"NO CONTACT","NO CONTACT",OPEN,
+                                     "NO CONTACT")
+  CONTACT_SENSOR_STATE_NAME       = ("MI SWITCH 1","MI SWITCH 2",
+                                     "RAT SWITCH 1","RAT SWITCH 2",
+                                     "MB SWITCH 1","MB SWITCH 2",
+                                     "APXS DOOR SWITCH",
+                                     "APXS CONTACT SWITCH")
+END_GROUP                         = IDD_ARTICULATION_STATE
+
+/* COORDINATE SYSTEM STATE: PANCAM MAST ASSEMBLY */
+
+GROUP                             = PMA_COORDINATE_SYSTEM
+  COORDINATE_SYSTEM_INDEX         = (27,0,136,529,1614)
+  COORDINATE_SYSTEM_INDEX_NAME    = (SITE,DRIVE,IDD,PMA,HGA)
+  COORDINATE_SYSTEM_NAME          = MAST_FRAME
+  ORIGIN_OFFSET_VECTOR            = (0.45781,0.02779,-1.09668)
+  ORIGIN_ROTATION_QUATERNION      = (0.787905,0.203438,0.34006,-0.471357)
+  POSITIVE_AZIMUTH_DIRECTION      = CLOCKWISE
+  POSITIVE_ELEVATION_DIRECTION    = UP
+  REFERENCE_COORD_SYSTEM_INDEX    = (27,0,136,529,1614)
+  REFERENCE_COORD_SYSTEM_NAME     = ROVER_FRAME
+END_GROUP                         = PMA_COORDINATE_SYSTEM
+
+/* ARTICULATION DEVICE STATE: MOBILITY CHASSIS */
+
+GROUP                             = CHASSIS_ARTICULATION_STATE
+  ARTICULATION_DEVICE_ID          = "CHASSIS"
+  ARTICULATION_DEVICE_NAME        = "MOBILITY CHASSIS"
+  ARTICULATION_DEVICE_ANGLE       = (1e+30 <rad>,1e+30 <rad>,1e+30 <rad>,
+                                     1e+30 <rad>,1e+30 <rad>,1e+30 <rad>,
+                                     1e+30 <rad>)
+  ARTICULATION_DEVICE_ANGLE_NAME  = ("LEFT FRONT WHEEL POTENTIOMETER",
+                                     "RIGHT FRONT WHEEL POTENTIOMETER",
+                                     "LEFT REAR WHEEL POTENTIOMETER",
+                                     "RIGHT REAR WHEEL POTENTIOMETER",
+                                     "LEFT BOGIE POTENTIOMETER",
+                                     "RIGHT BOGIE POTENTIOMETER",
+                                     "DIFFERENTIAL BOGIE POTENTIOMETER")
+  ARTICULATION_DEVICE_MODE        = DEPLOYED
+END_GROUP                         = CHASSIS_ARTICULATION_STATE
+
+/* OBSERVATION REQUEST */
+
+GROUP                             = OBSERVATION_REQUEST_PARMS
+  SOURCE_ID                       = "GROUND COMMANDED"
+  COMMAND_INSTRUMENT_ID           = "PANCAM_LEFT"
+  FILTER_NAME                     = PANCAM_L8_440NM_SOL_ND5
+  AUTO_EXPOSURE_DATA_CUT          = 3500
+  AUTO_EXPOSURE_PERCENT           = 5.0
+  AUTO_EXPOSURE_PIXEL_FRACTION    = 1.0
+  BAD_PIXEL_REPLACEMENT_FLAG      = FALSE
+  DETECTOR_ERASE_COUNT            = 2
+  EARLY_PIXEL_SCALE_FLAG          = FALSE
+  EARLY_IMAGE_RETURN_FLAG         = FALSE
+  EXPOSURE_TYPE                   = MANUAL
+  EXPOSURE_SCALE_FACTOR           = 1.0
+  EXPOSURE_DURATION_COUNT         = 98
+  EXPOSURE_TABLE_ID               = "NONE"
+  EXPOSURE_TBL_UPDATE_FLAG        = FALSE
+  FLAT_FIELD_CORRECTION_FLAG      = FALSE
+  INSTRUMENT_COORDINATE           = "UNK"
+  INSTRUMENT_COORDINATE_ID        = "IVP OBJECT"
+  INSTRUMENT_BORESIGHT_ID         = "UNK"
+  INSTRUMENT_IDLE_TIMEOUT         = 300 <s>
+  MAX_AUTO_EXPOS_ITERATION_COUNT  = 3
+  SHUTTER_CORRECTION_MODE_ID      = "FALSE"
+  SHUTTER_CORRECT_THRESH_COUNT    = 0
+END_GROUP                         = OBSERVATION_REQUEST_PARMS
+
+/* IMAGE REQUEST */
+
+GROUP                             = IMAGE_REQUEST_PARMS
+  SOURCE_ID                       = "GROUND COMMANDED"
+  GROUP_APPLICABILITY_FLAG        = TRUE
+  DOWNLOAD_PRIORITY               = 60
+  PIXEL_DOWNSAMPLE_OPTION         = NONE
+  PIXEL_AVERAGING_HEIGHT          = 1
+  PIXEL_AVERAGING_WIDTH           = 1
+  SAMPLE_BIT_MODE_ID              = "NONE"
+  INST_CMPRS_MODE                 = 1
+  INST_CMPRS_RATE                 = 1.0
+  INST_CMPRS_QUALITY              = 0
+  INST_CMPRS_FILTER               = A
+  INST_DECOMP_STAGES              = 4
+  INST_CMPRS_SEGMENTS             = 1
+END_GROUP                         = IMAGE_REQUEST_PARMS
+
+/* REFERENCE PIXEL REQUEST */
+
+GROUP                             = REFERENCE_PIXEL_REQUEST_PARMS
+  SOURCE_ID                       = "GROUND COMMANDED"
+  GROUP_APPLICABILITY_FLAG        = TRUE
+  DOWNLOAD_PRIORITY               = 60
+  INST_CMPRS_MODE                 = 1
+  INST_CMPRS_RATE                 = 12.0
+  INST_CMPRS_QUALITY              = 0
+  INST_CMPRS_FILTER               = E
+  INST_DECOMP_STAGES              = 4
+  INST_CMPRS_SEGMENTS             = 1
+END_GROUP                         = REFERENCE_PIXEL_REQUEST_PARMS
+
+/* THUMBNAIL REQUEST */
+
+GROUP                             = THUMBNAIL_REQUEST_PARMS
+  SOURCE_ID                       = "GROUND COMMANDED"
+  GROUP_APPLICABILITY_FLAG        = TRUE
+  DOWNLOAD_PRIORITY               = 0
+  LINES                           = 64
+  LINE_SAMPLES                    = 64
+  SAMPLE_BIT_MODE_ID              = "NONE"
+  INST_CMPRS_MODE                 = 1
+  INST_CMPRS_RATE                 = 1.0
+  INST_CMPRS_QUALITY              = 0
+  INST_CMPRS_FILTER               = E
+  INST_DECOMP_STAGES              = 4
+  INST_CMPRS_SEGMENTS             = 1
+END_GROUP                         = THUMBNAIL_REQUEST_PARMS
+
+/* SUBFRAME REQUEST */
+
+GROUP                             = SUBFRAME_REQUEST_PARMS
+  SOURCE_ID                       = "GROUND COMMANDED"
+  GROUP_APPLICABILITY_FLAG        = TRUE
+  SUBFRAME_TYPE                   = SUN_NO_IMG
+  FIRST_LINE                      = 1
+  FIRST_LINE_SAMPLE               = 1
+  LINES                           = 1024
+  LINE_SAMPLES                    = 1024
+END_GROUP                         = SUBFRAME_REQUEST_PARMS
+
+/* ROW SUMMATION REQUEST */
+
+GROUP                             = ROW_SUM_REQUEST_PARMS
+  SOURCE_ID                       = "GROUND COMMANDED"
+  GROUP_APPLICABILITY_FLAG        = FALSE
+  DOWNLOAD_PRIORITY               = 60
+END_GROUP                         = ROW_SUM_REQUEST_PARMS
+
+/* COLUMN SUMMATION REQUEST */
+
+GROUP                             = COLUMN_SUM_REQUEST_PARMS
+  SOURCE_ID                       = "GROUND COMMANDED"
+  GROUP_APPLICABILITY_FLAG        = FALSE
+  DOWNLOAD_PRIORITY               = 60
+END_GROUP                         = COLUMN_SUM_REQUEST_PARMS
+
+/* SUN FIND REQUEST */
+
+GROUP                             = SUN_FIND_REQUEST_PARMS
+  SOURCE_ID                       = "GROUND COMMANDED"
+  GROUP_APPLICABILITY_FLAG        = TRUE
+  LINES                           = 63
+  LINE_SAMPLES                    = 63
+END_GROUP                         = SUN_FIND_REQUEST_PARMS
+
+/* HISTOGRAM REQUEST */
+
+GROUP                             = HISTOGRAM_REQUEST_PARMS
+  SOURCE_ID                       = "GROUND COMMANDED"
+  GROUP_APPLICABILITY_FLAG        = FALSE
+  DOWNLOAD_PRIORITY               = 60
+END_GROUP                         = HISTOGRAM_REQUEST_PARMS
+
+/* INSTRUMENT STATE RESULTS */
+
+GROUP                             = INSTRUMENT_STATE_PARMS
+  AZIMUTH_FOV                     = 0.974602 <deg>
+  ELEVATION_FOV                   = 0.974602 <deg>
+  BAD_PIXEL_REPLACEMENT_ID        = "N/A"
+  DETECTOR_FIRST_LINE             = 1
+  DETECTOR_LINES                  = 1024
+  DETECTOR_TO_IMAGE_ROTATION      = 0.0
+  DOWNSAMPLE_METHOD               = NONE
+  EXPOSURE_COUNT                  = 1
+  EXPOSURE_DURATION               = 501.76 <ms>
+  EXPOSURE_DURATION_COUNT         = 98
+  FILTER_NAME                     = PANCAM_L8_440NM_SOL_ND5
+  FILTER_NUMBER                   = 8
+  FLAT_FIELD_CORRECTION_FLAG      = FALSE
+  FLAT_FIELD_CORRECTION_PARM      = (0.0,0.0,0.0,0.0,0.0)
+  INSTRUMENT_MODE_ID              = "WINDOWED_FRAME"
+  INSTRUMENT_TEMPERATURE          = (-54.8843 <degC>,-54.9494 <degC>,
+                                     -8.99315 <degC>,-31.5439 <degC>,
+                                     -33.3204 <degC>,0.0 <degC>,
+                                     -47.4481 <degC>,-52.2955 <degC>,
+                                     0.0 <degC>)
+  INSTRUMENT_TEMPERATURE_NAME     = ("FRONT HAZ ELECTRONICS",
+                                     "REAR HAZ ELECTRONICS",
+                                     "LEFT PAN ELECTRONICS","LEFT PAN CCD",
+                                     "RIGHT PAN CCD","LEFT NAV CCD","MI CCD"
+                                     ,"MI ELECTRONICS","DESCENT CAMERA CCD")
+  OFFSET_MODE_ID                  = "4095"
+  PIXEL_AVERAGING_HEIGHT          = 1
+  PIXEL_AVERAGING_WIDTH           = 1
+  SAMPLE_BIT_METHOD               = NONE
+  SAMPLE_BIT_MODE_ID              = "NONE"
+  SHUTTER_EFFECT_CORRECTION_FLAG  = FALSE
+  SUN_FIND_FLAG                   = TRUE
+  SUN_FIND_PARM                   = (33.0,70000.0,293568.0)
+  SUN_FIND_PARM_NAME              = ("WINDOW SIZE","BRIGHTNESS THRESHOLD",
+                                     "SUMMED BRIGHTNESS")
+  SUN_LINE                        = 523
+  SUN_LINE_SAMPLE                 = 449
+  SUN_VIEW_POSITION               = (0.293955,0.0432859,-1.22483)
+  SUN_VIEW_DIRECTION              = (0.32051,-0.608644,-0.725827)
+END_GROUP                         = INSTRUMENT_STATE_PARMS
+
+/* COMPRESSION RESULTS */
+
+GROUP                             = COMPRESSION_PARMS
+  ERROR_PIXELS                    = 0
+  INST_CMPRS_DESC                 = "Lossless compression algorithm 
+                                     developed at JPL"
+  INST_CMPRS_FILTER               = "N/A"
+  INST_CMPRS_MODE                 = 1
+  INST_CMPRS_NAME                 = "LOW-COMPLEXITY LOSSLESS COMPRESSION 
+                                     (LOCO)"
+  INST_CMPRS_RATE                 = 3.28143
+  INST_CMPRS_RATIO                = 3.65694
+  INST_CMPRS_SEGMENTS             = 1
+  INST_CMPRS_SEGMENT_STATUS       = 0
+  INST_CMPRS_SEG_FIRST_LINE       = 1
+  INST_CMPRS_SEG_FIRST_LINE_SAMP  = 1
+  INST_CMPRS_SEG_LINES            = 63
+  INST_CMPRS_SEG_SAMPLES          = 63
+  INST_CMPRS_SEG_MISSING_PIXELS   = 0
+  INST_CMPRS_SEGMENT_QUALITY      = "N/A"
+  INST_DECOMP_STAGES              = "N/A"
+END_GROUP                         = COMPRESSION_PARMS
+
+/* DERIVED GEOMETRY DATA ELEMENTS: ROVER FRAME */
+
+GROUP                             = ROVER_DERIVED_GEOMETRY_PARMS
+  INSTRUMENT_AZIMUTH              = -61.7792 <deg>
+  INSTRUMENT_ELEVATION            = 46.69 <deg>
+  REFERENCE_COORD_SYSTEM_INDEX    = (27,0,136,529,1614)
+  REFERENCE_COORD_SYSTEM_NAME     = ROVER_FRAME
+END_GROUP                         = ROVER_DERIVED_GEOMETRY_PARMS
+
+/* DERIVED GEOMETRY DATA ELEMENTS: SITE FRAME */
+
+GROUP                             = SITE_DERIVED_GEOMETRY_PARMS
+  INSTRUMENT_AZIMUTH              = 60.4154 <deg>
+  INSTRUMENT_ELEVATION            = 47.035 <deg>
+  REFERENCE_COORD_SYSTEM_INDEX    = 27
+  REFERENCE_COORD_SYSTEM_NAME     = SITE_FRAME
+  SOLAR_AZIMUTH                   = 59.9527 <deg>
+  SOLAR_ELEVATION                 = 47.3186 <deg>
+END_GROUP                         = SITE_DERIVED_GEOMETRY_PARMS
+
+/* IMAGE DATA ELEMENTS */
+
+OBJECT                            = IMAGE
+  INTERCHANGE_FORMAT              = BINARY
+  LINES                           = 63
+  LINE_SAMPLES                    = 63
+  SAMPLE_TYPE                     = MSB_INTEGER
+  SAMPLE_BITS                     = 16
+  BANDS                           = 1
+  BAND_STORAGE_TYPE               = BAND_SEQUENTIAL
+  CHECKSUM                        = 423100.0
+  FIRST_LINE                      = 493
+  FIRST_LINE_SAMPLE               = 419
+  INVALID_CONSTANT                = 0.0
+  MAXIMUM                         = 1114.0
+  MEAN                            = 106.601
+  MEDIAN                          = 30.0
+  MINIMUM                         = 28.0
+  MISSING_CONSTANT                = 0.0
+  SAMPLE_BIT_MASK                 = 2#0000111111111111#
+  STANDARD_DEVIATION              = 227.327
+END_OBJECT                        = IMAGE
+
+/* IMAGE HEADER DATA ELEMENTS */
+
+OBJECT                         = IMAGE_HEADER
+ HEADER_TYPE                   = VICAR2
+ INTERCHANGE_FORMAT            = ASCII
+ BYTES                         = 12474
+ ^DESCRIPTION                  = "VICAR2.TXT"
+END_OBJECT                     = IMAGE_HEADER
+END
+                                                                                                                                                                                                                                                                                            LBLSIZE=12474           FORMAT='HALF'  TYPE='IMAGE'  BUFSIZ=126  DIM=3  EOL=0  RECSIZE=126  ORG='BSQ'  NL=63  NS=63  NB=1  N1=63  N2=63  N3=1  N4=0  NBB=0  NLB=0  HOST='JAVA'  INTFMT='HIGH'  REALFMT='RIEEE'  BHOST='VAX-VMS'  BINTFMT='LOW'  BREALFMT='VAX'  BLTYPE=''  PROPERTY='IDENTIFICATION'  DATA_SET_ID='MER2-M-PANCAM-2-EDR-OPS-V1.0'  DATA_SET_NAME='MER 2 MARS PANORAMIC CAMERA EDR OPS VERSION 1.0'  COMMAND_SEQUENCE_NUMBER=5  FRAME_ID='LEFT'  FRAME_TYPE='STEREO'  GEOMETRY_PROJECTION_TYPE='RAW'  IMAGE_ID='1000001'  IMAGE_TYPE='REGULAR'  INSTRUMENT_HOST_ID='MER2'  INSTRUMENT_HOST_NAME='MARS EXPLORATION ROVER 2'  INSTRUMENT_ID='PANCAM_LEFT'  INSTRUMENT_NAME='PANORAMIC CAMERA LEFT'  INSTRUMENT_SERIAL_NUMBER=104  INSTRUMENT_TYPE='IMAGING CAMERA'  INSTRUMENT_VERSION_ID='FM'  LOCAL_TRUE_SOLAR_TIME='09:34:35'  MAGNET_ID='NULL'  MISSION_NAME='MARS EXPLORATION ROVER'  OBSERVATION_ID='1862402048'  PLANET_DAY_NUMBER=100  PRODUCER_INSTITUTION_NAME='MULTIMISSION IMAGE PROCESSING SUBSYSTEM, JET PROPULSION LAB'  PRODUCT_CREATION_TIME='2005-01-22T02:23:37.000Z'  PRODUCT_ID='2P135232363ESF2700P2682L8M1'  PRODUCT_VERSION_ID='V3.0 D-22846'  ROVER_MOTION_COUNTER=(27,0,136,529,1614)  ROVER_MOTION_COUNTER_NAME=('SITE','DRIVE','IDD','PMA','HGA')  SEQUENCE_ID='p2682'  SEQUENCE_VERSION_ID='1'  SOLAR_LONGITUDE=19.3817  SPACECRAFT_CLOCK_CNT_PARTITION=1  SPACECRAFT_CLOCK_START_COUNT='135232363.371'  SPACECRAFT_CLOCK_STOP_COUNT='135232363.872'  START_TIME='2004-04-14T16:31:47.169Z'  STOP_TIME='2004-04-14T16:31:47.669Z'  TARGET_NAME='MARS'  TARGET_TYPE='PLANET'  RELEASE_ID='0003'  MISSION_PHASE_NAME='EXTENDED MISSION'  PROPERTY='TELEMETRY'  APPLICATION_PROCESS_ID=21  APPLICATION_PROCESS_NAME='PANCAM LEFT'  APPLICATION_PROCESS_SUBTYPE_ID=9  EARTH_RECEIVED_START_TIME='2004-04-17T00:58:43.049Z'  EARTH_RECEIVED_STOP_TIME='2004-04-17T00:58:43.381Z'  EXPECTED_PACKETS='N/A'  PACKET_MAP_MASK='N/A'  RECEIVED_PACKETS='N/A'  SPICE_FILE_NAME='chronos.mer'  TELEMETRY_PROVIDER_ID='SSW MER_DP'  TELEMETRY_SOURCE_NAME='021_009_p2682-001-0005_005_0135232363-095.dat'  TELEMETRY_SOURCE_TYPE='DATA PRODUCT'  PROPERTY='PDS_HISTORY'  PROCESSING_HISTORY_TEXT='CODMAC LEVEL 1 to LEVEL 2 CONVERSION VIA JPL/MIPL MERTELEMPROC'  SOFTWARE_NAME='MERTELEMPROC'  SOFTWARE_VERSION_ID='V3.1 08-27-04'  PROPERTY='GEOMETRIC_CAMERA_MODEL'  CALIBRATION_SOURCE_ID='183'  MODEL_DESC__PTR='GEOMETRIC_CM.TXT'  MODEL_TYPE='CAHVOR'  MODEL_COMPONENT_ID=('C','A','H','V','O','R')  MODEL_COMPONENT_NAME=('CENTER','AXIS','HORIZONTAL','VERTICAL','OPTICAL','RADIAL')  MODEL_COMPONENT_1=(0.293955,0.0432859,-1.22483)  MODEL_COMPONENT_2=(0.334528,-0.595342,-0.73052)  MODEL_COMPONENT_3=(3144.79,1663.04,-52.1251)  MODEL_COMPONENT_4=(1249.71,-2283.01,2424.24)  MODEL_COMPONENT_5=(0.331939,-0.587459,-0.738045)  MODEL_COMPONENT_6=(0.022997,0.024872,-0.407146)  FILTER_NAME='PANCAM_L8_440NM_SOL_ND5'  REFERENCE_COORD_SYSTEM_INDEX=(27,0,136,529,1614)  REFERENCE_COORD_SYSTEM_NAME='ROVER_FRAME'  PROPERTY='ROVER_COORDINATE_SYSTEM'  COORDINATE_SYSTEM_INDEX=(27,0,136,529,1614)  COORDINATE_SYSTEM_INDEX_NAME=('SITE','DRIVE','IDD','PMA','HGA')  COORDINATE_SYSTEM_NAME='ROVER_FRAME'  ORIGIN_OFFSET_VECTOR=(0.0,0.0,0.0)  ORIGIN_ROTATION_QUATERNION=(0.458732,-0.0259089,0.00331728,0.888191)  POSITIVE_AZIMUTH_DIRECTION='CLOCKWISE'  POSITIVE_ELEVATION_DIRECTION='UP'  QUATERNION_MEASUREMENT_METHOD='COARSE'  REFERENCE_COORD_SYSTEM_INDEX=27  REFERENCE_COORD_SYSTEM_NAME='SITE_FRAME'  PROPERTY='IDD_COORDINATE_SYSTEM'  COORDINATE_SYSTEM_INDEX=(27,0,136,529,1614)  COORDINATE_SYSTEM_INDEX_NAME=('SITE','DRIVE','IDD','PMA','HGA')  COORDINATE_SYSTEM_NAME='APXS_FRAME'  ORIGIN_OFFSET_VECTOR=(1.17992,0.0253419,0.168283)  ORIGIN_ROTATION_QUATERNION=(0.635367,0.271865,0.104542,0.715171)  POSITIVE_AZIMUTH_DIRECTION='CLOCKWISE'  POSITIVE_ELEVATION_DIRECTION='DOWN'  REFERENCE_COORD_SYSTEM_INDEX=(27,0,136,529,1614)  REFERENCE_COORD_SYSTEM_NAME='ROVER_FRAME'  PROPERTY='PMA_ARTICULATION_STATE'  ARTICULATION_DEVICE_ID='PMA'  ARTICULATION_DEVICE_NAME='PANCAM MAST ASSEMBLY'  ARTICULATION_DEVICE_ANGLE=(-1.08197,0.761138,-1.08198,0.761268,0.939843,-1.57088)  ARTICULATION_DEVICE_ANGLE__UNIT=('rad','rad','rad','rad','rad','rad')  ARTICULATION_DEVICE_ANGLE_NAME=('AZIMUTH-MEASURED','ELEVATION-MEASURED','AZIMUTH-REQUESTED','ELEVATION-REQUESTED','AZIMUTH-INITIAL','ELEVATION-INITIAL')  ARTICULATION_DEVICE_MODE='DEPLOYED'  PROPERTY='HGA_ARTICULATION_STATE'  ARTICULATION_DEVICE_ID='HGA'  ARTICULATION_DEVICE_NAME='HIGH GAIN ANTENNA'  ARTICULATION_DEVICE_ANGLE=(0.523885,0.523966)  ARTICULATION_DEVICE_ANGLE__UNIT=('rad','rad')  ARTICULATION_DEVICE_ANGLE_NAME=('AZIMUTH','ELEVATION')  PROPERTY='FILTER_ARTICULATION_STATE'  ARTICULATION_DEVICE_ID='FILTER'  ARTICULATION_DEVICE_NAME='FILTER ACTUATORS'  ARTICULATION_DEV_POSITION=(8,8,17)  ARTICULATION_DEV_POSITION_ID=('PANCAM_L8_440NM_SOL_ND5','PANCAM_R8_880NM_SOL_ND5','MI_CLOSED')  ARTICULATION_DEV_POSITION_NAME=('LEFT PANCAM FILTER','RIGHT PANCAM FILTER','MI DUST COVER')  PROPERTY='IDD_ARTICULATION_STATE'  ARTICULATION_DEVICE_ID='IDD'  ARTICULATION_DEVICE_NAME='INSTRUMENT DEPLOYMENT DEVICE'  ARTICULATION_DEVICE_ANGLE=(0.195885,-0.220525,1.45929,-0.19527,2.84613,1e+30,1e+30,1e+30,1e+30,1e+30)  ARTICULATION_DEVICE_ANGLE__UNIT=('rad','rad','rad','rad','rad','rad','rad','rad','rad','rad')  ARTICULATION_DEVICE_ANGLE_NAME=('JOINT 1 AZIMUTH-ENCODER','JOINT 2 ELEVATION-ENCODER','JOINT 3 ELBOW-ENCODER','JOINT 4 WRIST-ENCODER','JOINT 5 TURRET-ENCODER','JOINT 1 AZIMUTH-POTENTIOMETER','JOINT 2 ELEVATION-POTENTIOMETER','JOINT 3 ELBOW-POTENTIOMETER','JOINT 4 WRIST-POTENTIOMETER','JOINT 5 TURRET-POTENTIOMETER')  ARTICULATION_DEVICE_MODE='FREE SPACE'  ARTICULATION_DEVICE_TEMP=(-51.2402,-46.8253)  ARTICULATION_DEVICE_TEMP__UNIT=('degC','degC')  ARTICULATION_DEVICE_TEMP_NAME=('AZIMUTH JOINT 1','TURRET JOINT 5')  ARTICULATION_DEV_VECTOR=(-0.0490675,-0.0178777,0.998635)  ARTICULATION_DEV_INSTRUMENT_ID='APXS'  ARTICULATION_DEV_VECTOR_NAME='GRAVITY'  CONTACT_SENSOR_STATE=('NO CONTACT','NO CONTACT','CONTACT','CONTACT','NO CONTACT','NO CONTACT','OPEN','NO CONTACT')  CONTACT_SENSOR_STATE_NAME=('MI SWITCH 1','MI SWITCH 2','RAT SWITCH 1','RAT SWITCH 2','MB SWITCH 1','MB SWITCH 2','APXS DOOR SWITCH','APXS CONTACT SWITCH')  PROPERTY='PMA_COORDINATE_SYSTEM'  COORDINATE_SYSTEM_INDEX=(27,0,136,529,1614)  COORDINATE_SYSTEM_INDEX_NAME=('SITE','DRIVE','IDD','PMA','HGA')  COORDINATE_SYSTEM_NAME='MAST_FRAME'  ORIGIN_OFFSET_VECTOR=(0.45781,0.02779,-1.09668)  ORIGIN_ROTATION_QUATERNION=(0.787905,0.203438,0.34006,-0.471357)  POSITIVE_AZIMUTH_DIRECTION='CLOCKWISE'  POSITIVE_ELEVATION_DIRECTION='UP'  REFERENCE_COORD_SYSTEM_INDEX=(27,0,136,529,1614)  REFERENCE_COORD_SYSTEM_NAME='ROVER_FRAME'  PROPERTY='CHASSIS_ARTICULATION_STATE'  ARTICULATION_DEVICE_ID='CHASSIS'  ARTICULATION_DEVICE_NAME='MOBILITY CHASSIS'  ARTICULATION_DEVICE_ANGLE=(1e+30,1e+30,1e+30,1e+30,1e+30,1e+30,1e+30)  ARTICULATION_DEVICE_ANGLE__UNIT=('rad','rad','rad','rad','rad','rad','rad')  ARTICULATION_DEVICE_ANGLE_NAME=('LEFT FRONT WHEEL POTENTIOMETER','RIGHT FRONT WHEEL POTENTIOMETER','LEFT REAR WHEEL POTENTIOMETER','RIGHT REAR WHEEL POTENTIOMETER','LEFT BOGIE POTENTIOMETER','RIGHT BOGIE POTENTIOMETER','DIFFERENTIAL BOGIE POTENTIOMETER')  ARTICULATION_DEVICE_MODE='DEPLOYED'  PROPERTY='OBSERVATION_REQUEST_PARMS'  SOURCE_ID='GROUND COMMANDED'  COMMAND_INSTRUMENT_ID='PANCAM_LEFT'  FILTER_NAME='PANCAM_L8_440NM_SOL_ND5'  AUTO_EXPOSURE_DATA_CUT=3500  AUTO_EXPOSURE_PERCENT=5.0  AUTO_EXPOSURE_PIXEL_FRACTION=1.0  BAD_PIXEL_REPLACEMENT_FLAG='FALSE'  DETECTOR_ERASE_COUNT=2  EARLY_PIXEL_SCALE_FLAG='FALSE'  EARLY_IMAGE_RETURN_FLAG='FALSE'  EXPOSURE_TYPE='MANUAL'  EXPOSURE_SCALE_FACTOR=1.0  EXPOSURE_DURATION_COUNT=98  EXPOSURE_TABLE_ID='NONE'  EXPOSURE_TBL_UPDATE_FLAG='FALSE'  FLAT_FIELD_CORRECTION_FLAG='FALSE'  INSTRUMENT_COORDINATE='UNK'  INSTRUMENT_COORDINATE_ID='IVP OBJECT'  INSTRUMENT_BORESIGHT_ID='UNK'  INSTRUMENT_IDLE_TIMEOUT=300  INSTRUMENT_IDLE_TIMEOUT__UNIT='s'  MAX_AUTO_EXPOS_ITERATION_COUNT=3  SHUTTER_CORRECTION_MODE_ID='FALSE'  SHUTTER_CORRECT_THRESH_COUNT=0  PROPERTY='IMAGE_REQUEST_PARMS'  SOURCE_ID='GROUND COMMANDED'  GROUP_APPLICABILITY_FLAG='TRUE'  DOWNLOAD_PRIORITY=60  PIXEL_DOWNSAMPLE_OPTION='NONE'  PIXEL_AVERAGING_HEIGHT=1  PIXEL_AVERAGING_WIDTH=1  SAMPLE_BIT_MODE_ID='NONE'  INST_CMPRS_MODE=1  INST_CMPRS_RATE=1.0  INST_CMPRS_QUALITY=0  INST_CMPRS_FILTER='A'  INST_DECOMP_STAGES=4  INST_CMPRS_SEGMENTS=1  PROPERTY='REFERENCE_PIXEL_REQUEST_PARMS'  SOURCE_ID='GROUND COMMANDED'  GROUP_APPLICABILITY_FLAG='TRUE'  DOWNLOAD_PRIORITY=60  INST_CMPRS_MODE=1  INST_CMPRS_RATE=12.0  INST_CMPRS_QUALITY=0  INST_CMPRS_FILTER='E'  INST_DECOMP_STAGES=4  INST_CMPRS_SEGMENTS=1  PROPERTY='THUMBNAIL_REQUEST_PARMS'  SOURCE_ID='GROUND COMMANDED'  GROUP_APPLICABILITY_FLAG='TRUE'  DOWNLOAD_PRIORITY=0  LINES=64  LINE_SAMPLES=64  SAMPLE_BIT_MODE_ID='NONE'  INST_CMPRS_MODE=1  INST_CMPRS_RATE=1.0  INST_CMPRS_QUALITY=0  INST_CMPRS_FILTER='E'  INST_DECOMP_STAGES=4  INST_CMPRS_SEGMENTS=1  PROPERTY='SUBFRAME_REQUEST_PARMS'  SOURCE_ID='GROUND COMMANDED'  GROUP_APPLICABILITY_FLAG='TRUE'  SUBFRAME_TYPE='SUN_NO_IMG'  FIRST_LINE=1  FIRST_LINE_SAMPLE=1  LINES=1024  LINE_SAMPLES=1024  PROPERTY='ROW_SUM_REQUEST_PARMS'  SOURCE_ID='GROUND COMMANDED'  GROUP_APPLICABILITY_FLAG='FALSE'  DOWNLOAD_PRIORITY=60  PROPERTY='COLUMN_SUM_REQUEST_PARMS'  SOURCE_ID='GROUND COMMANDED'  GROUP_APPLICABILITY_FLAG='FALSE'  DOWNLOAD_PRIORITY=60  PROPERTY='SUN_FIND_REQUEST_PARMS'  SOURCE_ID='GROUND COMMANDED'  GROUP_APPLICABILITY_FLAG='TRUE'  LINES=63  LINE_SAMPLES=63  PROPERTY='HISTOGRAM_REQUEST_PARMS'  SOURCE_ID='GROUND COMMANDED'  GROUP_APPLICABILITY_FLAG='FALSE'  DOWNLOAD_PRIORITY=60  PROPERTY='INSTRUMENT_STATE_PARMS'  AZIMUTH_FOV=0.974602  AZIMUTH_FOV__UNIT='deg'  ELEVATION_FOV=0.974602  ELEVATION_FOV__UNIT='deg'  BAD_PIXEL_REPLACEMENT_ID='N/A'  DETECTOR_FIRST_LINE=1  DETECTOR_LINES=1024  DETECTOR_TO_IMAGE_ROTATION=0.0  DOWNSAMPLE_METHOD='NONE'  EXPOSURE_COUNT=1  EXPOSURE_DURATION=501.76  EXPOSURE_DURATION__UNIT='ms'  EXPOSURE_DURATION_COUNT=98  FILTER_NAME='PANCAM_L8_440NM_SOL_ND5'  FILTER_NUMBER=8  FLAT_FIELD_CORRECTION_FLAG='FALSE'  FLAT_FIELD_CORRECTION_PARM=(0.0,0.0,0.0,0.0,0.0)  INSTRUMENT_MODE_ID='WINDOWED_FRAME'  INSTRUMENT_TEMPERATURE=(-54.8843,-54.9494,-8.99315,-31.5439,-33.3204,0.0,-47.4481,-52.2955,0.0)  INSTRUMENT_TEMPERATURE__UNIT=('degC','degC','degC','degC','degC','degC','degC','degC','degC')  INSTRUMENT_TEMPERATURE_NAME=('FRONT HAZ ELECTRONICS','REAR HAZ ELECTRONICS','LEFT PAN ELECTRONICS','LEFT PAN CCD','RIGHT PAN CCD','LEFT NAV CCD','MI CCD','MI ELECTRONICS','DESCENT CAMERA CCD')  OFFSET_MODE_ID='4095'  PIXEL_AVERAGING_HEIGHT=1  PIXEL_AVERAGING_WIDTH=1  SAMPLE_BIT_METHOD='NONE'  SAMPLE_BIT_MODE_ID='NONE'  SHUTTER_EFFECT_CORRECTION_FLAG='FALSE'  SUN_FIND_FLAG='TRUE'  SUN_FIND_PARM=(33.0,70000.0,293568.0)  SUN_FIND_PARM_NAME=('WINDOW SIZE','BRIGHTNESS THRESHOLD','SUMMED BRIGHTNESS')  SUN_LINE=523  SUN_LINE_SAMPLE=449  SUN_VIEW_POSITION=(0.293955,0.0432859,-1.22483)  SUN_VIEW_DIRECTION=(0.32051,-0.608644,-0.725827)  PROPERTY='COMPRESSION_PARMS'  ERROR_PIXELS=0  INST_CMPRS_DESC='Lossless compression algorithm developed at JPL'  INST_CMPRS_FILTER='N/A'  INST_CMPRS_MODE=1  INST_CMPRS_NAME='LOW-COMPLEXITY LOSSLESS COMPRESSION (LOCO)'  INST_CMPRS_RATE=3.28143  INST_CMPRS_RATIO=3.65694  INST_CMPRS_SEGMENTS=1  INST_CMPRS_SEGMENT_STATUS='0'  INST_CMPRS_SEG_FIRST_LINE=1  INST_CMPRS_SEG_FIRST_LINE_SAMP=1  INST_CMPRS_SEG_LINES=63  INST_CMPRS_SEG_SAMPLES=63  INST_CMPRS_SEG_MISSING_PIXELS=0  INST_CMPRS_SEGMENT_QUALITY='N/A'  INST_DECOMP_STAGES='N/A'  PROPERTY='ROVER_DERIVED_GEOMETRY_PARMS'  INSTRUMENT_AZIMUTH=-61.7792  INSTRUMENT_AZIMUTH__UNIT='deg'  INSTRUMENT_ELEVATION=46.69  INSTRUMENT_ELEVATION__UNIT='deg'  REFERENCE_COORD_SYSTEM_INDEX=(27,0,136,529,1614)  REFERENCE_COORD_SYSTEM_NAME='ROVER_FRAME'  PROPERTY='SITE_DERIVED_GEOMETRY_PARMS'  INSTRUMENT_AZIMUTH=60.4154  INSTRUMENT_AZIMUTH__UNIT='deg'  INSTRUMENT_ELEVATION=47.035  INSTRUMENT_ELEVATION__UNIT='deg'  REFERENCE_COORD_SYSTEM_INDEX=27  REFERENCE_COORD_SYSTEM_NAME='SITE_FRAME'  SOLAR_AZIMUTH=59.9527  SOLAR_AZIMUTH__UNIT='deg'  SOLAR_ELEVATION=47.3186  SOLAR_ELEVATION__UNIT='deg'  PROPERTY='IMAGE_DATA'  CHECKSUM=423100.0  FIRST_LINE=493  FIRST_LINE_SAMPLE=419  INVALID_CONSTANT=0.0  MAXIMUM=1114.0  MEAN=106.601  MEDIAN=30.0  MINIMUM=28.0  MISSING_CONSTANT=0.0  SAMPLE_BIT_MASK='2#0000111111111111#'  STANDARD_DEVIATION=227.327  TASK='MERTELEM'  USER='pxz'  DAT_TIM='Sat Jan 22 02:23:37 2005'                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               " ! ! ! " ! !                                                                   " " # $ $ # $ $ $ " # " " ! " ! !   !                                               ! " " $ % % & & ' & & & $ $ # # " " ! !                                               ! ! $ # & % ' & ( ) + , + , * ' & % $ $ " " " !                                            " # $ & & ( ( + 0 4 : : ; : 6 2 - + ( & % $ # "   !                                          " # " % & ( . 2 9 > C F I K N M J > 6 / , ' & $ $ # " !                                      ! # % $ & ) , 5 @ G J R U ` h m q q i Y I 9 0 + * $ $ " "                                        ! # % & ' , 6 ? J U ] l Ç î æ Û ˙ Ù “ ë g I 7 , * & $ # "                                  !     " $ $ ) * 6 A J V ` y ° ˜v‘54⁄z § V @ 0 * & $ # !   !                                  " $ ' ) 2 = K V e ç ‹h‡f~π» ∞™}ë Ì j C 2 + & $ # " !                                      # & ) , : F R e é Ï≠>√Ÿ4˝72%$≈S” n D 0 ) % " " !                                 ! # & ( 1 > N Z z ›¶3“70ÅWéàOP#ÏäÏ
+ h > / ( $ " " !                                ! # & + 5 D V l ÆoT˙2k°†∂†ä•Ñs6ıÉº ƒ T 6 - ' $ " !     !                         ! " # & + 8 I \ Ü˛§ \~Ç≤¿«…‘…≤áX;¬Pv ò L 2 ) & # "   !                               ! " & * : J c ®^ÒH]{µ¬‡˚È “Æ•g(ûÍ ‚ f @ 0 ' $ # !                            !   ! " & - ; Q n “œ¥˚^Ñ»ñÿ¯	ÈˇÌ“çG6: á T : + & $ " !                               ! " % * 8 R z ˙)ª<páµ˚ŒÒ9Úøä]ÂÜy † e J 5 * $ # !                                  " $ ) 4 P {)9…V∞”·'
+ #¸Í˘‡™o8©¥ ∆ n S @ / ( # "                                ! # ) 2 L Ü?›By•‘ PG'Z,œﬂ∑jû¢ ª w _ K 5 + & " " !                          ! " # & / D p∂6Wî…˘Á¯ËÂŒÇ^í∞ ¿ } ` O > . ) % " !                              ! " ' * : f ‰Èÿr±ﬁ˝#K‰∆ëN f` ∑ z ^ R B 3 + ( $ !                                 " $ + 3 T ≤∫åÍ:h≤√˝‡†ßíBH? ü w e U D 7 . * % " !                            ! " $ ' . @ x=2‘ˇvà≤¬‚·„“~TØ¸ Ú ã q ` W F 6 0 * ' % "                              " " & , 7 W ΩØay¢≈Õ—π∏∞∫z[Ô1V Æ Ö l a R E 6 / + ) % # !                             ! ! $ ( 1 = qz+p¶kâ†®îhOC¯a† ‰ ï t h \ W B 6 / , * & $ ! !                           ! ! # % * 6 J á.	}Ó2áUhWL0/≈r“ § Ä o g ^ Q A 4 / , + ' $ # !                             ! " $ & , 6 S ó!‹JÑÙ>8;˙¯ïP∂	 ± Ö s i b U J ; 3 / , * ( $ " " !                              " # $ ( . 8 R Ç Êz%Iz™ûåùDÂt Ó ß Ñ r l d W P @ 5 / . + ) ' $ " "                                ! " $ & ( - 6 H d ¢ ÔQöÆ√¡áA ¸ ∂ ì  p k ` \ S F : 4 / , + * ( $ # # "                             "   ! # % ) , 1 = J b é ∏ » – Œ º û ì Ç p j g b Z S I = 6 0 . , + * & % " "                                   ! ! " % ( * - 3 ; H Z i p r y q l h f ` ^ Y Q I A 6 0 0 , . * ' $ $ " ! !                                  " " # % $ ' ) - 0 6 @ I V W \ Z \ W W P K B : 2 0 . , , , ) ( $ $ " " "                                 ! " " # $ % ' * + . 4 : A E L K K E B 9 9 2 1 . - , * ( ( % $ " ! ! !                                  ! ! " " # $ % % ( ( + . 4 4 7 5 6 2 2 / / - . + * * ) ' # # " ! ! !                                 !     " ! " " $ $ $ % ' ) * , - / , . - , * * * ) ' & $ $ " " !                                            ! " " " ! " # # $ & ' ) + , + ) * * ( ) & & # " " " ! "                                          !   ! ! ! ! " ! " " # % & ( ' ( ( ' ' & $ # # " " !       !                                                 " ! ! " " " # # $ $ # $ # # " # " # ! " !                                                        !       " ! " " $ " " " " " " "   !                                                              !   ! ! " ! "   ! " !                                                               ! !   !                                                                      !                                                                                                                                                                                                                                                                                                                                                                                                                                                                         

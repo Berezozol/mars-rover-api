@@ -22,7 +22,7 @@ param(
     [string]$RepoDir = '',
     # Directory with compose.yml and .env.
     [string]$ComposeDir = (Join-Path $env:USERPROFILE 'mars-server'),
-    [string]$ProjectName = 'mars-server',
+    [string]$ProjectName = 'mars',
     [string]$Image = 'mars-rover-api:local',
     [string]$HealthUrl = 'http://127.0.0.1:8000/health',
     [int]$HealthTimeoutSeconds = 120,

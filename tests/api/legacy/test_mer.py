@@ -321,3 +321,22 @@ async def test_other_rovers_photos_stay_full_only(
     assert detail["total_photos"] == 1
     assert manifest["total_photos"] == 1
     assert [entry["total_photos"] for entry in manifest["photos"]] == [1]
+
+
+@pytest.mark.parametrize("rover", ["spirit", "opportunity"])
+async def test_mer_img_src_stays_the_pds_preview_in_v1_after_stage_9a(
+    client: httpx.AsyncClient, world: MerWorld, prefix: str, rover: str
+) -> None:
+    """Stage 9a changes v2 only: v1 img_src of MER is still the stored PDS browse JPEG."""
+    sol = MAX_PHOTO_SOL[rover]
+    listing = (await get(client, prefix, f"/rovers/{rover}/photos", sol=sol))["photos"]
+    latest = (await get(client, prefix, f"/rovers/{rover}/latest_photos"))["latest_photos"]
+    frames = {world.photo_ids[f.source_id]: f for f in world.frames[rover]}
+
+    assert listing and latest
+    for photo in listing + latest:
+        assert photo["img_src"] == frames[photo["id"]].img_full
+        assert photo["img_src"].endswith(".img.jpg")
+        assert "/api/v2/" not in photo["img_src"]
+    single = (await get(client, prefix, f"/photos/{listing[0]['id']}"))["photo"]
+    assert single["img_src"] == frames[listing[0]["id"]].img_full

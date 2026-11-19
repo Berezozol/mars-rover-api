@@ -2,9 +2,10 @@
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.home import request_origin
 from app.api.responses import FastJSONResponse
 from app.api.v2.params import (
     CameraParam,
@@ -65,6 +66,7 @@ async def list_cameras(rover: str, session: Session) -> CamerasResponse:
 
 @router.get("/rovers/{rover}/photos", response_model=PhotosResponse, responses=_ERRORS)
 async def list_photos(
+    request: Request,
     rover: str,
     session: Session,
     pagination: Pagination,
@@ -74,17 +76,26 @@ async def list_photos(
     sample_type: SampleTypeParam = None,
 ) -> FastJSONResponse:
     query = PhotoQuery(sol=sol, earth_date=earth_date, camera=camera, sample_type=sample_type)
-    return FastJSONResponse(photos_body(await v2.search_photos(session, rover, query, pagination)))
+    return FastJSONResponse(
+        photos_body(
+            await v2.search_photos(session, rover, query, pagination), request_origin(request)
+        )
+    )
 
 
 @router.get("/rovers/{rover}/photos/latest", response_model=LatestPhotosResponse, responses=_ERRORS)
 async def latest_photos(
+    request: Request,
     rover: str,
     session: Session,
     pagination: Pagination,
     camera: CameraParam = None,
 ) -> FastJSONResponse:
-    return FastJSONResponse(latest_body(await v2.latest_photos(session, rover, camera, pagination)))
+    return FastJSONResponse(
+        latest_body(
+            await v2.latest_photos(session, rover, camera, pagination), request_origin(request)
+        )
+    )
 
 
 @router.get("/rovers/{rover}/manifest", response_model=ManifestResponse, responses=_ERRORS)

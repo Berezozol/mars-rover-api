@@ -107,6 +107,36 @@ class DatabaseUnavailable(ServiceUnavailableError):
         super().__init__(DB_UNAVAILABLE_MESSAGE)
 
 
+class UpstreamUnavailable(AppError):
+    """502: the source (NASA PDS) failed or returned data that cannot be converted."""
+
+    status_code = 502
+    code = "upstream_error"
+
+    def __init__(self) -> None:
+        super().__init__("Upstream source unavailable or returned unreadable data")
+
+
+class UpstreamTimeout(AppError):
+    """504: converting a source image took longer than MER_CONVERT_TIMEOUT_SECONDS."""
+
+    status_code = 504
+    code = "upstream_timeout"
+
+    def __init__(self) -> None:
+        super().__init__("Image conversion timed out")
+
+
+class ConverterBusy(ServiceUnavailableError):
+    """503: the image converter has no free slot and its queue is full."""
+
+    code = "converter_busy"
+    retry_after = 10
+
+    def __init__(self) -> None:
+        super().__init__("Image converter is busy, try again later")
+
+
 class SyncInProgress(ConflictError):
     """A sync of this rover is already running (the advisory lock is held)."""
 
@@ -241,7 +271,9 @@ def is_db_unavailable(exc: BaseException) -> bool:
 
 
 async def _handle_app_error(request: Request, exc: AppError) -> JSONResponse:
-    headers = rate_limited_headers(exc.retry_after) if isinstance(exc, RateLimited) else None
+    headers = None
+    if isinstance(exc, RateLimited | ConverterBusy):
+        headers = rate_limited_headers(exc.retry_after)
     return error_response(
         request,
         status_code=exc.status_code,

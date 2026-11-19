@@ -2,12 +2,13 @@
 # Tailscale Funnel terminates HTTPS and proxies to http://127.0.0.1:8000.
 #
 # Lives outside the repository, e.g. C:\Users\<user>\mars-server\compose.yml, next to .env
+# (mars-server is the directory; the Compose project is named `mars`, see `name:` below).
 # (copy .env.example to .env and fill it in). Runbook: deploy/README.md, "Laptop + Tailscale Funnel".
 #
 # The app image is built locally from the repository: docker build -t mars-rover-api:local .
 # Migrations are a separate step (update.ps1): docker compose run --rm app alembic upgrade head
 
-name: mars-server
+name: mars
 
 x-logging: &logging
   driver: json-file
@@ -69,8 +70,19 @@ services:
       # (docker compose run --rm app alembic ... / python -m app.cli ...) do not start the
       # server, so they do not start a second scheduler.
       SYNC_ENABLED: "true"
+    # Cache of converted Spirit/Opportunity full-size images (MER_IMAGE_CACHE_*, see .env).
+    # Named volume, so that uid 10001 (user app) can write to it; it survives container
+    # recreation and can be deleted at any time (images are converted again on demand).
+    volumes:
+      - mer_images:/app/data/mer-images
     stop_grace_period: 30s
     logging: *logging
 
+# Explicit names: they do not depend on the project name. The live volume with the database
+# is mars_pgdata; do not rename the project (`mars`) or the volumes, otherwise Compose
+# creates an empty database volume.
 volumes:
   pgdata:
+    name: mars_pgdata
+  mer_images:
+    name: mars_mer_images

@@ -2,7 +2,7 @@
 name: designer
 description: Дизайнер интерфейсов проекта Mars Rover API. Делает наброски будущего фронтенда — статичные HTML-макеты экранов на данных из контракта v2 (docs/API.md). Код приложения и тесты не трогает.
 tools: Read, Write, Edit, Grep, Glob, Bash
-model: inherit
+model: sonnet
 color: purple
 ---
 

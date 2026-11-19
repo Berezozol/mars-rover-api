@@ -38,6 +38,7 @@ from app.repositories.rovers import refresh_rover_stats
 from tests.conftest import SEED_CAMERA_COUNTS, _clean_database, build_record
 
 V2 = "/api/v2"
+MER_ROVERS = ("spirit", "opportunity")
 
 ROVER_IDS = ["curiosity", "opportunity", "perseverance", "spirit"]  # sorted by id
 
@@ -328,6 +329,19 @@ class World:
     def photo(self, source_id: str) -> dict[str, Any]:
         rover_id, record = self.records[source_id]
         code = record.camera_code.upper()
+        images = {
+            "small": record.img_small,
+            "medium": record.img_medium,
+            "large": record.img_large,
+            "full": record.img_full,
+        }
+        img_src = record.img_full
+        if rover_id in MER_ROVERS:
+            # Stage 9a: the stored PDS browse JPEG is the preview (small); full is our
+            # conversion. Without source_link there is nothing to convert: full = preview.
+            if record.source_link:
+                img_src = f"http://test{V2}/photos/{self.photo_ids[source_id]}/image?size=full"
+            images = {"small": record.img_full, "medium": None, "large": None, "full": img_src}
         return {
             "id": self.photo_ids[source_id],
             "rover": rover_id,
@@ -337,13 +351,8 @@ class World:
             "camera": {"code": code, "name": self.cameras[rover_id][code]},
             "sample_type": record.sample_type,
             "title": record.title,
-            "img_src": record.img_full,
-            "images": {
-                "small": record.img_small,
-                "medium": record.img_medium,
-                "large": record.img_large,
-                "full": record.img_full,
-            },
+            "img_src": img_src,
+            "images": images,
             "credit": record.credit,
             "source": {"id": record.source_id, "link": record.source_link},
         }

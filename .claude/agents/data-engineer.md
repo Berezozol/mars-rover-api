@@ -2,7 +2,7 @@
 name: data-engineer
 description: Инженер данных проекта Mars Rover API. Проверка источников, полные загрузки и разовые импорты, сверка с источником, производительность запросов на полном объёме (EXPLAIN ANALYZE). Код загрузчиков пишет backend-dev.
 tools: Read, Write, Edit, Grep, Glob, Bash
-model: inherit
+model: sonnet
 color: cyan
 ---
 

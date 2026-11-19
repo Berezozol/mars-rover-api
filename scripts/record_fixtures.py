@@ -12,6 +12,11 @@ Usage::
 ``--part mer`` makes no requests: it copies the real MER index samples prepared by
 data-engineer (``data/mer-samples/<volume>/``) into ``tests/fixtures/upstream/mer/``.
 
+``--part mer-img`` (stage 9a) downloads at most six real MER ``.img`` products (the PDS paths
+come from the ``source_link`` column of the dev database), stores every one under
+``data/mer-img/`` (git-ignored, for manual checks) and copies into
+``tests/fixtures/upstream/mer/img/`` only those not larger than ``SMALL_IMG_BYTES``.
+
 ``--raw-dir`` optionally stores full untrimmed responses and the summary
 outside the repository for analysis. Untrimmed responses are never written
 into the repository.
@@ -356,20 +361,119 @@ def build_mer_fixtures(samples_dir: Path = MER_SAMPLES_DIR, out_dir: Path = MER_
         logger.info("wrote %s: %d rows", target, rows)
 
 
+MER_IMG_DIR = MER_DIR / "img"
+MER_IMG_DATA_DIR = ROOT / "data" / "mer-img"
+SMALL_IMG_BYTES = 200_000
+# Spirit products picked from the dev database: one per camera / product type. Only the
+# source_link of each is read from the database; nothing else is trusted from it.
+MER_IMG_SAMPLES = {
+    "navcam_eff": "2N135232528EFF2700P1556L0M1",  # Navcam 1024x1024 full frame
+    "pancam_eff": "2P135241228EFF2702P2544L2M1",  # Pancam full frame
+    "hazcam_eff": "2F135251873EFF27MCP1201L0M1",  # Hazcam full frame
+    "mi_eff": "2M135687370EFF3000P2956M2M1",  # Microscopic Imager
+    "pancam_esf": "2P135232363ESF2700P2682L8M1",  # subframe
+    "navcam_edn": "2N160633049EDNA2K1F0006R0M1",  # downsampled
+}
+
+
+def _mer_image_links(source_ids: list[str]) -> dict[str, str]:
+    import asyncio
+
+    import asyncpg
+
+    async def fetch() -> dict[str, str]:
+        url = Settings().database_url.replace("postgresql+asyncpg://", "postgresql://")
+        conn = await asyncpg.connect(url)
+        try:
+            rows = await conn.fetch(
+                "SELECT source_id, source_link FROM photos WHERE source_id = ANY($1::text[])",
+                source_ids,
+            )
+        finally:
+            await conn.close()
+        return {r["source_id"]: r["source_link"] for r in rows}
+
+    return asyncio.run(fetch())
+
+
+def _pds3_facts(data: bytes) -> dict[str, str]:
+    """Label keys that matter for the parser (read from the ASCII head, up to END)."""
+    head = re.split(rb"^END\s*$", data[:200_000], maxsplit=1, flags=re.MULTILINE)[0].decode(
+        "latin-1", "replace"
+    )
+    keys = (
+        "RECORD_BYTES",
+        "LABEL_RECORDS",
+        "^IMAGE",
+        "LINES",
+        "LINE_SAMPLES",
+        "BANDS",
+        "SAMPLE_BITS",
+        "SAMPLE_TYPE",
+        "LINE_PREFIX_BYTES",
+        "LINE_SUFFIX_BYTES",
+        "BAND_STORAGE_TYPE",
+        "INSTRUMENT_ID",
+    )
+    facts: dict[str, str] = {}
+    for line in head.splitlines():
+        key, sep, value = line.partition("=")
+        if sep and key.strip() in keys:
+            facts.setdefault(key.strip(), value.strip())
+    return facts
+
+
+def record_mer_images() -> None:
+    """Download the MER .img samples; big ones go to data/mer-img, small ones into tests."""
+    links = _mer_image_links(list(MER_IMG_SAMPLES.values()))
+    MER_IMG_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    MER_IMG_DIR.mkdir(parents=True, exist_ok=True)
+    summary: dict[str, Any] = {}
+    headers = {"User-Agent": USER_AGENT}
+    with httpx.Client(headers=headers, timeout=120.0, follow_redirects=True) as client:
+        for index, (name, source_id) in enumerate(MER_IMG_SAMPLES.items()):
+            link = links.get(source_id)
+            if link is None:
+                logger.warning("%s: %s not in the dev database, skipped", name, source_id)
+                continue
+            if index:
+                time.sleep(PAUSE_S)
+            response = client.get(link)
+            response.raise_for_status()
+            data = response.content
+            filename = f"{source_id.lower()}.img"
+            (MER_IMG_DATA_DIR / filename).write_bytes(data)
+            in_repo = len(data) <= SMALL_IMG_BYTES
+            if in_repo:
+                (MER_IMG_DIR / filename).write_bytes(data)
+            summary[name] = {
+                "source_id": source_id,
+                "link": link,
+                "bytes": len(data),
+                "in_repo": in_repo,
+                **_pds3_facts(data),
+            }
+    sys.stdout.write(json.dumps(summary, indent=2) + chr(10))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--raw-dir", type=Path, default=None, help="dir for untrimmed dumps")
     parser.add_argument(
         "--part",
-        choices=["all", "base", "m2020-range", "mer"],
+        choices=["all", "base", "m2020-range", "mer", "mer-img"],
         default="all",
         help="which group of requests to record (default: all); "
-        "'mer' copies data/mer-samples into tests/fixtures/upstream/mer offline",
+        "'mer' copies data/mer-samples into tests/fixtures/upstream/mer offline; "
+        "'mer-img' downloads up to six MER .img samples (paths from the dev database)",
     )
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     if args.part == "mer":
         build_mer_fixtures()
+        return
+    if args.part == "mer-img":
+        record_mer_images()
         return
     settings = Settings()
 

@@ -2,7 +2,7 @@
 name: qa-engineer
 description: QA-инженер проекта Mars Rover API. Пишет тесты в tests/ по контракту docs/API.md и docs/DATA-SOURCES.md — параллельно с разработкой, не глядя на реализацию. Код приложения не меняет.
 tools: Read, Edit, Write, Grep, Glob, Bash
-model: inherit
+model: sonnet
 color: yellow
 ---
 

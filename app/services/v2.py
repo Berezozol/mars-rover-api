@@ -23,6 +23,9 @@ SAMPLE_TYPES: tuple[str, ...] = ("full", "subframe", "downsampled")
 # Sizes of /photos/{id}/image; a missing size falls back to "full".
 IMAGE_SIZES: tuple[str, ...] = ("full", "large", "medium", "small")
 
+# Rovers whose full frames are converted from PDS3 products (stage 9a).
+MER_ROVERS: frozenset[str] = frozenset({"spirit", "opportunity"})
+
 # Photo ids are bigint; anything outside cannot exist and is answered without a query.
 _MAX_INT8 = 2**63 - 1
 
@@ -139,20 +142,35 @@ async def get_photo(session: AsyncSession, photo_id: int) -> Photo:
     return photo
 
 
-async def photo_image_url(session: AsyncSession, photo_id: int, size: str) -> str:
+@dataclass(frozen=True)
+class ImageTarget:
+    """Where ``/photos/{id}/image`` leads: a redirect URL, or a photo to convert."""
+
+    redirect_url: str | None = None
+    convert: Photo | None = None
+
+
+async def resolve_image(session: AsyncSession, photo_id: int, size: str) -> ImageTarget:
     """Stored URL of the photo's image in ``size`` (case-insensitive), else the full one.
 
     The size is checked before the database; ids out of range → ``PhotoNotFound``.
+    Spirit/Opportunity: ``small`` is the stored preview, every other size is converted from
+    the PDS3 product (``source_link``).
     """
     wanted = _image_size(size)
     photo = await get_photo(session, photo_id)
+    if photo.rover_id in MER_ROVERS:
+        if wanted == "small" and photo.img_full:
+            return ImageTarget(redirect_url=photo.img_small or photo.img_full)
+        if photo.source_link:
+            return ImageTarget(convert=photo)
     by_size = {
         "full": photo.img_full,
         "large": photo.img_large,
         "medium": photo.img_medium,
         "small": photo.img_small,
     }
-    return by_size[wanted] or photo.img_full
+    return ImageTarget(redirect_url=by_size[wanted] or photo.img_full)
 
 
 async def get_manifest(
