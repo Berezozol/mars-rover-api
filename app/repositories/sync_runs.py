@@ -1,6 +1,7 @@
 """Sync run journal."""
 
 from collections.abc import Sequence
+from datetime import datetime
 from typing import Literal
 
 from sqlalchemy import Integer, and_, case, func, literal_column, select, update
@@ -147,3 +148,11 @@ async def finished_runs(
         stmt = stmt.where(SyncRun.mode == mode)
     stmt = stmt.order_by(SyncRun.finished_at.desc(), SyncRun.id.desc())
     return list(await session.scalars(stmt, execution_options=FRESH))
+
+
+async def last_success_finished_at(session: AsyncSession, rover_id: str) -> datetime | None:
+    """``finished_at`` of the rover's latest successful run of any mode, None if there is none."""
+    stmt = select(func.max(SyncRun.finished_at)).where(
+        SyncRun.rover_id == rover_id, SyncRun.status == "success"
+    )
+    return await session.scalar(stmt)

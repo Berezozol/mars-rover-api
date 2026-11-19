@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mars Rover API (unofficial)</title>
+<style>
+  body { margin: 0 auto; max-width: 46rem; padding: 2rem 1rem 3rem; font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; color: #1d1d1f; background: #fbfaf8; }
+  h1 { font-size: 1.7rem; margin-bottom: 0.2rem; }
+  h2 { font-size: 1.15rem; margin-top: 2rem; border-bottom: 1px solid #e3ddd5; padding-bottom: 0.2rem; }
+  .lead { color: #5a5550; margin-top: 0; }
+  code, pre { font: 0.9rem/1.45 ui-monospace, "Cascadia Mono", Consolas, monospace; }
+  code { background: #efebe6; padding: 0.05rem 0.3rem; border-radius: 3px; }
+  pre { background: #24211f; color: #f3efe9; padding: 0.8rem 1rem; border-radius: 6px; overflow-x: auto; }
+  .note { background: #f6efe4; border-left: 4px solid #c1652f; padding: 0.6rem 0.9rem; }
+  a { color: #a24a1c; }
+  footer { margin-top: 2.5rem; font-size: 0.9rem; color: #5a5550; }
+</style>
+</head>
+<body>
+<h1>Mars Rover API</h1>
+<p class="lead">An open, unofficial replacement for the archived Mars Rover Photos API.</p>
+
+<p class="note">This is an independent community project. It is <strong>not affiliated with,
+endorsed by or operated by NASA or JPL</strong>. Photos and metadata come from the public raw
+image feeds and archives published by NASA/JPL.</p>
+
+<h2>Moving from the old API</h2>
+<p>Replace the host and keep the rest of the URL. No API key is needed; an
+<code>api_key</code> parameter is accepted and ignored.</p>
+<pre>https://api.nasa.gov/mars-photos/...  →  $origin/mars-photos/...</pre>
+<p>The same API is also served under <code>$origin/api/v1/...</code>.</p>
+
+<h2>Differences from the old API</h2>
+<ul>
+  <li>Rate limit per client IP, no key: 60 requests per minute and 2000 per hour.
+    Over the limit you get <code>429</code> with a <code>Retry-After</code> header.</li>
+  <li>Spirit and Opportunity: <code>img_src</code> points to reduced-resolution JPEG
+    previews from the NASA PDS archive (the old MER gallery is gone).</li>
+  <li>Curiosity up to sol 4102: only full frames are served (no thumbnails or subframes).</li>
+  <li>Photo ids are new; ids from the old API do not carry over.</li>
+</ul>
+
+<h2>Examples</h2>
+<p>v1, compatible with the old API:</p>
+<pre>curl "$origin/mars-photos/api/v1/rovers/curiosity/photos?sol=1000&amp;camera=fhaz"
+curl "$origin/mars-photos/api/v1/rovers/perseverance/latest_photos"
+curl "$origin/mars-photos/api/v1/manifests/opportunity"</pre>
+<p>v2, the new API:</p>
+<pre>curl "$origin/api/v2/rovers"
+curl "$origin/api/v2/rovers/perseverance/photos?sol=100&amp;per_page=50"</pre>
+<p>Interactive documentation of every endpoint: <a href="/docs">/docs</a>.</p>
+
+<footer>
+  <p>Images courtesy of NASA/JPL-Caltech and instrument partners. Each photo keeps its
+  <code>credit</code> field.</p>
+</footer>
+</body>
+</html>

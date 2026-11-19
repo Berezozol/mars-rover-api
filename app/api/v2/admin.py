@@ -2,6 +2,9 @@
 
 The token is checked before anything else, including the request body: a wrong token with
 a malformed body is a 401. That is why the body is read and validated by hand.
+
+Failed token checks are counted per client IP in ``app.state.admin_auth_limiter``; an IP over
+the limit gets 429 without its token being compared (docs/API.md, "Ограничение частоты").
 """
 
 import secrets
@@ -22,7 +25,8 @@ from app.api.v2.schemas import (
     runs_out,
 )
 from app.core.config import Settings
-from app.core.errors import UnauthorizedError
+from app.core.errors import RateLimited, UnauthorizedError
+from app.core.ratelimit import RateLimiter
 from app.db.session import get_session
 from app.services import admin
 from app.services.admin import SyncRequest
@@ -36,16 +40,32 @@ _token_header = APIKeyHeader(
 )
 
 
+def admin_auth_limiter(settings: Settings) -> RateLimiter:
+    """Failed admin logins per IP: ADMIN_AUTH_MAX_FAILURES per ADMIN_AUTH_WINDOW_MINUTES."""
+    window = settings.admin_auth_window_minutes * 60
+    return RateLimiter([(settings.admin_auth_max_failures, window)])
+
+
 async def require_admin(
     request: Request, token: Annotated[str | None, Security(_token_header)]
 ) -> None:
-    """401 unless the header equals ADMIN_TOKEN (constant-time comparison)."""
-    settings: Settings = request.app.state.settings
+    """429 for an IP with too many failures, else 401 unless the header equals ADMIN_TOKEN."""
+    limiter: RateLimiter = request.app.state.admin_auth_limiter
+    ip = request.client.host if request.client else "unknown"
+    wait = limiter.check(ip)
+    if wait is not None:
+        raise RateLimited(wait)
+    if not _token_matches(request.app.state.settings, token):
+        limiter.record(ip)
+        raise UnauthorizedError(f"Missing or invalid {ADMIN_TOKEN_HEADER}")
+
+
+def _token_matches(settings: Settings, token: str | None) -> bool:
+    """Constant-time comparison with ADMIN_TOKEN."""
     expected = settings.admin_token_value
     if not expected or not token:
-        raise UnauthorizedError(f"Missing or invalid {ADMIN_TOKEN_HEADER}")
-    if not secrets.compare_digest(token.encode("utf-8"), expected.encode("utf-8")):
-        raise UnauthorizedError(f"Missing or invalid {ADMIN_TOKEN_HEADER}")
+        return False
+    return secrets.compare_digest(token.encode("utf-8"), expected.encode("utf-8"))
 
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
@@ -56,6 +76,7 @@ _ERRORS: dict[int | str, dict[str, Any]] = {
     401: {"model": ErrorResponse, "description": "unauthorized"},
     404: {"model": ErrorResponse, "description": "rover_not_found"},
     422: {"model": ErrorResponse, "description": "validation_error"},
+    429: {"model": ErrorResponse, "description": "rate_limited"},
     503: {"model": ErrorResponse, "description": "db_unavailable"},
 }
 

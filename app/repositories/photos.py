@@ -326,3 +326,9 @@ async def list_sol_summaries(
         stmt = stmt.where(SolSummary.sol <= to_sol)
     order = SolSummary.sol.desc() if descending else SolSummary.sol
     return list(await session.scalars(stmt.order_by(order), execution_options=FRESH))
+
+
+async def newest_earth_date(session: AsyncSession, rover_id: str) -> date | None:
+    """Latest real earth_date of the rover's photos (index ix_photos_rover_id_earth_date)."""
+    stmt = select(func.max(Photo.earth_date)).where(Photo.rover_id == rover_id)
+    return await session.scalar(stmt)

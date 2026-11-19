@@ -1,0 +1,76 @@
+# Production stack on the owner's laptop (Windows 11, Docker Desktop / WSL2).
+# Tailscale Funnel terminates HTTPS and proxies to http://127.0.0.1:8000.
+#
+# Lives outside the repository, e.g. C:\Users\<user>\mars-server\compose.yml, next to .env
+# (copy .env.example to .env and fill it in). Runbook: deploy/README.md, "Laptop + Tailscale Funnel".
+#
+# The app image is built locally from the repository: docker build -t mars-rover-api:local .
+# Migrations are a separate step (update.ps1): docker compose run --rm app alembic upgrade head
+
+name: mars-server
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  db:
+    image: postgres:16.16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mars
+      POSTGRES_DB: mars
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    # No published ports: only the app container reaches the database.
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # backup.ps1 writes pg_dump straight here (no temporary copy inside the WSL2 disk);
+      # restores read from here too.
+      - ./backups:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mars -d mars"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    logging: *logging
+
+  app:
+    image: mars-rover-api:local
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    # Only the loopback interface: Tailscale Funnel on the same machine is the only client.
+    ports:
+      - "127.0.0.1:8000:8000"
+    # Optional settings (ADMIN_TOKEN, TELEGRAM_*, RATE_LIMIT_*, ...) come from .env as is;
+    # a variable missing there is not passed at all, so the application default applies.
+    env_file:
+      - path: .env
+        required: true
+    # Fixed for this deployment; these override the same names in .env.
+    environment:
+      DATABASE_URL: postgresql+asyncpg://mars:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/mars
+      ENVIRONMENT: prod
+      # Peers whose X-Forwarded-For / X-Forwarded-Proto uvicorn trusts. Requests reach the
+      # container through Docker Desktop port forwarding, so the peer is the gateway of the
+      # compose network (seen as 172.19.0.1 in a test on Docker Desktop 29.9, WSL2), not
+      # 127.0.0.1; 192.168.65.0/24 is Docker Desktop's own VM network. Not "*": with a list
+      # uvicorn takes the right-most untrusted X-Forwarded-For entry (the one the proxy
+      # added), with "*" the left-most one, which the client controls. The port is published
+      # on 127.0.0.1 only, so the sole such peer is the local Tailscale proxy.
+      # If access-log lines show the gateway address instead of client IPs, the peer is
+      # outside these ranges: add it here (deploy/README.md, "Client IP").
+      FORWARDED_ALLOW_IPS: "127.0.0.1,172.16.0.0/12,192.168.65.0/24"
+      # Single instance: the in-process scheduler runs in this container. One-off containers
+      # (docker compose run --rm app alembic ... / python -m app.cli ...) do not start the
+      # server, so they do not start a second scheduler.
+      SYNC_ENABLED: "true"
+    stop_grace_period: 30s
+    logging: *logging
+
+volumes:
+  pgdata:

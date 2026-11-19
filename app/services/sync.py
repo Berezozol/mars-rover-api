@@ -5,7 +5,7 @@ See docs/ARCHITECTURE.md, "Синхронизация".
 
 import asyncio
 import logging
-from collections.abc import Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import Literal
@@ -49,6 +49,9 @@ class SyncResult:
     error: str | None
     # Total the source declared for the range, when known.
     source_total: int | None = None
+
+
+SyncListener = Callable[[SyncResult], Awaitable[object]]
 
 
 @dataclass
@@ -166,12 +169,36 @@ class SyncHandle:
         return self._claimed
 
     async def wait(self) -> SyncResult:
-        """Run the sync to the end; same result and errors as ``SyncService.run()``."""
+        """Run the sync to the end; same result and errors as ``SyncService.run()``.
+
+        The service's listeners hear about the outcome after the lock is released, also
+        when the sync crashed (as a ``failed`` result); a cancelled sync is not reported.
+        """
         self._claim()
         try:
-            return await self._service._execute(self._adapter, self._plan)
-        finally:
-            await self._lock.release()
+            try:
+                result = await self._service._execute(self._adapter, self._plan)
+            finally:
+                await self._lock.release()
+        except Exception as exc:
+            await self._service.notify_finished(self._crashed_result(exc))
+            raise
+        await self._service.notify_finished(result)
+        return result
+
+    def _crashed_result(self, exc: Exception) -> SyncResult:
+        plan = self._plan
+        return SyncResult(
+            run_id=plan.run_id,
+            rover_id=plan.rover_id,
+            mode=plan.mode,
+            from_sol=plan.from_sol,
+            to_sol=plan.to_sol,
+            status="failed",
+            photos_upserted=0,
+            failed_sols=[],
+            error=repr(exc)[:MAX_ERROR_LENGTH],
+        )
 
     async def close(self) -> None:
         """Give up a handle whose ``wait()`` never ran: run failed, lock released."""
@@ -234,6 +261,19 @@ class SyncService:
     ) -> None:
         self._session_factory = session_factory
         self._settings = settings
+        self._listeners: list[SyncListener] = []
+
+    def add_listener(self, listener: "SyncListener") -> None:
+        """Call ``listener(result)`` after every sync started by this service ends."""
+        self._listeners.append(listener)
+
+    async def notify_finished(self, result: SyncResult) -> None:
+        """Run the listeners one by one; their errors are logged, never raised."""
+        for listener in self._listeners:
+            try:
+                await listener(result)
+            except Exception:
+                logger.exception("Sync listener failed run_id=%d", result.run_id)
 
     @property
     def _engine(self) -> AsyncEngine:

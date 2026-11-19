@@ -9,6 +9,7 @@ for both API versions.
 """
 
 import logging
+import math
 from typing import Any
 
 from asyncpg.exceptions import PostgresConnectionError
@@ -23,6 +24,7 @@ logger = logging.getLogger(__name__)
 LEGACY_PREFIXES: tuple[str, ...] = ("/api/v1", "/mars-photos/api/v1")
 
 VALIDATION_MESSAGE = "Request validation failed"
+RATE_LIMITED_MESSAGE = "Rate limit exceeded"
 DB_UNAVAILABLE_MESSAGE = "Database unavailable"
 
 # Echoed user input in error messages is cut to this length.
@@ -124,6 +126,33 @@ class NoSourceForRover(ValidationAppError):
         self.rover_id = rover_id
 
 
+class RateLimited(AppError):
+    """429: too many requests (or failed admin logins) from one client IP."""
+
+    status_code = 429
+    code = "rate_limited"
+
+    def __init__(self, retry_after: float) -> None:
+        super().__init__(RATE_LIMITED_MESSAGE)
+        self.retry_after = retry_after
+
+
+def retry_after_value(seconds: float) -> str:
+    """``Retry-After`` header value: whole seconds, rounded up, at least 1."""
+    return str(max(1, math.ceil(seconds)))
+
+
+def rate_limited_headers(seconds: float) -> dict[str, str]:
+    return {"Retry-After": retry_after_value(seconds), "Cache-Control": NO_STORE}
+
+
+def rate_limited_content(path: str) -> dict[str, Any]:
+    """The 429 body in the format of the path's API version."""
+    if is_legacy_path(path):
+        return {"errors": RATE_LIMITED_MESSAGE}
+    return {"error": {"code": RateLimited.code, "message": RATE_LIMITED_MESSAGE, "details": None}}
+
+
 class LegacyBadRequest(AppError):
     """v1 bad request: 400 with the message as the legacy "errors" text."""
 
@@ -212,12 +241,14 @@ def is_db_unavailable(exc: BaseException) -> bool:
 
 
 async def _handle_app_error(request: Request, exc: AppError) -> JSONResponse:
+    headers = rate_limited_headers(exc.retry_after) if isinstance(exc, RateLimited) else None
     return error_response(
         request,
         status_code=exc.status_code,
         code=exc.code,
         message=exc.message,
         details=exc.details,
+        headers=headers,
     )
 
 

@@ -2,9 +2,9 @@
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -68,6 +68,26 @@ class Settings(BaseSettings):
     admin_token: SecretStr | None = None
     cors_origins: list[str] = ["*"]
 
+    # Per-IP request limit on /api/v1, /mars-photos/api/v1 and /api/v2 (stage 9).
+    rate_limit_enabled: bool = True
+    rate_limit_per_minute: int = Field(default=60, ge=1)
+    rate_limit_per_hour: int = Field(default=2000, ge=1)
+    # Failed admin token checks per IP before admin answers 429 for the rest of the window.
+    admin_auth_max_failures: int = Field(default=10, ge=1)
+    admin_auth_window_minutes: int = Field(default=15, ge=1)
+
+    # Data freshness (/health/sync and the alerts).
+    sync_stale_hours: int = Field(default=24, ge=1)
+    photos_stale_days: int = Field(default=21, ge=1)
+    # /health/sync keeps its result in memory this long (0 = query the database every time).
+    health_sync_cache_seconds: int = Field(default=30, ge=0)
+
+    # Telegram alerts; enabled only when both the token and the chat id are set.
+    telegram_bot_token: SecretStr | None = None
+    telegram_chat_id: str | None = None
+    telegram_api_base: str = "https://api.telegram.org"
+    alert_check_interval_minutes: int = Field(default=60, ge=1)
+
     @field_validator("mer_cache_dir", mode="after")
     @classmethod
     def _resolve_mer_cache_dir(cls, value: Path) -> Path:
@@ -79,6 +99,12 @@ class Settings(BaseSettings):
         token = check_admin_token(value)
         return SecretStr(token) if token else None
 
+    @model_validator(mode="after")
+    def _check_rate_limits(self) -> Self:
+        if self.rate_limit_per_hour < self.rate_limit_per_minute:
+            raise ValueError("RATE_LIMIT_PER_HOUR must be >= RATE_LIMIT_PER_MINUTE")
+        return self
+
     @property
     def admin_token_value(self) -> str:
         """The stripped admin token, "" when admin is disabled."""
@@ -88,16 +114,29 @@ class Settings(BaseSettings):
     def admin_enabled(self) -> bool:
         return bool(self.admin_token_value)
 
+    @property
+    def telegram_token_value(self) -> str:
+        """The stripped bot token, "" when unset. Never log it."""
+        token = self.telegram_bot_token
+        return token.get_secret_value().strip() if token is not None else ""
+
+    @property
+    def alerts_enabled(self) -> bool:
+        return bool(self.telegram_token_value and (self.telegram_chat_id or "").strip())
+
 
 MIN_ADMIN_TOKEN_LENGTH = 16
+# Placeholder marker of the example env files; such a token must never go live.
+ADMIN_TOKEN_PLACEHOLDER = "change-me"
 
 
 def check_admin_token(value: SecretStr | None) -> str:
     """Stripped token; "" if unset or empty (admin disabled).
 
     ``ValueError`` (without the value) if it is set but blank or shorter than 16 characters
-    after stripping: a misconfiguration, not a silent "admin off". Also called by create_app,
-    since ``model_copy(update=...)`` skips field validators.
+    after stripping, or still contains the "change-me" placeholder (any case): a
+    misconfiguration, not a silent "admin off". Also called by create_app, since
+    ``model_copy(update=...)`` skips field validators.
     """
     raw = value.get_secret_value() if value is not None else ""
     if not raw:
@@ -107,6 +146,11 @@ def check_admin_token(value: SecretStr | None) -> str:
         raise ValueError(
             f"ADMIN_TOKEN must be at least {MIN_ADMIN_TOKEN_LENGTH} non-blank characters long "
             "(leave it empty to disable the admin endpoints)"
+        )
+    if ADMIN_TOKEN_PLACEHOLDER in token.lower():
+        raise ValueError(
+            f"ADMIN_TOKEN still contains the '{ADMIN_TOKEN_PLACEHOLDER}' placeholder; "
+            "set a random value (or leave it empty to disable the admin endpoints)"
         )
     return token
 

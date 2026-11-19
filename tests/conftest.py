@@ -1,6 +1,8 @@
 """Shared fixtures.
 
-- `settings` points the app at the test database (TEST_DATABASE_URL), never the dev one.
+- `settings` points the app at the test database (TEST_DATABASE_URL), never the dev one,
+  with the per-IP rate limit switched off (RATE_LIMIT_ENABLED=false) and no /health/sync
+  response cache (HEALTH_SYNC_CACHE_SECONDS=0).
 - `alembic_cfg` is an Alembic config bound to the test database.
 - `migrated_db` applies all Alembic migrations to the test database once per session.
   Use it in every test that needs the database (integration and most api tests).
@@ -75,6 +77,11 @@ def settings() -> Settings:
             "database_url": base.test_database_url,
             "environment": "test",
             "sync_enabled": False,
+            # Stage 9: the per-IP limit is off for the suite; rate-limit tests build their own
+            # app with it on and small limits (tests/api/test_rate_limit.py).
+            "rate_limit_enabled": False,
+            # No /health/sync response cache: freshness tests change data between requests.
+            "health_sync_cache_seconds": 0,
         }
     )
 

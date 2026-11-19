@@ -11,15 +11,21 @@ from fastapi.middleware.gzip import GZipMiddleware
 from app import __version__
 from app.api.caching import CachingMiddleware, VaryAcceptEncodingMiddleware
 from app.api.health import router as health_router
+from app.api.home import router as home_router
 from app.api.legacy import router as legacy_router
+from app.api.ratelimit import RateLimitMiddleware
 from app.api.v2 import router as v2_router
+from app.api.v2.admin import admin_auth_limiter
 from app.api.v2.admin import router as admin_router
 from app.core.config import Settings, check_admin_token, get_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging
+from app.core.ratelimit import RateLimiter
 from app.db.session import create_engine, create_session_factory
 from app.services.admin import AdapterFactory, cancel_background
-from app.services.scheduler import SyncScheduler
+from app.services.alerts import AlertMonitor, TelegramNotifier
+from app.services.health import FreshnessCache
+from app.services.scheduler import AlertScheduler, SyncScheduler
 from app.services.sync import SyncService
 from app.sources.base import SourceAdapter
 from app.sources.http import UpstreamClient
@@ -38,6 +44,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     - ``adapter_factory``: ``Callable[[str], SourceAdapter]`` used by the admin sync;
       the default builds the real adapter with the shared upstream client (lifespan).
     - ``sync_tasks``: set of the running background sync tasks (await them in tests).
+    - ``rate_limiter`` (only with RATE_LIMIT_ENABLED) and ``admin_auth_limiter`` (only with
+      admin enabled): ``RateLimiter`` instances; tests may replace their ``clock``.
+    - ``alert_monitor``: ``AlertMonitor`` when Telegram alerts are configured, else None.
+    - ``health_sync_cache``: ``FreshnessCache`` of /health/sync (``ttl``, ``clock``, ``clear()``).
     """
     settings = settings or get_settings()
     # Fail fast on a too-short ADMIN_TOKEN (model_copy(update=...) skips the validator).
@@ -56,10 +66,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 app.state.upstream_client = UpstreamClient(settings)
             if settings.sync_enabled:
                 _start_scheduler(app, settings)
+            _start_alerts(app, settings)
             yield
         finally:
             try:
-                await _stop_sync(app)
+                try:
+                    _stop_alerts(app)
+                finally:
+                    await _stop_sync(app)
             finally:
                 await engine.dispose()
 
@@ -82,15 +96,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.sync_service = SyncService(app.state.session_factory, settings)
     app.state.adapter_factory = _default_adapter_factory(app, settings)
     app.state.sync_tasks = set()
+    app.state.alert_monitor = _alert_monitor(app, settings)
+    app.state.alert_scheduler = None
+    # /health/sync result cache (HEALTH_SYNC_CACHE_SECONDS; tests may clear() it or set ttl).
+    app.state.health_sync_cache = FreshnessCache(settings.health_sync_cache_seconds)
+    if settings.admin_enabled:
+        app.state.admin_auth_limiter = admin_auth_limiter(settings)
 
     # Added first = inner: CORS headers also reach 304 responses.
     app.add_middleware(CachingMiddleware)
+    if settings.rate_limit_enabled:
+        app.state.rate_limiter = RateLimiter(
+            [(settings.rate_limit_per_minute, 60), (settings.rate_limit_per_hour, 3600)]
+        )
+        # Inside CORS (browsers can read the 429), outside caching (304s count too).
+        app.add_middleware(RateLimitMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
         allow_methods=["GET"],
         allow_headers=["*"],
-        expose_headers=["ETag"],
+        expose_headers=["ETag", "Retry-After"],
     )
     # Outside the caching middleware: the ETag is computed on the uncompressed body, so it
     # does not depend on the encoding (see app.api.caching).
@@ -100,6 +126,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(VaryAcceptEncodingMiddleware)
     register_exception_handlers(app)
 
+    app.include_router(home_router)
     app.include_router(health_router)
     app.include_router(legacy_router, prefix="/api/v1")
     app.include_router(legacy_router, prefix="/mars-photos/api/v1", include_in_schema=False)
@@ -119,6 +146,33 @@ def _default_adapter_factory(app: FastAPI, settings: Settings) -> AdapterFactory
         return build_adapter(rover_id, client, settings)
 
     return factory
+
+
+def _alert_monitor(app: FastAPI, settings: Settings) -> AlertMonitor | None:
+    """Telegram alerts, if configured; sync results reach it through the sync service."""
+    notifier = TelegramNotifier.from_settings(settings)
+    if notifier is None:
+        return None
+    monitor = AlertMonitor(app.state.session_factory, settings, notifier)
+    app.state.sync_service.add_listener(monitor.on_sync_finished)
+    return monitor
+
+
+def _start_alerts(app: FastAPI, settings: Settings) -> None:
+    """Periodic freshness check (independent of SYNC_ENABLED)."""
+    if app.state.alert_monitor is None:
+        return
+    app.state.alert_scheduler = AlertScheduler(app.state.alert_monitor, settings)
+    app.state.alert_scheduler.start()
+
+
+def _stop_alerts(app: FastAPI) -> None:
+    """Stop scheduling checks; ``shutdown(wait=False)`` does not wait for a running check
+    (it may still be querying while the engine is disposed; its errors are only logged).
+    """
+    if app.state.alert_scheduler is not None:
+        app.state.alert_scheduler.shutdown()
+        app.state.alert_scheduler = None
 
 
 def _start_scheduler(app: FastAPI, settings: Settings) -> None:

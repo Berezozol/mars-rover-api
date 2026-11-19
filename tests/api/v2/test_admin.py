@@ -936,6 +936,7 @@ def settings_with_token(settings: Settings, token: str | None) -> Settings:
         "test_database_url": settings.test_database_url,
         "environment": "test",
         "sync_enabled": False,
+        "rate_limit_enabled": False,
         "admin_token": token,
     }
     return Settings(_env_file=None, **values)  # type: ignore[call-arg]

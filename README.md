@@ -9,7 +9,9 @@ This service ingests JPL raw-image feeds into PostgreSQL and serves them through
   (`/api/v1/rovers/curiosity/photos?sol=1000&camera=fhaz`);
 - **v2** — a richer API: all image sizes and sample types, real capture timestamps, consistent errors.
 
-Status: stage 0 (project skeleton). See `docs/PLAN.md`.
+Status: public beta at <https://mars-api.sungrazing-menkent.ts.net> (stage 9). See `docs/PLAN.md`.
+
+Rate limit: 60 requests per minute and 2000 per hour per client IP, no API key needed. Over the limit the API answers `429` with a `Retry-After` header (seconds). Interactive docs: `/docs`; migration guide: `/`.
 
 Not affiliated with or endorsed by NASA or JPL. Images courtesy of NASA/JPL-Caltech and instrument partners.
 

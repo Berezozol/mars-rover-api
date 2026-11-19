@@ -8,6 +8,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.core.config import Settings
 from app.core.errors import SyncInProgress
+from app.services.alerts import AlertMonitor
 from app.services.sync import SyncResult, SyncService
 from app.sources.http import UpstreamClient
 from app.sources.registry import SYNCABLE_ROVERS, build_adapter
@@ -85,3 +86,44 @@ class SyncScheduler:
             except Exception:
                 logger.exception("Scheduled sync failed rover=%s", rover_id)
         return results
+
+
+ALERT_JOB_ID = "alert-check"
+
+
+class AlertScheduler:
+    """Freshness check for alerts every ALERT_CHECK_INTERVAL_MINUTES (first one at start)."""
+
+    def __init__(self, monitor: AlertMonitor, settings: Settings) -> None:
+        self._monitor = monitor
+        self._settings = settings
+        self._scheduler = AsyncIOScheduler(timezone=UTC)
+
+    def start(self) -> None:
+        """Schedule the check and start; call inside the event loop."""
+        self._scheduler.add_job(
+            self._job,
+            "interval",
+            minutes=self._settings.alert_check_interval_minutes,
+            id=ALERT_JOB_ID,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=None,
+            next_run_time=datetime.now(UTC),
+            replace_existing=True,
+        )
+        self._scheduler.start()
+        logger.info(
+            "Alert scheduler started interval_minutes=%d",
+            self._settings.alert_check_interval_minutes,
+        )
+
+    def shutdown(self) -> None:
+        if self._scheduler.running:
+            self._scheduler.shutdown(wait=False)
+
+    async def _job(self) -> None:
+        try:
+            await self._monitor.check(datetime.now(UTC))
+        except Exception:
+            logger.exception("Alert check failed")
