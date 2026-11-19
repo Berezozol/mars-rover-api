@@ -614,7 +614,9 @@ class BackgroundLock:
                     waiting = await probe.scalar(
                         text(
                             "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' "
-                            "AND NOT granted AND classid = :ns AND objid = :key"
+                            "AND NOT granted AND classid = :ns AND objid = :key "
+                            "AND database = (SELECT oid FROM pg_database "
+                            "WHERE datname = current_database())"
                         ),
                         params,
                     )

@@ -65,7 +65,8 @@ async def test_lifespan_shutdown_during_sync_fails_run_releases_lock_closes_clie
     holders = await scalar(
         session_factory,
         "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND granted "
-        "AND classid = :ns AND objid = :key AND objsubid = 2",
+        "AND classid = :ns AND objid = :key AND objsubid = 2 "
+        "AND database = (SELECT oid FROM pg_database WHERE datname = current_database())",
         ns=SYNC_LOCK_NAMESPACE,
         key=key,
     )

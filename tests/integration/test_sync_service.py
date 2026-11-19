@@ -984,7 +984,8 @@ async def advisory_lock_holders(factory: SessionFactory, rover_id: str) -> int:
     return await scalar(
         factory,
         "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND granted "
-        "AND classid = :ns AND objid = :key AND objsubid = 2",
+        "AND classid = :ns AND objid = :key AND objsubid = 2 "
+        "AND database = (SELECT oid FROM pg_database WHERE datname = current_database())",
         ns=SYNC_LOCK_NAMESPACE,
         key=key,
     )
