@@ -154,6 +154,56 @@
 ```
 Сортировка `sol DESC`. · `404 rover_not_found` · `422`, если `from_sol > to_sol`.
 
+**Waypoint** (стоянка марсохода)
+```json
+{"sol": 2020, "site": 93, "drive": 1840,
+ "lat": 18.4447, "lon": 77.3951, "elev_geoid": -2489.7,
+ "easting": 4086431.2, "northing": 1092178.4,
+ "roll": 1.2, "pitch": -3.4, "yaw": 142.0, "tilt": 3.6,
+ "dist_m": 112.4, "dist_total_m": 33874.9}
+```
+Источник — слои карт MMGIS (JPL). `lat`, `lon` — градусы, долгота восточная от −180 до 180; `elev_geoid` — высота над ареоидом, м; `easting`/`northing` — м в проекции карты источника; `roll`, `pitch`, `yaw`, `tilt` — градусы; `dist_m` — длина проезда до стоянки, м; `dist_total_m` — пройденное расстояние по данным источника, м (не обязательно растёт от стоянки к стоянке). Любое поле, кроме `sol`, `site`, `drive`, `lat`, `lon`, может быть `null`.
+
+### `GET /api/v2/rovers/{rover}/location`
+Стоянки марсохода. Параметры (необязательные): `sol` — целое ≥ 0; `from_sol`, `to_sol` — диапазон включительно. `sol` вместе с `from_sol` или `to_sol` → `422`; `from_sol > to_sol` → `422`; границы — общие. Без пагинации.
+```json
+{"rover": "perseverance", "available": true,
+ "updated_at": "2026-10-28T15:05:06Z", "source_max_sol": 2022,
+ "items": [Waypoint, ...]}
+```
+- Сортировка `sol ASC, site ASC, drive ASC` (порядок движения).
+- `available` — есть ли у марсохода источник положения: `true` у Curiosity и Perseverance, `false` у Spirit и Opportunity (источник неизвестен; тогда `items: []`, `updated_at` и `source_max_sol` — `null`).
+- `updated_at` — когда стоянки последний раз изменились у нас; `source_max_sol` — последний сол стоянок у источника. Оба `null`, пока данных нет. Источник обновляется нерегулярно (бывает, неделями), поэтому `source_max_sol` может быть заметно меньше `max_sol` марсохода.
+- Данные загружаются не чаще раза в сутки.
+
+`200` · `404 rover_not_found` · `422 validation_error`
+
+### `GET /api/v2/rovers/{rover}/traverse`
+Весь маршрут марсохода в формате GeoJSON (RFC 7946), `Content-Type: application/geo+json`. Параметров нет (неизвестные игнорируются): маршрут отдаётся всегда целиком; стоянки за нужные солы — через `/location`.
+```json
+{"type": "FeatureCollection",
+ "rover": "perseverance", "available": true,
+ "updated_at": "2026-10-28T15:05:03Z", "source_max_sol": 2022,
+ "features": [
+   {"type": "Feature",
+    "geometry": {"type": "LineString", "coordinates": [[77.4509, 18.4447], [77.4511, 18.4449]]},
+    "properties": {"sol": 15, "length_m": 23.6}}]}
+```
+- Каждый объект — `LineString`, координаты `[lon, lat]` в градусах (долгота восточная, от −180 до 180), до 7 знаков после запятой, без высоты. Объекты — в порядке движения.
+- `properties.sol` — сол проезда или `null`, если источник его не указывает (у Curiosity — всегда `null`); `properties.length_m` — длина по данным источника, м, или `null`.
+- `rover`, `available`, `updated_at` — как у `/location` (дополнительные члены верхнего уровня, RFC 7946 §6.1); `updated_at` — когда маршрут последний раз изменился у нас; `source_max_sol` — наибольший `sol` среди объектов, `null`, если солов нет (Curiosity). У Spirit и Opportunity — `"available": false`, `"features": []`, остальное `null`.
+
+`200` · `404 rover_not_found`
+
+**PhotoDetail**: добавляется поле `location` (последним ключом):
+```json
+"location": {"sol": 2020, "site": 93, "drive": 1840, "lat": 18.4447, "lon": 77.3951,
+             "elev_geoid": -2489.7, "exact": true}
+```
+- Берётся стоянка того же марсохода с тем же `site` и наибольшим `drive`, не большим `drive` снимка. `exact: true` — `drive` совпал (снимок сделан на этой стоянке); `false` — снимок сделан позже (в пути или после последней опубликованной стоянки), координаты — последней стоянки перед снимком (погрешность — до длины одного проезда, сотни метров).
+- `location: null`, если у снимка нет `site` или `drive`, у марсохода нет источника положения (Spirit, Opportunity) или стоянки этого `site` с `drive` не больше снимкового нет.
+- Photo в списках не меняется.
+
 ## Admin
 
 Заголовок `X-Admin-Token`. Если `ADMIN_TOKEN` не задан в настройках, этих ручек нет (`404`).
@@ -186,10 +236,10 @@
 
 - `HEAD` поддерживается на всех `GET`-ручках v1 и v2: те же заголовки, без тела.
 - Успешные `GET` (`200`) отдают `ETag`; повторный запрос с совпадающим `If-None-Match` получает `304` без тела.
-- `Cache-Control`: списки, марсоходы, камеры и манифест — `public, max-age=300`; карточка снимка (`/photos/{id}`) — `public, max-age=3600`; редирект на изображение — `public, max-age=86400`; ошибки и admin-ручки — `no-store`.
+- `Cache-Control`: списки, марсоходы, камеры и манифест — `public, max-age=300`; карточка снимка (`/photos/{id}`) — `public, max-age=3600`; редирект на изображение — `public, max-age=86400`; `/rovers/{rover}/location` и `/rovers/{rover}/traverse` — `public, max-age=3600` (данные меняются не чаще раза в сутки); ошибки и admin-ручки — `no-store`.
 - CORS — любые источники, только `GET`; заголовок `ETag` виден клиенту.
 - Сжатие: при `Accept-Encoding: gzip` ответы от 1 КБ сжимаются; во всех ответах API — `Vary: Accept-Encoding`. `ETag` слабый и считается по несжатому телу, поэтому один и тот же для сжатого и несжатого ответа; `304` работает при любом кодировании.
 
 ## Черновики (уточнить перед своим этапом)
 
-- **Положение** (этап 11): `/api/v2/rovers/{rover}/location`, `/api/v2/rovers/{rover}/traverse`, координаты в карточке снимка — контракт согласовать перед этапом. Погода отложена: живых источников нет (`DATA-SOURCES.md`).
+- **Погода** отложена: живых источников нет (`DATA-SOURCES.md`).

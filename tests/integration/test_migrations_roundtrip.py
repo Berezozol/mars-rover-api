@@ -29,6 +29,9 @@ APP_TABLES = {
     "sync_runs",
     "camera_sol_counts",
     "sol_source_counts",
+    "rover_waypoints",
+    "rover_traverse_segments",
+    "location_datasets",
 }
 
 
@@ -306,5 +309,30 @@ def test_migration_0005_downgrade_drops_sample_type_index_and_upgrade_recreates_
         defs = _sample_type_indexdefs(migrated_db)
         assert len(defs) == 1
         assert "WHERE" not in defs[0]
+    finally:
+        command.upgrade(alembic_cfg, "head")
+
+
+# --- 0006: rover location tables (stage 11) --------------------------------------------------
+
+LOCATION_TABLES = {"rover_waypoints", "rover_traverse_segments", "location_datasets"}
+
+
+def test_migration_0006_downgrade_drops_location_tables_and_upgrade_recreates_them(
+    migrated_db: str, alembic_cfg: AlembicConfig
+) -> None:
+    try:
+        assert asyncio.run(_db_state(migrated_db))["tables"] >= LOCATION_TABLES
+        command.downgrade(alembic_cfg, "0005")
+        state = asyncio.run(_db_state(migrated_db))
+        assert state["versions"] == ["0005"]
+        assert state["tables"] & LOCATION_TABLES == set()
+        # Nothing else is touched: `photos` and the seed stay.
+        assert state["tables"] >= {"photos", "sol_summaries", "sync_runs", "rovers", "cameras"}
+        assert state["counts"] == {"rovers": 4, "cameras": 17 + 7 + 6 + 6}
+        command.upgrade(alembic_cfg, "0006")
+        state = asyncio.run(_db_state(migrated_db))
+        assert state["versions"] == ["0006"]
+        assert state["tables"] >= LOCATION_TABLES
     finally:
         command.upgrade(alembic_cfg, "head")

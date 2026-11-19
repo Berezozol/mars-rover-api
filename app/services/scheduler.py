@@ -9,6 +9,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from app.core.config import Settings
 from app.core.errors import SyncInProgress
 from app.services.alerts import AlertMonitor
+from app.services.location_sync import LocationSyncService
 from app.services.sync import SyncResult, SyncService
 from app.sources.http import UpstreamClient
 from app.sources.registry import SYNCABLE_ROVERS, build_adapter
@@ -21,10 +22,17 @@ JOB_ID = "sync-all"
 class SyncScheduler:
     """One interval job that syncs the rovers one after another."""
 
-    def __init__(self, service: SyncService, client: UpstreamClient, settings: Settings) -> None:
+    def __init__(
+        self,
+        service: SyncService,
+        client: UpstreamClient,
+        settings: Settings,
+        locations: LocationSyncService | None = None,
+    ) -> None:
         self._service = service
         self._client = client
         self._settings = settings
+        self._locations = locations
         self._scheduler = AsyncIOScheduler(timezone=UTC)
         self._current: asyncio.Task[list[SyncResult]] | None = None
 
@@ -75,7 +83,11 @@ class SyncScheduler:
             self._current = None
 
     async def run_once(self) -> list[SyncResult]:
-        """Incremental sync of every syncable rover; one failure does not stop the others."""
+        """Incremental sync of every syncable rover; one failure does not stop the others.
+
+        Then the rover position files that are due (at most once a day each); their failures
+        never affect the photo results.
+        """
         results: list[SyncResult] = []
         for rover_id in SYNCABLE_ROVERS:
             try:
@@ -85,7 +97,18 @@ class SyncScheduler:
                 logger.info("Scheduled sync skipped rover=%s: already in progress", rover_id)
             except Exception:
                 logger.exception("Scheduled sync failed rover=%s", rover_id)
+        await self._refresh_locations()
         return results
+
+    async def _refresh_locations(self) -> None:
+        if self._locations is None:
+            return
+        try:
+            await self._locations.refresh_due()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Scheduled location refresh failed")
 
 
 ALERT_JOB_ID = "alert-check"

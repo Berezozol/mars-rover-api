@@ -106,7 +106,16 @@ PHOTO_KEYS = [
     "credit",
     "source",
 ]
-PHOTO_DETAIL_KEYS = [*PHOTO_KEYS, "caption", "received_at", "site", "drive", "extra"]
+# Stage 11: `location` is the last key of PhotoDetail.
+PHOTO_DETAIL_KEYS = [
+    *PHOTO_KEYS,
+    "caption",
+    "received_at",
+    "site",
+    "drive",
+    "extra",
+    "location",
+]
 LIST_KEYS = ["items", "page", "per_page", "total"]
 LATEST_KEYS = ["sol", "items", "page", "per_page", "total"]
 MANIFEST_KEYS = ["rover", "sols"]
@@ -369,6 +378,8 @@ class World:
             "site": record.site,
             "drive": record.drive,
             "extra": record.extra,
+            # No waypoints in the shared dataset: the location is always null here.
+            "location": None,
         }
 
     def ids(self, source_ids: Sequence[str]) -> list[int]:

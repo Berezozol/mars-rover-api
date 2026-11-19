@@ -6,14 +6,18 @@ ever logged here (the httpx logger itself is redacted in app.core.logging).
 
 import logging
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
+from app.db.models import LocationDataset
+from app.repositories import locations as locations_repo
 from app.services.health import RoverFreshness, get_sync_freshness
 from app.services.sync import SyncResult
+from app.sources.locations import KINDS, LOCATION_MISSIONS
 
 logger = logging.getLogger(__name__)
 
@@ -70,8 +74,23 @@ class TelegramNotifier:
         return True
 
 
+@dataclass(frozen=True)
+class LocationHealth:
+    """Whether the position files of a rover are being checked successfully."""
+
+    rover: str
+    stale: bool
+    # Oldest last successful check over the rover's files; None if one never succeeded.
+    last_success_at: datetime | None
+    last_error: str | None
+
+
 class AlertMonitor:
     """Alerts on freshness transitions (per rover) and on failed or partial syncs.
+
+    The rover position files (stage 11) have their own per-rover state: stale when a file
+    was not checked successfully for LOCATION_STALE_DAYS (a rejected file counts as a failed
+    check; unchanged content does not matter). Off with LOCATION_SYNC_ENABLED=false.
 
     The last known state lives in memory: after a restart a rover that is already stale is
     reported once more. A state change is remembered only once its message was sent, so an
@@ -89,10 +108,16 @@ class AlertMonitor:
         self._notifier = notifier
         # Rover -> stale at the last reported check; absent = fresh.
         self._stale: dict[str, bool] = {}
+        self._location_stale: dict[str, bool] = {}
 
     async def check(self, now: datetime | None = None) -> str | None:
         """Check freshness and alert on changes; returns the text sent (None if nothing)."""
         now = now or datetime.now(UTC)
+        texts = [await self._check_photos(now), await self._check_locations(now)]
+        sent = [text for text in texts if text]
+        return "\n".join(sent) if sent else None
+
+    async def _check_photos(self, now: datetime) -> str | None:
         try:
             async with self._session_factory() as session:
                 freshness = await get_sync_freshness(session, self._settings, now)
@@ -106,6 +131,26 @@ class AlertMonitor:
         if not await self._notifier.send(text):
             return None
         self._stale.update({rover.rover: rover.stale for rover in changed})
+        return text
+
+    async def _check_locations(self, now: datetime) -> str | None:
+        if not self._settings.location_sync_enabled:
+            return None
+        try:
+            async with self._session_factory() as session:
+                datasets = await locations_repo.list_datasets(session)
+        except Exception as exc:
+            logger.warning("Location freshness check for alerts failed: %s", type(exc).__name__)
+            return None
+        stale_after = timedelta(days=self._settings.location_stale_days)
+        health = location_health(datasets, now, stale_after)
+        changed = [h for h in health if h.stale != self._location_stale.get(h.rover, False)]
+        if not changed:
+            return None
+        text = "\n".join(f"{PREFIX} {_location_line(h, stale_after)}" for h in changed)
+        if not await self._notifier.send(text):
+            return None
+        self._location_stale.update({h.rover: h.stale for h in changed})
         return text
 
     async def on_sync_finished(self, run: SyncResult) -> str | None:
@@ -138,6 +183,44 @@ def _freshness_line(rover: RoverFreshness) -> str:
         if flag
     ]
     return f"{rover.rover}: {', '.join(reasons)} ({details})"
+
+
+def location_health(
+    datasets: Sequence[LocationDataset], now: datetime, stale_after: timedelta
+) -> list[LocationHealth]:
+    """Health of the position files per rover.
+
+    Stale: the oldest of coalesce(succeeded_at, created_at) over the files is older than
+    ``stale_after``. A rover whose files were never attempted is not stale.
+    """
+    by_key = {(d.rover_id, d.kind): d for d in datasets}
+    result = []
+    for rover in LOCATION_MISSIONS:
+        rows = [row for kind in KINDS if (row := by_key.get((rover, kind))) is not None]
+        if not rows:
+            # Never attempted (fresh install, loading off): nothing to report yet.
+            result.append(LocationHealth(rover, False, None, None))
+            continue
+        successes = [row.succeeded_at for row in rows]
+        oldest = None if None in successes else min(s for s in successes if s is not None)
+        # A file that never succeeded counts from the day its row was created.
+        reference = min(row.succeeded_at or row.created_at for row in rows)
+        errors = [row.last_error for row in rows if row.last_error]
+        stale = now - reference > stale_after
+        result.append(LocationHealth(rover, stale, oldest, errors[0] if errors else None))
+    return result
+
+
+def _location_line(health: LocationHealth, stale_after: timedelta) -> str:
+    if not health.stale:
+        return f"{health.rover}: position data checks recovered"
+    line = (
+        f"{health.rover}: position data not checked successfully for over "
+        f"{stale_after.days} days (last success {_when(health.last_success_at)})"
+    )
+    if health.last_error:
+        line += f"\nerror: {_truncate(health.last_error)}"
+    return line
 
 
 def sync_message(run: SyncResult) -> str:

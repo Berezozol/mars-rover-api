@@ -76,6 +76,17 @@ class Settings(BaseSettings):
     # Request rate to PDS of the converter's own client (not shared with the sync client).
     mer_pds_max_rps: float = Field(default=2.0, gt=0)
 
+    # Rover positions: MMGIS waypoint/traverse files, fetched at most once a day (stage 11).
+    # Active only together with SYNC_ENABLED.
+    location_sync_enabled: bool = True
+    location_base_url: str = "https://mars.nasa.gov/mmgis-maps/"
+    location_refresh_hours: int = Field(default=24, ge=1)
+    location_max_bytes: int = Field(default=16 * 1024 * 1024, ge=1024)
+    # A new file with fewer rows than this share of the stored ones is rejected.
+    location_min_keep_ratio: float = Field(default=0.9, ge=0, le=1)
+    # Alert when no check of a location file succeeded for this many days.
+    location_stale_days: int = Field(default=3, ge=1)
+
     # Build of the Sol Index web interface (stage 10); served at / when index.html exists.
     # A relative path is resolved against the project root.
     frontend_dist_dir: Path = Path("frontend/dist")

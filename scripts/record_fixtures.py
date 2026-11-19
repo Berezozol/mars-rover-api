@@ -7,10 +7,13 @@ the observed feed behaviour (filtering, pagination, field values).
 
 Usage::
 
-    uv run python scripts/record_fixtures.py [--raw-dir DIR] [--part all|base|m2020-range|mer]
+    uv run python scripts/record_fixtures.py [--raw-dir DIR] [--part all|base|m2020-range|mer|mmgis]
 
 ``--part mer`` makes no requests: it copies the real MER index samples prepared by
 data-engineer (``data/mer-samples/<volume>/``) into ``tests/fixtures/upstream/mer/``.
+
+``--part mmgis`` (stage 11) makes no requests: it trims the four real MMGIS location files
+prepared by data-engineer (``data/locations/``) into ``tests/fixtures/upstream/mmgis/``.
 
 ``--part mer-img`` (stage 9a) downloads at most six real MER ``.img`` products (the PDS paths
 come from the ``source_link`` column of the dev database), stores every one under
@@ -456,12 +459,57 @@ def record_mer_images() -> None:
     sys.stdout.write(json.dumps(summary, indent=2) + chr(10))
 
 
+MMGIS_SOURCE_DIR = ROOT / "data" / "locations"
+MMGIS_DIR = FIXTURES_DIR / "mmgis"
+MMGIS_KEEP_POINTS = 6  # coordinates kept per trimmed LineString (first five and the last)
+
+# Hand-picked feature indexes of the full files (2026-11-19 snapshot).
+MMGIS_PICKS: dict[str, list[int]] = {
+    # site 3 (drive gaps 0/110/386/578), three stops on one sol (site 9), a -9999 point with
+    # `images` (site 81, then a drive gap 3608 -> 4488), site 91 -> 92 -> last stop (93, 0).
+    "M20_waypoints": [0, 1, 2, 3, 80, 81, 82, 612, 613, 704, 705, 706, 707],
+    # first stops, site 42 -> 43 (first stop of 43 is drive 216), the last stop (125, 2490).
+    "MSL_waypoints": [0, 1, 2, 3, 241, 242, 243, 244, 245, 1385, 1386, 1387, 1388],
+    # 181 has the junk elevation (~2e-5) in z; 558 is the last segment (sol 2022).
+    "M20_traverse": [0, 1, 2, 181, 182, 557, 558],
+    # 0 is the MultiLineString (kept intact), the rest are LineStrings.
+    "MSL_traverse": [0, 1, 2, 3, 4, 5],
+}
+
+
+def build_mmgis_fixtures(source_dir: Path = MMGIS_SOURCE_DIR, out_dir: Path = MMGIS_DIR) -> None:
+    """Trim the real MMGIS files to a few features (offline, no requests).
+
+    Structure is unchanged (root members `type`, `name`, `crs` kept, every kept feature as is);
+    only the `coordinates` of LineStrings are shortened, except the leading MSL
+    MultiLineString which stays intact.
+    """
+    for name, picks in MMGIS_PICKS.items():
+        data = json.loads((source_dir / f"{name}.json").read_text(encoding="utf-8"))
+        features = []
+        for index in picks:
+            feature = data["features"][index]
+            geometry = feature["geometry"]
+            if (
+                geometry["type"] == "LineString"
+                and len(geometry["coordinates"]) > MMGIS_KEEP_POINTS
+            ):
+                coords = geometry["coordinates"]
+                geometry["coordinates"] = [*coords[: MMGIS_KEEP_POINTS - 1], coords[-1]]
+            features.append(feature)
+        data["features"] = features
+        path = out_dir / f"{name.lower()}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=1) + chr(10), encoding="utf-8")
+        logger.info("wrote %s (%d features, %d bytes)", path, len(features), path.stat().st_size)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--raw-dir", type=Path, default=None, help="dir for untrimmed dumps")
     parser.add_argument(
         "--part",
-        choices=["all", "base", "m2020-range", "mer", "mer-img"],
+        choices=["all", "base", "m2020-range", "mer", "mer-img", "mmgis"],
         default="all",
         help="which group of requests to record (default: all); "
         "'mer' copies data/mer-samples into tests/fixtures/upstream/mer offline; "
@@ -474,6 +522,9 @@ def main() -> None:
         return
     if args.part == "mer-img":
         record_mer_images()
+        return
+    if args.part == "mmgis":
+        build_mmgis_fixtures()
         return
     settings = Settings()
 

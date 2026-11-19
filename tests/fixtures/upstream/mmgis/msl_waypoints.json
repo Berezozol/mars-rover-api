@@ -1,0 +1,422 @@
+{
+ "type": "FeatureCollection",
+ "name": "SELECT",
+ "features": [
+  {
+   "type": "Feature",
+   "properties": {
+    "RMC": "2_0",
+    "site": 2,
+    "drive": 0,
+    "sol": 3,
+    "easting": 8146811.223,
+    "northing": -272039.268,
+    "elev_geoid": -4500.971,
+    "lon": 137.441633,
+    "lat": -4.589467,
+    "roll": -2.42,
+    "pitch": -3.62,
+    "yaw": 111.52,
+    "yaw_rad": 1.94637,
+    "tilt": 4.35,
+    "dist_m": 0.0,
+    "dist_total_m": 0.0,
+    "dist_km": 0.0,
+    "dist_mi": 0.0,
+    "drive_type": "final"
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     137.441633,
+     -4.589467,
+     -4500.971
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "RMC": "3_0",
+    "site": 3,
+    "drive": 0,
+    "sol": 5,
+    "easting": 8146811.223,
+    "northing": -272039.268,
+    "elev_geoid": -4500.971,
+    "lon": 137.441633,
+    "lat": -4.589467,
+    "roll": -2.42,
+    "pitch": -3.62,
+    "yaw": 111.52,
+    "yaw_rad": 1.94637,
+    "tilt": 4.35,
+    "dist_m": 0.0,
+    "dist_total_m": 0.0,
+    "dist_km": 0.0,
+    "dist_mi": 0.0,
+    "drive_type": "final"
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     137.441633,
+     -4.589467,
+     -4500.971
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "RMC": "3_78",
+    "site": 3,
+    "drive": 78,
+    "sol": 16,
+    "easting": 8146817.21,
+    "northing": -272039.15,
+    "elev_geoid": -4501.12,
+    "lon": 137.441734,
+    "lat": -4.589465,
+    "roll": -1.33,
+    "pitch": 5.41,
+    "yaw": -132.02,
+    "yaw_rad": -2.30426,
+    "tilt": 5.57,
+    "dist_m": 7.01,
+    "dist_total_m": 7.01,
+    "dist_km": 0.01,
+    "dist_mi": 0.0,
+    "drive_type": "final"
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     137.441734,
+     -4.589465,
+     -4501.12
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "RMC": "3_100",
+    "site": 3,
+    "drive": 100,
+    "sol": 21,
+    "easting": 8146814.363,
+    "northing": -272035.346,
+    "elev_geoid": -4501.386,
+    "lon": 137.441686,
+    "lat": -4.58940083,
+    "roll": -2.91,
+    "pitch": 4.66,
+    "yaw": -164.69,
+    "yaw_rad": -2.87437,
+    "tilt": 5.49,
+    "dist_m": 4.9,
+    "dist_total_m": 11.91,
+    "dist_km": 0.01,
+    "dist_mi": 0.01,
+    "drive_type": "final"
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     137.441686,
+     -4.58940083,
+     -4501.386
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "RMC": "42_0",
+    "site": 42,
+    "drive": 0,
+    "sol": 747,
+    "easting": 8142984.629,
+    "northing": -276271.108,
+    "elev_geoid": -4460.945,
+    "lon": 137.377076,
+    "lat": -4.6608607,
+    "roll": -1.41,
+    "pitch": 3.92,
+    "yaw": -158.08,
+    "yaw_rad": -2.75893,
+    "tilt": 4.16,
+    "dist_m": 92.08,
+    "dist_total_m": 9298.76,
+    "dist_km": 9.09,
+    "dist_mi": 5.65,
+    "drive_type": "final"
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     137.377076,
+     -4.6608607,
+     -4460.945
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "RMC": "42_186",
+    "site": 42,
+    "drive": 186,
+    "sol": 748,
+    "easting": 8142967.009,
+    "northing": -276282.563,
+    "elev_geoid": -4459.514,
+    "lon": 137.3767788,
+    "lat": -4.66105395,
+    "roll": -1.07,
+    "pitch": 3.81,
+    "yaw": -160.6,
+    "yaw_rad": -2.80302,
+    "tilt": 3.96,
+    "dist_m": 22.63,
+    "dist_total_m": 9321.39,
+    "dist_km": 9.11,
+    "dist_mi": 5.66,
+    "drive_type": "final"
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     137.3767788,
+     -4.66105395,
+     -4459.514
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "RMC": "42_852",
+    "site": 42,
+    "drive": 852,
+    "sol": 751,
+    "easting": 8142994.632,
+    "northing": -276363.096,
+    "elev_geoid": -4459.423,
+    "lon": 137.3772448,
+    "lat": -4.66241259,
+    "roll": -0.37,
+    "pitch": 8.5,
+    "yaw": 142.67,
+    "yaw_rad": 2.48999,
+    "tilt": 8.51,
+    "dist_m": 114.35,
+    "dist_total_m": 9435.74,
+    "dist_km": 9.23,
+    "dist_mi": 5.73,
+    "drive_type": "final"
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     137.3772448,
+     -4.66241259,
+     -4459.423
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "RMC": "42_1020",
+    "site": 42,
+    "drive": 1020,
+    "sol": 753,
+    "easting": 8143007.6,
+    "northing": -276380.092,
+    "elev_geoid": -4460.622,
+    "lon": 137.3774636,
+    "lat": -4.66269932,
+    "roll": -5.6,
+    "pitch": 3.43,
+    "yaw": 159.99,
+    "yaw_rad": 2.79232,
+    "tilt": 6.56,
+    "dist_m": 22.37,
+    "dist_total_m": 9458.11,
+    "dist_km": 9.25,
+    "dist_mi": 5.75,
+    "drive_type": "final"
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     137.3774636,
+     -4.66269932,
+     -4460.622
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "RMC": "43_216",
+    "site": 43,
+    "drive": 216,
+    "sol": 780,
+    "easting": 8143012.942,
+    "northing": -276396.297,
+    "elev_geoid": -4458.982,
+    "lon": 137.3775537,
+    "lat": -4.66297271,
+    "roll": -4.43,
+    "pitch": 5.8,
+    "yaw": 105.06,
+    "yaw_rad": 1.83361,
+    "tilt": 7.29,
+    "dist_m": 21.93,
+    "dist_total_m": 9480.04,
+    "dist_km": 9.27,
+    "dist_mi": 5.76,
+    "drive_type": "final"
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     137.3775537,
+     -4.66297271,
+     -4458.982
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "RMC": "125_1326",
+    "site": 125,
+    "drive": 1326,
+    "sol": 5045,
+    "easting": 8143609.251,
+    "northing": -285980.544,
+    "elev_geoid": -3487.995,
+    "lon": 137.3876138,
+    "lat": -4.82466475,
+    "roll": -2.0,
+    "pitch": 13.52,
+    "yaw": 161.48,
+    "yaw_rad": 2.81844,
+    "tilt": 13.67,
+    "dist_m": 12.64,
+    "dist_total_m": 38480.16,
+    "dist_km": 38.16,
+    "dist_mi": 23.71,
+    "drive_type": "final"
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     137.3876138,
+     -4.82466475,
+     -3487.995
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "RMC": "125_2082",
+    "site": 125,
+    "drive": 2082,
+    "sol": 5069,
+    "easting": 8143687.554,
+    "northing": -286015.725,
+    "elev_geoid": -3478.776,
+    "lon": 137.3889348,
+    "lat": -4.82525828,
+    "roll": 1.79,
+    "pitch": 12.63,
+    "yaw": 146.96,
+    "yaw_rad": 2.56496,
+    "tilt": 12.75,
+    "dist_m": 101.25,
+    "dist_total_m": 38581.41,
+    "dist_km": 38.26,
+    "dist_mi": 23.78,
+    "drive_type": "final"
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     137.3889348,
+     -4.82525828,
+     -3478.776
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "RMC": "125_2274",
+    "site": 125,
+    "drive": 2274,
+    "sol": 5070,
+    "easting": 8143700.5,
+    "northing": -286040.591,
+    "elev_geoid": -3473.684,
+    "lon": 137.3891532,
+    "lat": -4.82567778,
+    "roll": -0.34,
+    "pitch": 14.67,
+    "yaw": 146.5,
+    "yaw_rad": 2.55691,
+    "tilt": 14.68,
+    "dist_m": 28.7,
+    "dist_total_m": 38610.11,
+    "dist_km": 38.29,
+    "dist_mi": 23.79,
+    "drive_type": "final"
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     137.3891532,
+     -4.82567778,
+     -3473.684
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "RMC": "125_2490",
+    "site": 125,
+    "drive": 2490,
+    "sol": 5073,
+    "easting": 8143684.66,
+    "northing": -286061.072,
+    "elev_geoid": -3472.085,
+    "lon": 137.388886,
+    "lat": -4.82602331,
+    "roll": 3.96,
+    "pitch": 11.81,
+    "yaw": -171.6,
+    "yaw_rad": -2.99501,
+    "tilt": 12.45,
+    "dist_m": 27.91,
+    "dist_total_m": 38638.02,
+    "dist_km": 38.32,
+    "dist_mi": 23.81,
+    "drive_type": "final"
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     137.388886,
+     -4.82602331,
+     -3472.085
+    ]
+   }
+  }
+ ]
+}

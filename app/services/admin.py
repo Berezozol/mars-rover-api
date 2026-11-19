@@ -15,8 +15,9 @@ from app.core.errors import InvalidParam, NoSourceForRover
 from app.db.models import SyncRun
 from app.db.session import db_io_errors
 from app.repositories import sync_runs as runs_repo
+from app.services.rover_lookup import find_rover
 from app.services.sync import SyncHandle, SyncService
-from app.services.v2 import PageRequest, find_rover
+from app.services.v2 import PageRequest
 from app.sources.base import SourceAdapter
 from app.sources.registry import SYNCABLE_ROVERS
 

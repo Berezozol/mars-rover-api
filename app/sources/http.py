@@ -7,6 +7,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable, Iterable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
 from typing import Any, Self
@@ -52,6 +53,16 @@ class SolsFetchFailed(UpstreamError):
         self.sols = frozenset(sols)
         listed = ", ".join(str(sol) for sol in sorted(self.sols))
         super().__init__(cause.url, cause.status, f"refetch of sols {listed} failed: {cause}")
+
+
+@dataclass(frozen=True)
+class ConditionalBody:
+    """Result of a conditional GET: ``304`` (no body) or ``200`` with the body and validators."""
+
+    not_modified: bool
+    body: bytes | None
+    etag: str | None
+    last_modified: str | None
 
 
 class _RetryableStatusError(Exception):
@@ -292,12 +303,49 @@ class UpstreamClient:
             )
         return written
 
+    async def get_conditional(
+        self,
+        url: str,
+        *,
+        max_bytes: int,
+        allowed_origin: str | None = None,
+        etag: str | None = None,
+        last_modified: str | None = None,
+    ) -> ConditionalBody:
+        """Conditional GET into memory: ``If-None-Match`` / ``If-Modified-Since`` are sent only
+        when given. ``304`` returns ``not_modified`` without reading a body; ``200`` returns
+        the body and the response's ``ETag`` / ``Last-Modified``. Everything else (retries,
+        rate limit, User-Agent, size cap, host check) is as in ``get_bytes``.
+        """
+        headers: dict[str, str] = {}
+        if etag:
+            headers["If-None-Match"] = etag
+        if last_modified:
+            headers["If-Modified-Since"] = last_modified
+        return await self._with_retries(
+            url,
+            lambda: self._read_response(url, max_bytes, allowed_origin, headers),
+            retryable=_is_download_retryable,
+        )
+
     async def _read_bytes(self, url: str, max_bytes: int, allowed_origin: str | None) -> bytes:
+        result = await self._read_response(url, max_bytes, allowed_origin, {})
+        if result.body is None:
+            raise UpstreamError(url, 304, "unexpected 304 for an unconditional request")
+        return result.body
+
+    async def _read_response(
+        self,
+        url: str,
+        max_bytes: int,
+        allowed_origin: str | None,
+        extra_headers: Mapping[str, str],
+    ) -> ConditionalBody:
         current = url
         for _ in range(MAX_REDIRECTS + 1):
             _check_host(url, current, allowed_origin)
             await self._limiter.acquire()
-            headers = {"Accept-Encoding": "identity"}
+            headers = {"Accept-Encoding": "identity", **extra_headers}
             follow = allowed_origin is None
             async with self._http.stream(
                 "GET", current, headers=headers, follow_redirects=follow
@@ -306,7 +354,14 @@ class UpstreamClient:
                     current = str(httpx.URL(current).join(response.headers["location"]))
                     continue
                 self._check_status(url, response)
-                return await _collect(url, response, max_bytes)
+                etag = response.headers.get("ETag")
+                last_modified = response.headers.get("Last-Modified")
+                if response.status_code == 304:
+                    return ConditionalBody(True, None, etag, last_modified)
+                if response.status_code != 200:
+                    raise UpstreamError(url, response.status_code, "unexpected status")
+                body = await _collect(url, response, max_bytes)
+                return ConditionalBody(False, body, etag, last_modified)
         raise UpstreamError(url, None, "too many redirects")
 
     def _backoff(self, state: RetryCallState) -> float:

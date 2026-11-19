@@ -41,6 +41,15 @@ EXPECTED_COLUMNS = {
     },
     "camera_sol_counts": {"rover_id", "sol", "camera_id", "total_photos", "full_photos"},
     "sol_source_counts": {"rover_id", "sol", "received", "dropped", "source_total", "fetched_at"},
+    "rover_waypoints": {
+        "rover_id", "site", "drive", "sol", "lat", "lon", "elev_geoid", "easting", "northing",
+        "roll", "pitch", "yaw", "tilt", "dist_m", "dist_total_m",
+    },
+    "rover_traverse_segments": {"rover_id", "seq", "sol", "length_m", "coordinates"},
+    "location_datasets": {
+        "rover_id", "kind", "checked_at", "succeeded_at", "changed_at", "etag", "last_modified",
+        "content_sha256", "items", "dropped", "max_sol", "last_error", "created_at",
+    },
 }  # fmt: skip
 
 
@@ -50,8 +59,8 @@ def _head(alembic_cfg: AlembicConfig) -> str:
     return head
 
 
-def test_migrations_head_revision_is_0005(alembic_cfg: AlembicConfig) -> None:
-    assert _head(alembic_cfg) == "0005"
+def test_migrations_head_revision_is_0006(alembic_cfg: AlembicConfig) -> None:
+    assert _head(alembic_cfg) == "0006"
 
 
 def test_migrations_single_head(alembic_cfg: AlembicConfig) -> None:

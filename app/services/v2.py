@@ -5,17 +5,18 @@ codes. Parameters arrive already typed and range-checked by the router; this mod
 what needs the database (rover, camera codes) and combinations of parameters.
 """
 
-import re
 from dataclasses import dataclass
 from datetime import date
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import InvalidParam, PhotoNotFound, RoverNotFound
+from app.core.errors import InvalidParam, PhotoNotFound
 from app.db.models import Camera, Photo, Rover, SolSummary
 from app.repositories import photos as photos_repo
 from app.repositories import rovers as rovers_repo
 from app.repositories.photos import PhotoFilter
+from app.services.locations import PhotoLocation, photo_location
+from app.services.rover_lookup import find_rover
 
 # Values for the ``sample_type`` filter; other source values are only visible unfiltered.
 SAMPLE_TYPES: tuple[str, ...] = ("full", "subframe", "downsampled")
@@ -28,9 +29,6 @@ MER_ROVERS: frozenset[str] = frozenset({"spirit", "opportunity"})
 
 # Photo ids are bigint; anything outside cannot exist and is answered without a query.
 _MAX_INT8 = 2**63 - 1
-
-# Rover slugs are Latin letters only; anything else never reaches the database.
-_ROVER_SLUG_RE = re.compile(r"[A-Za-z]+")
 
 
 @dataclass(frozen=True)
@@ -143,6 +141,18 @@ async def get_photo(session: AsyncSession, photo_id: int) -> Photo:
 
 
 @dataclass(frozen=True)
+class PhotoDetail:
+    photo: Photo
+    location: PhotoLocation | None
+
+
+async def get_photo_detail(session: AsyncSession, photo_id: int) -> PhotoDetail:
+    """The photo and the position where it was taken (``get_photo`` stays as it is)."""
+    photo = await get_photo(session, photo_id)
+    return PhotoDetail(photo, await photo_location(session, photo))
+
+
+@dataclass(frozen=True)
 class ImageTarget:
     """Where ``/photos/{id}/image`` leads: a redirect URL, or a photo to convert."""
 
@@ -188,16 +198,6 @@ async def get_manifest(
 
 def _slug(rover: Rover) -> str:
     return rover.id
-
-
-async def find_rover(session: AsyncSession, slug: str) -> Rover:
-    """Validate the slug before any query; unknown or malformed → ``RoverNotFound``."""
-    if not _ROVER_SLUG_RE.fullmatch(slug):
-        raise RoverNotFound(slug)
-    rover = await rovers_repo.get_rover(session, slug)
-    if rover is None:
-        raise RoverNotFound(slug)
-    return rover
 
 
 async def _camera_codes(

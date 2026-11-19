@@ -1,4 +1,4 @@
-"""v2 rovers: list, detail, cameras, photos, latest photos and manifest."""
+"""v2 rovers: list, detail, cameras, photos, latest photos, manifest, location and traverse."""
 
 from typing import Annotated, Any
 
@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.home import request_origin
-from app.api.responses import FastJSONResponse
+from app.api.responses import FastJSONResponse, GeoJSONResponse
 from app.api.v2.params import (
     CameraParam,
     EarthDateParam,
@@ -18,18 +18,22 @@ from app.api.v2.schemas import (
     CamerasResponse,
     ErrorResponse,
     LatestPhotosResponse,
+    LocationResponse,
     ManifestResponse,
     PhotosResponse,
     RoverOut,
     RoversResponse,
+    TraverseResponse,
     camera_out,
     latest_body,
+    location_body,
     manifest_body,
     photos_body,
     rover_dict,
+    traverse_body,
 )
 from app.db.session import get_session
-from app.services import v2
+from app.services import locations, v2
 from app.services.v2 import PhotoQuery
 
 router = APIRouter()
@@ -106,3 +110,35 @@ async def get_manifest(
     to_sol: SolParam = None,
 ) -> FastJSONResponse:
     return FastJSONResponse(manifest_body(await v2.get_manifest(session, rover, from_sol, to_sol)))
+
+
+@router.get("/rovers/{rover}/location", response_model=LocationResponse, responses=_ERRORS)
+async def get_location(
+    rover: str,
+    session: Session,
+    sol: SolParam = None,
+    from_sol: SolParam = None,
+    to_sol: SolParam = None,
+) -> FastJSONResponse:
+    result = await locations.get_location(session, rover, sol, from_sol, to_sol)
+    return FastJSONResponse(location_body(result))
+
+
+@router.get(
+    "/rovers/{rover}/traverse",
+    response_model=TraverseResponse,
+    responses={
+        # The body is sent as application/geo+json; the plain JSON entry is added by FastAPI.
+        200: {
+            "description": "GeoJSON FeatureCollection (RFC 7946)",
+            "content": {
+                "application/geo+json": {
+                    "schema": {"$ref": "#/components/schemas/TraverseResponse"}
+                }
+            },
+        },
+        **_ERRORS,
+    },
+)
+async def get_traverse(rover: str, session: Session) -> GeoJSONResponse:
+    return GeoJSONResponse(traverse_body(await locations.get_traverse(session, rover)))

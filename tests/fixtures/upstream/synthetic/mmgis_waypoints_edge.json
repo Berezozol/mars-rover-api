@@ -1,0 +1,279 @@
+{
+ "type": "FeatureCollection",
+ "name": "synthetic_waypoints_edge",
+ "features": [
+  {
+   "type": "Feature",
+   "properties": {
+    "RMC": "7_10",
+    "site": "7",
+    "drive": "10",
+    "sol": "100",
+    "lat": "18.5",
+    "lon": "77.5",
+    "elev_geoid": "-2500.5",
+    "easting": -9999.0,
+    "northing": "12.5",
+    "roll": "",
+    "pitch": null,
+    "yaw": "UNK",
+    "tilt": -9999,
+    "dist_m": 0,
+    "dist_total_m": "UNK",
+    "images": [
+     {
+      "name": "Panorama",
+      "url": "Layers/mosaics/x.jpg"
+     }
+    ],
+    "Note": "string numbers, UNK, nulls and -9999"
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     70.0,
+     10.0,
+     12345.0
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "site": 8,
+    "drive": 1,
+    "sol": 101,
+    "lon": 77.0
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     77.0,
+     0.0,
+     0.0
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "drive": 1,
+    "sol": 102,
+    "lat": 1.0,
+    "lon": 2.0
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     2.0,
+     1.0,
+     0.0
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "site": 9,
+    "drive": 5,
+    "sol": 200,
+    "lat": 1.0,
+    "lon": 2.0
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     2.0,
+     1.0,
+     0.0
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "site": 9,
+    "drive": 5,
+    "sol": 201,
+    "lat": 3.0,
+    "lon": 4.0
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     4.0,
+     3.0,
+     0.0
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "site": 9,
+    "drive": 6,
+    "sol": 300,
+    "lat": 5.0,
+    "lon": 6.0
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     6.0,
+     5.0,
+     0.0
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "site": 9,
+    "drive": 6,
+    "sol": 300,
+    "lat": 6.0,
+    "lon": 7.0
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     7.0,
+     6.0,
+     0.0
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "site": 10,
+    "drive": 0,
+    "sol": 400,
+    "lat": 5.0,
+    "lon": 270.0
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     270.0,
+     5.0,
+     0.0
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "site": 11,
+    "drive": 0,
+    "sol": 401,
+    "lat": 5.0,
+    "lon": 6.0
+   },
+   "geometry": {
+    "type": "LineString",
+    "coordinates": [
+     [
+      6.0,
+      5.0,
+      0.0
+     ],
+     [
+      6.1,
+      5.1,
+      0.0
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "site": 11,
+    "drive": 1,
+    "lat": 5.0,
+    "lon": 6.0
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     6.0,
+     5.0,
+     0.0
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "site": 12,
+    "drive": 0,
+    "sol": 500,
+    "lat": 18.1,
+    "lon": 77.1
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     77.1,
+     18.1,
+     0.0
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "site": 12,
+    "drive": 1,
+    "sol": 500,
+    "lat": 18.2,
+    "lon": 77.2
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     77.2,
+     18.2,
+     0.0
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "site": 12,
+    "drive": 2,
+    "sol": 501,
+    "lat": 18.3,
+    "lon": 77.3
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     77.3,
+     18.3,
+     0.0
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "site": 13,
+    "drive": 0,
+    "sol": 502,
+    "lat": 18.4,
+    "lon": 77.4
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     77.4,
+     18.4,
+     0.0
+    ]
+   }
+  }
+ ]
+}

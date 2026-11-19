@@ -18,3 +18,7 @@ from pydantic_core import to_json
 class FastJSONResponse(JSONResponse):
     def render(self, content: Any) -> bytes:
         return to_json(content)
+
+
+class GeoJSONResponse(FastJSONResponse):
+    media_type = "application/geo+json"

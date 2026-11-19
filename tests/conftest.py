@@ -258,7 +258,13 @@ _CLEAN_STATEMENTS = [
 
 # Stage-7 tables (migration 0004); truncated only if present so that the suite still runs
 # against a schema without them.
-_OPTIONAL_TABLES = ("camera_sol_counts", "sol_source_counts")
+_OPTIONAL_TABLES = (
+    "camera_sol_counts",
+    "sol_source_counts",
+    "rover_waypoints",  # stage 11 (migration 0006)
+    "rover_traverse_segments",
+    "location_datasets",
+)
 
 
 async def _clean_database(factory: async_sessionmaker[AsyncSession]) -> None:

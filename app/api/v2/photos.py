@@ -31,7 +31,7 @@ async def get_photo(
     id: PhotoIdPath,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> PhotoDetailOut:
-    return photo_detail_out(await v2.get_photo(session, id), request_origin(request))
+    return photo_detail_out(await v2.get_photo_detail(session, id), request_origin(request))
 
 
 IMAGE_CACHE_CONTROL = "public, max-age=86400"

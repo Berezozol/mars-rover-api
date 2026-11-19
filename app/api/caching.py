@@ -29,8 +29,11 @@ ADMIN_PREFIX = "/api/v2/admin"
 LIST_CACHE_CONTROL = "public, max-age=300"
 DETAIL_CACHE_CONTROL = "public, max-age=3600"
 IMAGE_CACHE_CONTROL = "public, max-age=86400"
+# Rover positions change at most once a day (stage 11); same lifetime as a detail.
+LOCATION_CACHE_CONTROL = "public, max-age=3600"
 NO_STORE = "no-store"
 
+_LOCATION_SEGMENTS = frozenset({"location", "traverse"})
 _CACHED_METHODS = frozenset({"GET", "HEAD"})
 # Headers that describe the body; a 304 does not carry them.
 _BODY_HEADERS = ("content-length", "content-type", "content-encoding")
@@ -54,6 +57,9 @@ def cache_control_for(path: str) -> str:
     # "/photos/{id}/image" answered 200: a converted image (the redirect is a 302).
     if len(parts) == 4 and parts[1] == "photos" and parts[2] and parts[3] == "image":
         return IMAGE_CACHE_CONTROL
+    # "/rovers/{rover}/location" and "/rovers/{rover}/traverse"
+    if len(parts) == 4 and parts[1] == "rovers" and parts[2] and parts[3] in _LOCATION_SEGMENTS:
+        return LOCATION_CACHE_CONTROL
     return LIST_CACHE_CONTROL
 
 

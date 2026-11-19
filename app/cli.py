@@ -17,6 +17,11 @@
 - ``import-mer --rover spirit|opportunity [--from-sol A] [--to-sol B] [--batch-sols N]
   [--no-resume]``: one-time import from the cached index files, offline; same batches,
   resume and exit codes as ``backfill``, plus 2 when the cache is missing (run mer-download).
+- ``locations [--rover perseverance|curiosity] [--force]``: load the MMGIS position files now
+  (both rovers by default), ignoring the once-a-day rule; the conditional request is still
+  sent unless ``--force``, which also skips the no-op and shrink checks. Exit codes: 0 every
+  file changed, unchanged or skipped, 1 a file was rejected or failed, 2 unknown rover or a
+  rover without a location source (Spirit, Opportunity).
 """
 
 import argparse
@@ -39,10 +44,12 @@ from app.services.backfill import (
     BackfillResult,
     BackfillService,
 )
+from app.services.location_sync import DatasetResult, LocationSyncService
 from app.services.mer_download import download_indexes
 from app.services.sync import SyncResult, SyncService, compact_ranges
 from app.sources.base import SourceAdapter
 from app.sources.http import UpstreamClient, UpstreamError
+from app.sources.locations import LOCATION_MISSIONS
 from app.sources.mer import ROVER_PREFIXES, MerAdapter
 from app.sources.registry import SYNCABLE_ROVERS, build_adapter
 
@@ -135,6 +142,18 @@ def _build_parser() -> argparse.ArgumentParser:
     mer.add_argument("--rover", required=True, type=str.lower, choices=MER_ROVERS)
     _batch_arguments(mer)
 
+    locations = commands.add_parser(
+        "locations", help="load the Perseverance/Curiosity position files (MMGIS) now"
+    )
+    locations.add_argument(
+        "--rover", type=str.lower, default=None, help="one rover (default: both)"
+    )
+    locations.add_argument(
+        "--force",
+        action="store_true",
+        help="no conditional request, no no-op or shrink checks: replace the data",
+    )
+
     rec = commands.add_parser("reconcile", help="compare stored photos with the source")
     rec.add_argument("--rover", required=True, type=str.lower, help="rover slug")
     rec.add_argument(
@@ -164,6 +183,8 @@ def main(argv: list[str] | None = None) -> int:
         return _main_mer_download(args)
     if args.command == "import-mer":
         return _main_batches(args, run_import_mer_command)
+    if args.command == "locations":
+        return _main_locations(args)
     parser.print_help(sys.stderr)
     return EXIT_FAILED
 
@@ -204,6 +225,12 @@ def _main_mer_download(args: argparse.Namespace) -> int:
     for line in report.lines():
         print(line)
     return EXIT_SUCCESS if report.ok else EXIT_REMAINING
+
+
+def _main_locations(args: argparse.Namespace) -> int:
+    settings = get_settings()
+    configure_logging(settings.log_level)
+    return asyncio.run(run_locations_command(args.rover, args.force, settings))
 
 
 def _main_reconcile(args: argparse.Namespace) -> int:
@@ -247,6 +274,42 @@ async def run_sync_command(
         await engine.dispose()
     print(_summary(result))
     return _STATUS_EXIT_CODES.get(result.status, EXIT_FAILED)
+
+
+async def run_locations_command(rover: str | None, force: bool, settings: Settings) -> int:
+    """Load the position files and return the exit code (0 ok, 1 rejected/failed, 2 usage)."""
+    rovers = list(LOCATION_MISSIONS) if rover is None else [rover]
+    unsupported = [r for r in rovers if r not in LOCATION_MISSIONS]
+    if unsupported:
+        reason = "no location source" if unsupported[0] in MER_ROVERS else "unknown rover"
+        print(f"error: {reason}: {unsupported[0][:64]}", file=sys.stderr)
+        return EXIT_USAGE
+    engine = create_engine(
+        settings.database_url, connect_timeout=settings.db_connect_timeout_seconds
+    )
+    results: list[DatasetResult] = []
+    try:
+        async with UpstreamClient(settings) as client:
+            service = LocationSyncService(engine, client, settings)
+            for name in rovers:
+                results.extend(await service.refresh(name, force=force))
+    except Exception:
+        logger.exception("Location load crashed")
+        return EXIT_PARTIAL
+    finally:
+        await engine.dispose()
+    for result in results:
+        print(_location_line(result))
+    bad = any(result.status in ("rejected", "failed") for result in results)
+    return EXIT_PARTIAL if bad else EXIT_SUCCESS
+
+
+def _location_line(result: DatasetResult) -> str:
+    line = (
+        f"{result.rover_id} {result.kind}: {result.status}, "
+        f"items={result.items}, dropped={result.dropped}"
+    )
+    return f"{line}, error: {result.error}" if result.error else line
 
 
 async def run_backfill_command(

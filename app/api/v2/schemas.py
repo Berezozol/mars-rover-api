@@ -1,7 +1,7 @@
 """v2 response models (docs/API.md, "Объекты"); field order is the JSON key order."""
 
 from datetime import UTC, date, datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, PlainSerializer, StrictInt, StrictStr
 
@@ -9,7 +9,15 @@ from app.api.v2.params import MAX_SOL
 from app.db.models import Photo, SolSummary, SyncRun
 from app.services import v2
 from app.services.admin import RunPage
-from app.services.v2 import CameraInfo, LatestPhotos, Manifest, PhotoPage, RoverInfo
+from app.services.locations import LocationData, PhotoLocation, TraverseData
+from app.services.v2 import (
+    CameraInfo,
+    LatestPhotos,
+    Manifest,
+    PhotoDetail,
+    PhotoPage,
+    RoverInfo,
+)
 
 
 def _utc_z(value: datetime) -> str:
@@ -90,12 +98,76 @@ class PhotoOut(BaseModel):
     source: SourceOut
 
 
+class PhotoLocationOut(BaseModel):
+    sol: int
+    site: int
+    drive: int
+    lat: float
+    lon: float
+    elev_geoid: float | None
+    # True: the photo was taken at this waypoint; False: later (the last waypoint before it).
+    exact: bool
+
+
 class PhotoDetailOut(PhotoOut):
     caption: str | None
     received_at: UtcDateTime | None
     site: int | None
     drive: int | None
     extra: dict[str, Any]
+    location: PhotoLocationOut | None
+
+
+class WaypointOut(BaseModel):
+    sol: int
+    site: int
+    drive: int
+    lat: float
+    lon: float
+    elev_geoid: float | None
+    easting: float | None
+    northing: float | None
+    roll: float | None
+    pitch: float | None
+    yaw: float | None
+    tilt: float | None
+    dist_m: float | None
+    dist_total_m: float | None
+
+
+class LocationResponse(BaseModel):
+    rover: str
+    available: bool
+    updated_at: UtcDateTime | None
+    source_max_sol: int | None
+    items: list[WaypointOut]
+
+
+class LineStringOut(BaseModel):
+    type: Literal["LineString"] = "LineString"
+    coordinates: list[list[float]]
+
+
+class TraverseProperties(BaseModel):
+    sol: int | None
+    length_m: float | None
+
+
+class TraverseFeatureOut(BaseModel):
+    type: Literal["Feature"] = "Feature"
+    geometry: LineStringOut
+    properties: TraverseProperties
+
+
+class TraverseResponse(BaseModel):
+    """GeoJSON FeatureCollection (RFC 7946) with extra top-level members."""
+
+    type: Literal["FeatureCollection"] = "FeatureCollection"
+    rover: str
+    available: bool
+    updated_at: UtcDateTime | None
+    source_max_sol: int | None
+    features: list[TraverseFeatureOut]
 
 
 class PhotosResponse(BaseModel):
@@ -195,7 +267,23 @@ def photo_dict(photo: Photo, origin: str) -> Json:
     }
 
 
-def photo_detail_out(photo: Photo, origin: str) -> PhotoDetailOut:
+def photo_location_out(location: PhotoLocation | None) -> PhotoLocationOut | None:
+    if location is None:
+        return None
+    wp = location.waypoint
+    return PhotoLocationOut(
+        sol=wp.sol,
+        site=wp.site,
+        drive=wp.drive,
+        lat=wp.lat,
+        lon=wp.lon,
+        elev_geoid=wp.elev_geoid,
+        exact=location.exact,
+    )
+
+
+def photo_detail_out(detail: PhotoDetail, origin: str) -> PhotoDetailOut:
+    photo = detail.photo
     return PhotoDetailOut(
         **photo_dict(photo, origin),
         caption=photo.caption,
@@ -203,6 +291,7 @@ def photo_detail_out(photo: Photo, origin: str) -> PhotoDetailOut:
         site=photo.site,
         drive=photo.drive,
         extra=photo.extra or {},
+        location=photo_location_out(detail.location),
     )
 
 
@@ -223,6 +312,52 @@ def latest_body(result: LatestPhotos, origin: str) -> Json:
         "page": page.page,
         "per_page": page.per_page,
         "total": page.total,
+    }
+
+
+_WAYPOINT_FIELDS = (
+    "sol",
+    "site",
+    "drive",
+    "lat",
+    "lon",
+    "elev_geoid",
+    "easting",
+    "northing",
+    "roll",
+    "pitch",
+    "yaw",
+    "tilt",
+    "dist_m",
+    "dist_total_m",
+)
+
+
+def location_body(result: LocationData) -> Json:
+    return {
+        "rover": result.rover,
+        "available": result.available,
+        "updated_at": _utc_z_or_none(result.updated_at),
+        "source_max_sol": result.source_max_sol,
+        "items": [{name: getattr(wp, name) for name in _WAYPOINT_FIELDS} for wp in result.items],
+    }
+
+
+def traverse_body(result: TraverseData) -> Json:
+    return {
+        "type": "FeatureCollection",
+        "rover": result.rover,
+        "available": result.available,
+        "updated_at": _utc_z_or_none(result.updated_at),
+        "source_max_sol": result.source_max_sol,
+        "features": [
+            {
+                "type": "Feature",
+                "geometry": {"type": "LineString", "coordinates": coordinates},
+                "properties": {"sol": sol, "length_m": length_m},
+            }
+            for sol, length_m, coordinates in result.segments
+        ],
     }
 
 

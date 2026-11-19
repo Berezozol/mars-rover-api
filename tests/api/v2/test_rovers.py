@@ -24,8 +24,24 @@ from tests.api.v2.conftest import (
 pytestmark = pytest.mark.api
 
 # Every endpoint scoped to a rover: they all answer 404 rover_not_found the same way.
-ROVER_ENDPOINTS = ["", "/cameras", "/photos", "/photos/latest", "/manifest"]
-ROVER_ENDPOINT_IDS = ["rover", "cameras", "photos", "latest", "manifest"]
+ROVER_ENDPOINTS = [
+    "",
+    "/cameras",
+    "/photos",
+    "/photos/latest",
+    "/manifest",
+    "/location",
+    "/traverse",
+]
+ROVER_ENDPOINT_IDS = [
+    "rover",
+    "cameras",
+    "photos",
+    "latest",
+    "manifest",
+    "location",
+    "traverse",
+]
 
 
 # --- /rovers -------------------------------------------------------------------------------

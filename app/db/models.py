@@ -11,6 +11,7 @@ from sqlalchemy import (
     CheckConstraint,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -29,8 +30,11 @@ __all__ = [
     "Base",
     "Camera",
     "CameraSolCount",
+    "LocationDataset",
     "Photo",
     "Rover",
+    "RoverTraverseSegment",
+    "RoverWaypoint",
     "SolSourceCount",
     "SolSummary",
     "SyncRun",
@@ -202,3 +206,67 @@ class SyncRun(Base):
     )
     # Total the source declared for the run's range, when known.
     source_total: Mapped[int | None] = mapped_column(BigInteger)
+
+
+class RoverWaypoint(Base):
+    """A rover stop from the MMGIS waypoints file; replaced as a whole per rover."""
+
+    __tablename__ = "rover_waypoints"
+    __table_args__ = (
+        # /location with a sol filter, in driving order.
+        Index("ix_rover_waypoints_rover_id_sol", "rover_id", "sol", "site", "drive"),
+    )
+
+    rover_id: Mapped[str] = mapped_column(ForeignKey("rovers.id"), primary_key=True)
+    site: Mapped[int] = mapped_column(Integer, primary_key=True)
+    drive: Mapped[int] = mapped_column(Integer, primary_key=True)
+    sol: Mapped[int] = mapped_column(Integer)
+    lat: Mapped[float] = mapped_column(Float)
+    lon: Mapped[float] = mapped_column(Float)
+    elev_geoid: Mapped[float | None] = mapped_column(Float)
+    easting: Mapped[float | None] = mapped_column(Float)
+    northing: Mapped[float | None] = mapped_column(Float)
+    roll: Mapped[float | None] = mapped_column(Float)
+    pitch: Mapped[float | None] = mapped_column(Float)
+    yaw: Mapped[float | None] = mapped_column(Float)
+    tilt: Mapped[float | None] = mapped_column(Float)
+    dist_m: Mapped[float | None] = mapped_column(Float)
+    dist_total_m: Mapped[float | None] = mapped_column(Float)
+
+
+class RoverTraverseSegment(Base):
+    """One LineString of the route; ``seq`` is the driving order, always read as a whole."""
+
+    __tablename__ = "rover_traverse_segments"
+
+    rover_id: Mapped[str] = mapped_column(ForeignKey("rovers.id"), primary_key=True)
+    seq: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # NULL when the source has no sol (always for Curiosity).
+    sol: Mapped[int | None] = mapped_column(Integer)
+    length_m: Mapped[float | None] = mapped_column(Float)
+    # [[lon, lat], ...], at least two points.
+    coordinates: Mapped[list[list[float]]] = mapped_column(JSONB)
+
+
+class LocationDataset(Base):
+    """State of one MMGIS file (per rover and kind): last checks, validators, counts."""
+
+    __tablename__ = "location_datasets"
+    __table_args__ = (CheckConstraint("kind IN ('waypoints', 'traverse')", name="kind"),)
+
+    rover_id: Mapped[str] = mapped_column(ForeignKey("rovers.id"), primary_key=True)
+    kind: Mapped[str] = mapped_column(Text, primary_key=True)
+    # Last attempt / last successful check (304, same content, or an accepted new file).
+    checked_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ)
+    succeeded_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ)
+    # When the content last changed (``updated_at`` in the API).
+    changed_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ)
+    etag: Mapped[str | None] = mapped_column(Text)
+    last_modified: Mapped[str | None] = mapped_column(Text)
+    content_sha256: Mapped[str | None] = mapped_column(Text)
+    items: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    dropped: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    max_sol: Mapped[int | None] = mapped_column(Integer)
+    last_error: Mapped[str | None] = mapped_column(Text)
+    # Alerts count a file that never succeeded from this moment.
+    created_at: Mapped[datetime] = mapped_column(_TIMESTAMPTZ, server_default=func.now())

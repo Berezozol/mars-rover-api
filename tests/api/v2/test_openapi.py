@@ -14,6 +14,8 @@ V2_PATHS = [
     "/api/v2/rovers/{rover}/photos",
     "/api/v2/rovers/{rover}/photos/latest",
     "/api/v2/rovers/{rover}/manifest",
+    "/api/v2/rovers/{rover}/location",
+    "/api/v2/rovers/{rover}/traverse",
 ]
 V2_PHOTO_DETAIL = re.compile(r"^/api/v2/photos/\{[a-z_]+\}$")
 V1_PATHS = [
@@ -30,6 +32,8 @@ V2_ERRORS = {
     "/api/v2/rovers/{rover}/photos": {"404", "422"},
     "/api/v2/rovers/{rover}/photos/latest": {"404", "422"},
     "/api/v2/rovers/{rover}/manifest": {"404", "422"},
+    "/api/v2/rovers/{rover}/location": {"404", "422"},
+    "/api/v2/rovers/{rover}/traverse": {"404"},
 }
 
 
@@ -60,6 +64,12 @@ async def test_openapi_v2_operations_have_response_models(schema: dict) -> None:
             continue
         ok = item["get"]["responses"]["200"]
         assert ok["content"]["application/json"]["schema"], path
+
+
+async def test_openapi_traverse_declares_a_geojson_response(schema: dict) -> None:
+    ok = schema["paths"]["/api/v2/rovers/{rover}/traverse"]["get"]["responses"]["200"]
+
+    assert "application/geo+json" in ok["content"]
 
 
 async def test_openapi_v2_declares_error_responses(schema: dict) -> None:
