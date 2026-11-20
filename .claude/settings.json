@@ -13,6 +13,11 @@
       "Bash(git diff *)",
       "Bash(git log *)",
       "Bash(git rev-parse *)"
+    ],
+    "ask": [
+      "Bash(git commit *)",
+      "Bash(git push)",
+      "Bash(git push *)"
     ]
   },
   "hooks": {
@@ -24,6 +29,28 @@
             "type": "command",
             "command": "uv run --no-project --quiet python \"$CLAUDE_PROJECT_DIR/.claude/hooks/agent_budget_reminder.py\"",
             "timeout": 20
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --no-project --quiet python \"$CLAUDE_PROJECT_DIR/.claude/hooks/zone_guard.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --no-project --quiet python \"$CLAUDE_PROJECT_DIR/.claude/hooks/format_on_write.py\"",
+            "timeout": 70
           }
         ]
       }

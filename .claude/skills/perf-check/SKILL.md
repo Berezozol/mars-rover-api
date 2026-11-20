@@ -1,0 +1,18 @@
+---
+name: perf-check
+description: Проверить производительность ключевых запросов API на полном объёме базы разработки — время ответа ручек и EXPLAIN (ANALYZE, BUFFERS) против прошлых отчётов. Только чтение.
+argument-hint: "[ручки или запросы, по умолчанию ключевые]"
+disable-model-invocation: true
+---
+
+Ты тимлид. Нужно понять, не просели ли запросы на полном объёме. Работаешь с базой разработки `mars` (только `SELECT` и `EXPLAIN`), без записи и без сети. Аргументы: $ARGUMENTS
+
+## 1. База сравнения
+Прошлые планы и цифры: `docs/reports/stage7-explain-plans.txt`, `docs/reports/stage7-report.md`, скрипт `scripts/stage7_perf.py` (прочитай, как он измеряет; запускай, только если он читает и подходит). Если базы нет в нужном объёме (`GET /api/v2/rovers` показывает `total_photos` порядка миллионов) — скажи и остановись.
+
+## 2. Замеры
+- Время ответа через локальный сервер (`uv run uvicorn app.main:app --port 8000`, `SYNC_ENABLED=false`): `/api/v2/rovers`, `/api/v2/rovers/{rover}/photos?sol=<max_sol>`, то же с `camera=` и `sample_type=`, `photos/latest`, `manifest`, `/api/v1/rovers/curiosity/photos?sol=1000`. Каждый запрос 3 раза, первый — прогрев; учитывай лимит 60 запросов в минуту на IP.
+- `EXPLAIN (ANALYZE, BUFFERS)` SQL-запросов за самыми медленными ручками (код в `app/repositories/`): ищи `Seq Scan` по `photos`, сортировки на диск, большое число `Buffers: read`.
+
+## 3. Отчёт
+Таблица «ручка → время (мин и медиана) → прошлое значение → вывод». Для регрессий — запрос и план до и после, предложение индекса или правки запроса (исполняет `backend-dev`, индекс — миграция, проверка `/migration-check`). Если ничего не просело, так и скажи. Развёрнутый отчёт с планами — `data-engineer` (`docs/reports/`); тебе достаточно сводки.

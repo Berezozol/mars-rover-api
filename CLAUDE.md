@@ -47,8 +47,9 @@ Python 3.13+, FastAPI, SQLAlchemy 2.0 (async) + asyncpg, Alembic, httpx + tenaci
 
 ## Команда ролей
 - `/stage <N>` — провести этап из `docs/PLAN.md`: план → моё «ок» → `backend-dev` и `qa-engineer` параллельно → прогон → `reviewer` → итог.
-- Роли по отдельности: `@agent-architect` (план этапа, модель данных, черновик контракта, ADR — до разработки), `@agent-backend-dev`, `@agent-qa-engineer`, `@agent-data-engineer` (проверка источников, загрузки, сверка, производительность на полном объёме), `@agent-reviewer`, `@agent-security-reviewer` (безопасность публичного API — перед публичными этапами и после правок ручек, admin, лимитов, развёртывания), `@agent-designer` (наброски фронтенда), `@agent-devops` (CI, образ, развёртывание, дежурство по живому серверу), `@agent-frontend-dev` (фронтенд), `@agent-frontend-qa` (тесты фронтенда и сквозные браузерные тесты), `@agent-tech-writer` (документация для пользователей API на английском).
-- Скиллы: `/release` (выкладка на ноутбук и smoke-тест), `/sync-check <rover>` (пробная синхронизация и сверка на базе разработки), `/contract-change` (правка `API.md`/`LEGACY-API.md` → реализация → `openapi.json` → документация), `/record-fixtures <part>` (фикстуры источников), `/budget before|after` (журнал расхода architect и data-engineer), `/commit-msg` (сообщение коммита в принятом формате), `/spec <задача>` (спецификация по шаблону `docs/proposals/_TEMPLATE.md` с пронумерованными критериями приёмки `AC-N`), `/usage-by-role` (расход токенов субагентов по ролям).
+- Роли по отдельности: `@agent-architect` (план этапа, модель данных, черновик контракта, ADR — до разработки), `@agent-backend-dev`, `@agent-qa-engineer`, `@agent-data-engineer` (проверка источников, загрузки, сверка, производительность на полном объёме), `@agent-reviewer`, `@agent-security-reviewer` (безопасность публичного API — перед публичными этапами и после правок ручек, admin, лимитов, развёртывания), `@agent-designer` (наброски фронтенда), `@agent-devops` (CI, образ, развёртывание, дежурство по живому серверу), `@agent-frontend-dev` (фронтенд), `@agent-frontend-qa` (тесты фронтенда и сквозные браузерные тесты), `@agent-tech-writer` (документация для пользователей API на английском), `@agent-debugger` (разбор падения или странного ответа до причины, файлы не меняет).
+- Скиллы: `/release` (выкладка на ноутбук и smoke-тест), `/sync-check <rover>` (пробная синхронизация и сверка на базе разработки), `/contract-change` (правка `API.md`/`LEGACY-API.md` → реализация → `openapi.json` → документация), `/record-fixtures <part>` (фикстуры источников), `/budget before|after` (журнал расхода architect и data-engineer), `/commit-msg` (сообщение коммита в принятом формате), `/spec <задача>` (спецификация по шаблону `docs/proposals/_TEMPLATE.md` с пронумерованными критериями приёмки `AC-N`), `/usage-by-role` (расход токенов субагентов по ролям), `/bug <описание>` (исправление дефекта вне этапа: падающий тест → правка → ревью), `/prod-status` (состояние продакшена, только чтение), `/ui-check` (интерфейс глазами: консоль, состояния, 360 px, тёмная тема, скриншоты), `/docs-sync` (документы против кода), `/migration-check` (миграция на временной базе), `/perf-check` (время ручек и `EXPLAIN` на полном объёме), `/new-source` (подключение нового источника данных), `/stage-close` (закрытие этапа), `/weekly-report` (недельная сводка), `/retro` (ретро этапа).
+- Автоматика (`.claude/settings.json`, `.claude/hooks/`, `.claude/tools/`): `git commit` и `git push` всегда спрашивают разрешение; хук `zone_guard` не пускает роль писать за пределы её зоны (ниже); хук `format_on_write` форматирует записанный файл (`ruff format`, prettier во `frontend/`); `.claude/tools/ac_trace.py` и `spec_lint.py` проверяют покрытие критериев приёмки и форму спецификации без токенов.
 
 Цикл разработки (этап или отдельная доработка):
 1. План — спецификация `/spec` (AC-N, задания ролям); `/budget` вокруг каждого запуска `architect` и `data-engineer`; правка контракта — шаги 1–2 `/contract-change`; новые фикстуры — `/record-fixtures`; все внешние запросы этапа — одним списком на моё «ок».
@@ -56,7 +57,7 @@ Python 3.13+, FastAPI, SQLAlchemy 2.0 (async) + asyncpg, Alembic, httpx + tenaci
 3. Сборка — ruff, pytest, `openapi.json`, проверки фронтенда; ревью — `reviewer`, плюс `security-reviewer` при изменении публичной поверхности.
 4. Живые данные — `/sync-check`, если менялись источники или синхронизация.
 5. Коммит — `/commit-msg` и моё «ок»; выкладка — `/release`, запускаю я сам.
-Сбой на продакшене — `devops` (раздел «Дежурство»): диагностика сразу, любые действия — после моего «ок».
+Сбой на продакшене — сначала `/prod-status` (только чтение), глубокий разбор — `devops` (раздел «Дежурство»); любые действия, меняющие состояние, — после моего «ок». Дефект вне этапа — `/bug`; закрытие этапа — `/stage-close`.
 
 Владение файлами, чтобы параллельная работа не конфликтовала:
 - `backend-dev` — `app/`, `migrations/`, `pyproject.toml`, `uv.lock`, `docker-compose.yml`, `.env.example`, `alembic.ini`;
@@ -70,7 +71,8 @@ Python 3.13+, FastAPI, SQLAlchemy 2.0 (async) + asyncpg, Alembic, httpx + tenaci
 - `devops` — `Dockerfile`, `.dockerignore`, `.github/`, `deploy/` (образ, CI, продакшен-развёртывание, бэкапы, мониторинг);
 - `frontend-dev` — `frontend/`, кроме тестов (веб-интерфейс Sol Index на API v2 по макетам из `design/`);
 - `frontend-qa` — `frontend/tests/`, `frontend/e2e/`;
-- `reviewer` и `security-reviewer` — ничего не меняют.
+- `reviewer`, `security-reviewer` и `debugger` — ничего не меняют.
+- Зоны записи роли зашиты в `.claude/hooks/zone_guard.py` (список по ролям): при смене владения правь и этот список.
 
 ## Автономия architect и data-engineer
 - Тимлид запускает `architect` и `data-engineer` сам, без моего «ок» на запуск. Мои «ок» на контракты, запросы к внешним сайтам, коммиты и удаление данных остаются в силе.
