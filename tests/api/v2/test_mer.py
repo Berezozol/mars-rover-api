@@ -76,7 +76,38 @@ async def test_mer_photo_list_item_shape(client: httpx.AsyncClient, world: MerWo
         "images": {"small": frame.img_full, "medium": None, "large": None, "full": full},
         "credit": "NASA/JPL-Caltech",
         "source": {"id": frame.source_id, "link": frame.source_link},
+        # Size of the PDS product from the index columns LINE_SAMPLES x LINES.
+        "width": int(frame.row["LINE_SAMPLES"]),
+        "height": int(frame.row["LINES"]),
     }
+    assert list(item)[-2:] == ["width", "height"]
+
+
+@pytest.mark.parametrize("rover", ROVERS)
+async def test_mer_rover_end_date_and_archive_source(
+    client: httpx.AsyncClient, world: MerWorld, rover: str
+) -> None:
+    body = await get(client, f"/rovers/{rover}")
+
+    assert body["end_date"] == {"spirit": "2011-05-25", "opportunity": "2019-02-13"}[rover]
+    assert body["data_source"] == "archive"
+
+
+async def test_mer_photo_detail_local_time_is_true_solar_time(
+    client: httpx.AsyncClient, world: MerWorld
+) -> None:
+    frame = world.frame("2N160633049EDNA2K1F0006R0M1")
+
+    body = await get(client, f"/photos/{world.photo_ids[frame.source_id]}")
+
+    assert body["local_time"]["kind"] == "ltst"
+    assert body["local_time"]["time"] == frame.row["LOCAL_TRUE_SOLAR_TIME"].strip()[:8]
+    assert (body["width"], body["height"]) == (
+        int(frame.row["LINE_SAMPLES"]),
+        int(frame.row["LINES"]),
+    )
+    # The only photo of sol 386 of Spirit.
+    assert body["in_sol"] == {"position": 1, "total": 1, "newer_id": None, "older_id": None}
 
 
 async def test_mer_photo_detail_extra_and_source(

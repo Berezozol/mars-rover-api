@@ -102,6 +102,52 @@ async def test_rover_cameras_count_includes_cameras_added_by_sync(
     assert body["cameras_count"] == 10  # 7 seed + FHAZ_LEFT_B, MAST_LEFT, CHEMCAM_RMI
 
 
+@pytest.mark.parametrize(
+    ("rover_id", "end_date", "data_source"),
+    [
+        ("curiosity", None, "sync"),
+        ("perseverance", None, "sync"),
+        ("spirit", "2011-05-25", "archive"),
+        ("opportunity", "2019-02-13", "archive"),
+    ],
+)
+async def test_rover_end_date_and_data_source(
+    client: httpx.AsyncClient,
+    world: World,
+    rover_id: str,
+    end_date: str | None,
+    data_source: str,
+) -> None:
+    detail = (await client.get(f"{V2}/rovers/{rover_id}")).json()
+    listed = {r["id"]: r for r in (await client.get(f"{V2}/rovers")).json()["items"]}[rover_id]
+
+    for body in (detail, listed):
+        assert body["end_date"] == end_date
+        assert body["data_source"] == data_source
+        keys = list(body)
+        assert keys.index("end_date") == keys.index("landing_date") + 1
+        assert keys.index("end_date") + 1 == keys.index("status")
+        assert keys[-1] == "data_source"
+
+
+async def test_rover_active_missions_have_null_end_date_independent_of_status(
+    client: httpx.AsyncClient, world: World
+) -> None:
+    for rover_id in ("curiosity", "perseverance"):
+        body = (await client.get(f"{V2}/rovers/{rover_id}")).json()
+        assert body["status"] == "active" and body["end_date"] is None
+
+
+async def test_rover_end_date_of_finished_mission_is_not_max_date(
+    client: httpx.AsyncClient, world: World
+) -> None:
+    """end_date is a reference date of the mission end; the last photo stays in max_date."""
+    body = (await client.get(f"{V2}/rovers/opportunity")).json()
+
+    assert body["end_date"] == "2019-02-13"
+    assert body["max_date"] == "2004-02-04"
+
+
 # --- /rovers/{rover} -----------------------------------------------------------------------
 
 

@@ -63,8 +63,8 @@ async def get_rover(rover: str, session: Session) -> FastJSONResponse:
 
 
 @router.get("/rovers/{rover}/cameras", response_model=CamerasResponse, responses=_ERRORS)
-async def list_cameras(rover: str, session: Session) -> CamerasResponse:
-    cameras = await v2.list_cameras(session, rover)
+async def list_cameras(rover: str, session: Session, sol: SolParam = None) -> CamerasResponse:
+    cameras = await v2.list_cameras(session, rover, sol)
     return CamerasResponse(items=[camera_out(info) for info in cameras])
 
 
@@ -94,12 +94,10 @@ async def latest_photos(
     session: Session,
     pagination: Pagination,
     camera: CameraParam = None,
+    sample_type: SampleTypeParam = None,
 ) -> FastJSONResponse:
-    return FastJSONResponse(
-        latest_body(
-            await v2.latest_photos(session, rover, camera, pagination), request_origin(request)
-        )
-    )
+    result = await v2.latest_photos(session, rover, camera, pagination, sample_type)
+    return FastJSONResponse(latest_body(result, request_origin(request)))
 
 
 @router.get("/rovers/{rover}/manifest", response_model=ManifestResponse, responses=_ERRORS)

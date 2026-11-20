@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[2]
 EXPECTED_COLUMNS = {
     "rovers": {
         "id", "legacy_id", "name", "mission", "launch_date", "landing_date", "status",
-        "max_sol", "max_date", "total_photos", "last_synced_at",
+        "end_date", "max_sol", "max_date", "total_photos", "last_synced_at",
         "full_max_sol", "full_max_date", "full_total_photos",
     },
     "cameras": {"id", "rover_id", "code", "name", "sort_order"},
@@ -59,8 +59,8 @@ def _head(alembic_cfg: AlembicConfig) -> str:
     return head
 
 
-def test_migrations_head_revision_is_0006(alembic_cfg: AlembicConfig) -> None:
-    assert _head(alembic_cfg) == "0006"
+def test_migrations_head_revision_is_0007(alembic_cfg: AlembicConfig) -> None:
+    assert _head(alembic_cfg) == "0007"
 
 
 def test_migrations_single_head(alembic_cfg: AlembicConfig) -> None:
@@ -93,6 +93,7 @@ async def test_schema_table_has_contract_columns(db_session: AsyncSession, table
         ("rovers", "legacy_id", "smallint"),
         ("rovers", "launch_date", "date"),
         ("rovers", "landing_date", "date"),
+        ("rovers", "end_date", "date"),
         ("photos", "id", "bigint"),
         ("photos", "earth_date", "date"),
         ("photos", "taken_at", "timestamp with time zone"),
@@ -316,3 +317,23 @@ async def test_migration_0005_index_is_valid(db_session: AsyncSession) -> None:
     ]
     assert len(matching) == 1
     assert matching[0].indisvalid and matching[0].indisready
+
+
+async def test_migration_0007_end_date_is_nullable_and_seeded_for_mer_only(
+    db_session: AsyncSession,
+) -> None:
+    nullable = await db_session.scalar(
+        text(
+            "SELECT is_nullable FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND table_name = 'rovers' AND column_name = 'end_date'"
+        )
+    )
+    rows = await db_session.execute(text("SELECT id, end_date::text FROM rovers ORDER BY id"))
+
+    assert nullable == "YES"
+    assert dict(rows.all()) == {
+        "curiosity": None,
+        "opportunity": "2019-02-13",
+        "perseverance": None,
+        "spirit": "2011-05-25",
+    }

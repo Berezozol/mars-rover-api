@@ -241,6 +241,76 @@
 ### Импорт
 Источник — 10 файлов `edrindex.tab` + `.lbl` (5 томов × 2 марсохода), 756 МБ, 20 запросов; уже лежат в `data/mer/`. Загружать через команду приложения (`import-mer`, план — `docs/proposals/stage-8-mer-import.md`), не скриптом в обход синхронизации. Настоящие выборки для фикстур (метка + 9–30 строк на том: `EFF/ESF/EDN/ETH/ERP/EHG/ERS/ECS`, группы `ESF+EDN`, повторённые `PRODUCT_ID`) — `data/mer-samples/<том>/` (не в git).
 
+## Полёты Ingenuity (этап 12, проверка источника)
+
+Проверено 2026-11-20, **2 GET** (по «ок» владельца: не больше 2), `science.nasa.gov`, `User-Agent: sol-index-research/1.0`, без редиректов. Ответы — `data/ingenuity/` (в `.gitignore`).
+
+| адрес | ответ | вывод |
+|---|---|---|
+| `https://science.nasa.gov/mission/mars-2020-perseverance/ingenuity-mars-helicopter/ingenuity-flight-log/` | 404, 224 680 Б | адрес угадан неверно; страницы с таким путём нет |
+| `https://science.nasa.gov/mission/mars-2020-perseverance/ingenuity-mars-helicopter/` | 200, 371 334 Б | страница миссии; **журнала полётов в HTML нет** |
+
+- На странице миссии 2 таблицы — обе не про полёты (запуск/посадка/конец миссии 2024-01-25; масса, габариты, питание). Конец миссии: 25 января 2024.
+- **Журнал — PDF** «Ingenuity's Flight Log Details» (Jun 21, 2024, 535,42 КБ): `https://science.nasa.gov/wp-content/uploads/2024/06/ingenuity-helicopter-flight-log.pdf` (в ссылке есть хвост `?emrc=59be3e`). Также на странице: картинка `.../2024/03/ingenuity-flight-log-by-the-numbers.jpg`, постер «72 pathbreaking flights» (`/resource/ingenuity-72-pathbreaking-flights-poster/`), страница `.../ingenuity-mars-helicopter/mars-helicopter-updates/` (блог-хроника). PDF скачан позже отдельным разрешением (см. ниже), разбирается в 72 строки. Машиночитаемого JSON/CSV на странице нет.
+- Лицензия и credit: на странице явного текста лицензии нет [не проверено]; общий порядок NASA — материалы без ограничений, но с указанием авторства (NASA/JPL-Caltech), без намёка на одобрение. Credit в журнале указывать «NASA/JPL-Caltech», уточнить по `nasa.gov/nasa-brand-center/images-and-media/` [не проверено].
+- **Снимки HELI_NAV / HELI_RTE в нашей базе отсутствуют.** `photos`: 0 снимков с кодами `HELI*`; в списке камер Perseverance (20 штук) их нет; в `app/` и `app/core/cameras.py` кодов `HELI_*` нет. Фид `category=mars2020` отдаёт `total_results` 579 518 = `sol_source_counts.received` (dropped = 0), то есть вертолётных снимков в этом фиде нет. Подтверждено: они в отдельной категории `category=ingenuity` (см. ниже). Привязка по солам полёта к снимкам без этого невозможна. Полёты шли с сола 58 (2021-04-19) по сол 1035 (2024-01-18) (по журналу).
+
+### Журнал полётов (PDF) — проверено 2026-11-20, 1 GET
+`GET https://science.nasa.gov/wp-content/uploads/2024/06/ingenuity-helicopter-flight-log.pdf` (`User-Agent: sol-index-research/1.0`) → 200, `application/pdf`, 548 273 Б, `Last-Modified: Mon, 01 Jul 2024 20:35:23 GMT`, `ETag: "c5aa4c661e823127"`, sha256 `dcf0b9e59eb8cb805e484c17f9cab8d56b5a03ca92f2facf708be59c45bf4e11`. Файл: `data/ingenuity/flight-log.pdf`; результат разбора — `data/ingenuity/flights.csv` (72 строки). PDF сделан печатью веб-страницы в Chrome (Skia/PDF, 2024-06-17), 4 страницы, текстовый слой есть, OCR не нужен.
+
+- **Состав:** 72 полёта (совпадает с шапкой «72 flights»). Сверка с шапкой: сумма длительностей 128,86 мин (в шапке ~128,8), сумма расстояний 16 971 м (~17,0 км), максимум высоты 24 м (полёт 61, 2023-10-05), максимум скорости 10 м/с. Всё сходится.
+- **Колонки:** `Flight`, `Sol`, `Date`, `Horizontal Distance` (m, ft), `Max. Altitude` (m, ft), `Max. Groundspeed` (m/s, mph), `Duration` (seconds), `Route of Flight` (From, To). Заметок по отдельным полётам нет; единственная сноска: «Dates based on Pacific time zone at the time of Ingenuity's flight».
+- **Причуды разбора:**
+  - Страницы: 1 — полёты 1–15, 2 — 16–42, 3 — 43–69, 4 — 70–72. `pdfplumber.extract_tables()` даёт чистые строки (двухстрочная шапка пропускается по первому полю-числу). `extract_text()` ломает порядок колонок (дата и маршрут переносятся на соседние строки): использовать только таблицы. На странице 4 таблица продублирована (две таблицы, одни и те же строки): дедуплицировать по номеру полёта.
+  - Ячейка даты многострочная: `"April 19,\n2021"`, `"March\n10, 2022"`; месяцы сокращены непоследовательно: `Jan.`, `Feb.`, `Aug.`, `Sept.`, `Oct.`, `Nov.`, `Dec.`, но `March`, `April`, `May`, `June`, `July` целиком.
+  - В `Sol` затесался символ из области частного использования `` (иконка), в шапке `Route of Flight` — ``: чистить.
+  - Лигатура «fi» вытащена как `\x00`: `Air\x00eld H` = `Airfield H`. Названия площадок переносятся на две строки (`Air\x00eld\nBeta`): схлопывать пробелы.
+  - Футы и мили/ч приблизительные, с префиксом `~` (`~328`), тысячи через запятую (`~2,051`). Метры и м/с — без `~`; хвостовые нули (`0.50`, `4.30`) — точность источника.
+  - Маршрут: `To` пуст в 27 полётах из 72 — взлёт и посадка на одной площадке (1–4, 12–14, 22, 24, 30, 34–36, 39, 41, 54, 57, 59, 61, 62, 65, 66, 68–72). Площадки: `Wright Brothers Field` (полёты 1–5 как «From»), затем `Airfield B…Z`, греческие `Alpha…Chi`; 44 разных значения `From`. Названия площадок в базу — как строки.
+  - Нулевая дистанция в полётах 1, 34, 54, 59, 61, 71, 72 (подъём и посадка на месте).
+  - Дата — по тихоокеанскому времени на момент полёта (не UTC, не LMST); надёжный ключ связи с марсианским временем — `Sol` (целое, строго возрастает).
+  - Пропусков нет: все 72 строки заполнены, кроме пустого `To`.
+  - **Полёт 72:** сол 1035, 2024-01-18, 32,0 с, высота 12 м, дистанция 0, скорость 0, `Airfield Chi` — последний. Журнал ничего не говорит о повреждении лопастей и конце миссии (дата конца, 2024-01-25, только на странице миссии).
+- Примеры (flight, sol, date_pacific, distance_m, max_alt_m, max_speed_ms, duration_s, from → to):
+  - 1, 58, 2021-04-19, 0, 3, 0, 39.1, Wright Brothers Field → (пусто)
+  - 5, 76, 2021-05-07, 129, 10, 2, 108.2, Wright Brothers Field → Airfield B
+  - 9, 133, 2021-07-05, 625, 10, 5, 166.4, Airfield E → Airfield F
+  - 40, 681, 2023-01-19, 178, 10, 3.20, 91.6, Airfield Z → Airfield Beta
+  - 72, 1035, 2024-01-18, 0, 12, 0, 32.0, Airfield Chi → (пусто)
+- Журнал заморожен (миссия закончена): достаточно разовой выгрузки в сид (CSV/JSON в репозитории с указанием источника и sha256), парсить PDF в рантайме не нужно. Лицензия: материалы NASA, credit «NASA/JPL-Caltech» (в фиде `credit` именно такой) [текст условий не проверен].
+
+### Фид снимков `category=ingenuity` — проверено 2026-11-20, 1 GET
+`GET https://mars.nasa.gov/rss/api/?feed=raw_images&category=ingenuity&feedtype=json&num=100&page=0&order=sol+desc` → 200, 213 675 Б. Файл: `data/ingenuity/raw_images_ingenuity_p0.json`.
+
+- Формат тот же, что у `mars2020` (хост, параметры, поля). В шапке: `type: "ingenuity-images-list-1.1"`, `mission: "ingenuity"`, `total_images` = `total_results` = **14 553**; `per_page` строкой. `num=100` принят. Влияет ли `order=sol+desc`, по одной странице не проверить (все 100 записей — сол 1069).
+- Поля записи (как у Perseverance): `imageid`, `sol`, `site`, `drive`, `title`, `caption`, `credit`, `sample_type`, `date_taken_utc`, `date_taken_mars`, `date_received`, `link`, `json_link`, `image_files{small,medium,large,full_res}`, `camera{instrument,filter_name,camera_vector,camera_model_type,camera_position,camera_model_component_list}`, `extended{mastAz,mastEl,sclk,scaleFactor,xyz,subframeRect,dimension}`, `attitude`. Здесь `site` = 0, `drive` = строка `"None"`, `attitude`/`xyz`/`mastAz` и др. = `"UNK"`.
+- Камеры на странице: `HELI_NAV` 98, `HELI_RTE` 2 (title «Color Camera»). Других кодов на странице нет; остальные страницы [не проверено]. `sample_type` = `Full` у всех 100, `credit` = `NASA/JPL-Caltech`.
+- `imageid` вида `HNM_1069_0761837420_372ECM_N0720001HELI00173_0000A0J` (`HNM` — навигационная, `HSF` — цветная; сол — второе поле). Картинки — тот же CDN, что у Perseverance, каталог `.../sol/01069/ids/edr/browse/heli/<имя>{,_320,_800,_1200}.jpg|.png`. `link` у вертолёта **абсолютный** (`https://mars.nasa.gov/mars2020/multimedia/raw-images/<imageid>`), у Perseverance — относительный `/raw_images/<id>`.
+- Сол на странице один — 1069 (2024-02-22, принято 2024-02-23…2024-03-11): это на 34 сола **после** последнего полёта (1035). Что это за съёмка, [не проверено]. Нижняя граница солов и распределение — [не проверено]: нужны остальные страницы (146 по 100) или фильтр по солу.
+- **Связи с номером полёта в записях нет:** ни поля, ни упоминания в `title` («Mars Helicopter Sol 1069: Navigation Camera») и `caption`. Ключ — только сол и время `date_taken_utc`.
+- **В нашей базе их нет:** из 100 `imageid` совпадений по `photos.source_id` — 0; кодов `HELI*` в `cameras` нет; снимков с `/heli/` в `img_full` — 0. У Perseverance в солах 1060…1080 — 4 774 снимка (без HELI).
+
+### Рекомендация: связь полётов, солов и снимков
+- Связь «полёт ↔ снимки» — **по солу**: `flights.sol` = `photos.sol`. Сол в журнале уникален, значит для полёта соответствие по солу однозначно. Обратное неверно: у снимков HELI бывают солы без полёта (1069 уже после полёта 72), для них `flight = null`. Если в сол попал не один полёт — в журнале такого нет.
+- По времени сузить кадры полёта нельзя: журнал даёт только дату по PT и длительность, но не время взлёта. Не обещать.
+- **Модель:** таблица `ingenuity_flights` (flight, sol, date_pacific, distance_m, max_alt_m, max_speed_ms, duration_s, route_from, route_to), сид из `flights.csv`. Снимки: Ingenuity как отдельный «марсоход» (`rovers.id = ingenuity`, камеры `HELI_NAV`, `HELI_RTE`) и адаптер на `category=ingenuity` по образцу `m2020` (отличия: категория в `BASE_PARAMS`, абсолютный `link`). Объём 14 553 снимка, ~146 страниц, около 3 минут при 1 запросе/с.
+- **API:** v2 — `GET /api/v2/ingenuity/flights` (все 72 без пагинации) и `GET /api/v2/ingenuity/flights/{n}` с полями журнала и ссылкой на снимки сола (`/photos?rover=ingenuity&sol=N`). В v1 вертолёта нет, не добавлять без решения владельца. Миссия закончена: достаточно разового `backfill`, расписание не нужно.
+
+## Данные для предложений дизайнера (2026-11-20, офлайн: dev-база, фикстуры, адаптеры)
+
+- **Ширина/высота кадра.**
+  - Perseverance: `extra.extended.dimension` строкой `"(W,H)"`, 579 518 из 579 518 (100%) подходят под `^\(\d+,\d+\)$`, `UNK` нет. Частые: (1648,1200) 298 722; (1288,968) 37 339; (1280,1024); (2048,2048); (128,128) 20 802. Это размеры полноразмерного PNG; `_320/_800/_1200.jpg` — масштабы.
+  - Curiosity: **нет нигде** (в `extended` только `lmst, bucket, mast_az, mast_el, url_list, contributor, filter_name`); получить можно лишь загрузкой файла.
+  - Spirit/Opportunity: `extra.lines` / `extra.line_samples` из метки `.img` (342 442 из 342 442 числовые, 100%; 1024×1024 — 50 944 у Spirit, есть 63, 256, 272×320, 512). Это размер EDR, а `img_full` — browse-JPEG: совпадение размеров с JPEG [не проверено].
+- **Местное солнечное время.**
+  - Perseverance: в фиде есть `date_taken_mars` (`"Sol-02031M11:30:55.785"`, LMST, формат `Sol-NNNNNMHH:MM:SS.mmm`), но адаптер (`app/sources/m2020.py`) его **не сохраняет**: в `extra` только `extended`, `attitude`, `camera`. Для `local_time` нужна правка адаптера и перезагрузка 579 518 снимков (~5 800 страниц по 100) либо вывод из `taken_at` расчётом.
+  - Curiosity: `extra.extended.lmst` того же формата (`Sol-05073M11:25:43.222`), заполнен у 388 029 из 791 788 (49%), 4 665 солов из диапазона 0…5077; остальное — `null` в фиде.
+  - Spirit/Opportunity: `extra.local_true_solar_time` (`HH:MM:SS`, 100%). Это LTST (истинное, не среднее) — другая шкала, чем LMST; смешивать под одним полем без пометки нельзя.
+- **Миниатюры.** Perseverance: `img_small` (_320), `img_medium` (_800), `img_large` (_1200) заполнены у 100%. Curiosity: в списке `small/medium/large` нет. Фид MSL отдаёт миниатюры **отдельными записями** (`is_thumbnail: true`, `extended.sample_type: "thumbnail"`, своё имя файла с кодом продукта `I01` вместо `E01`: `4327MR1065450012201536I01_DXXX.jpg`), адаптер их отбрасывает (`NO_THUMBNAILS` в запросе). Сопоставление миниатюры с кадром по имени — гипотеза; в фикстуре (13 записей, 5 миниатюр) однозначного ключа не видно [не проверено]. Spirit/Opportunity: только browse-JPEG.
+- **`end_date` MER.** В базе: Spirit `max_sol` 2209, `max_date` 2010-03-21; Opportunity 5111, 2018-06-10 (при этом `full_max_date` 2018-06-11 — расхождение на сутки в границе UTC/сол, разобрать отдельно). Поля `end_date` в `rovers` нет. Дат последнего контакта в источниках нет; из публичных сообщений NASA (по памяти, не проверено источником): Spirit — последний контакт 2010-03-22 (сол 2210), объявлена завершённой 2011-05-25; Opportunity — последний контакт 2018-06-10, завершена 2019-02-13. Значение придётся задавать константой/миграцией.
+- **Счётчики камер за сол.** Таблица `camera_sol_counts (rover_id, sol, camera_id, total_photos, full_photos)` уже есть: 69 114 строк (Curiosity 37 426, Perseverance 14 259, Opportunity 12 182, Spirit 5 247), 8,9 МБ, PK по `(rover_id, sol, camera_id)`. Выборка одного сола — 0,8 мс; живой `GROUP BY` по `photos` на самом большом соле Perseverance (1717, 3 950 снимков) — 19 мс, на Curiosity сол 0 (4 380) — 6,5 мс. Вся Curiosity из `camera_sol_counts` — 8,5 мс. Вывод: счётчики за сол почти бесплатны.
+- **Соседи внутри сола.** Индекс `ix_photos_rover_id_sol_taken_at (rover_id, sol DESC, taken_at DESC, id DESC)` совпадает с сортировкой списка. Сол 1717, середина (позиция 2000 из 3 950): `prev`/`next` по `(taken_at, id) <|> (...)` с `LIMIT 1` — Index Only Scan, 0,04–0,14 мс, 4 буфера; `position` как `count(*)` по `(taken_at,id) >` — 0,33 мс, 18 буферов. С фильтром `camera` порядок `taken_at` из индекса `(rover_id, camera_id, sol)` и частичного `ix_photos_full_rover_id_sol_camera_id_id` (порядок по `id`, не `taken_at`) не получить без сортировки внутри сола; для сола в несколько тысяч снимков это единицы миллисекунд [не проверено EXPLAIN-ом].
+
 ## Старый API
 
 Формат и поведение старого API, которые воспроизводит наш v1, — в `LEGACY-API.md`.

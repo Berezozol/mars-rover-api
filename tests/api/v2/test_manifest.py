@@ -130,3 +130,22 @@ async def test_manifest_invalid_bound_returns_422(
     response = await client.get(manifest_url("curiosity"), params={param: value})
 
     assert_validation_error(response, param)
+
+
+async def test_manifest_has_no_entries_for_sols_without_photos(
+    client: httpx.AsyncClient, world: World
+) -> None:
+    """Gaps between sols 1, 5, 10 and 20 are not listed (no zero-photo entries)."""
+    body = (await client.get(manifest_url("curiosity"))).json()
+
+    assert [entry["sol"] for entry in body["sols"]] == [20, 10, 5, 1]
+    assert all(entry["total_photos"] > 0 for entry in body["sols"])
+
+
+async def test_manifest_rover_has_end_date_and_data_source(
+    client: httpx.AsyncClient, world: World
+) -> None:
+    body = (await client.get(manifest_url("spirit"))).json()
+
+    assert body["rover"]["end_date"] == "2011-05-25"
+    assert body["rover"]["data_source"] == "archive"

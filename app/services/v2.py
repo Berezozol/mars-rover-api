@@ -5,8 +5,9 @@ codes. Parameters arrive already typed and range-checked by the router; this mod
 what needs the database (rover, camera codes) and combinations of parameters.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
+from typing import Literal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,6 +18,9 @@ from app.repositories import rovers as rovers_repo
 from app.repositories.photos import PhotoFilter
 from app.services.locations import PhotoLocation, photo_location
 from app.services.rover_lookup import find_rover
+from app.sources import photo_meta as meta_parser
+from app.sources.photo_meta import LocalTime
+from app.sources.registry import SYNCABLE_ROVERS
 
 # Values for the ``sample_type`` filter; other source values are only visible unfiltered.
 SAMPLE_TYPES: tuple[str, ...] = ("full", "subframe", "downsampled")
@@ -62,11 +66,42 @@ class PhotoQuery:
 
 
 @dataclass(frozen=True)
+class NearestSols:
+    """Nearest sols with photos below / above an empty sol or date; None at the edges."""
+
+    before: int | None
+    after: int | None
+
+
+@dataclass(frozen=True)
 class PhotoPage:
     items: list[Photo]
     page: int
     per_page: int
     total: int
+    # Set only for a sol / earth_date search with no results.
+    nearest_sols: NearestSols | None = None
+
+
+@dataclass(frozen=True)
+class PhotoMeta:
+    """Frame size and local solar time derived from the photo's ``extra``."""
+
+    width: int | None
+    height: int | None
+    local_time: LocalTime | None
+
+
+def photo_meta(photo: Photo) -> PhotoMeta:
+    extra = photo.extra or {}
+    size = meta_parser.frame_size(photo.rover_id, extra)
+    width, height = size if size is not None else (None, None)
+    return PhotoMeta(width, height, meta_parser.local_time(photo.rover_id, extra))
+
+
+def data_source(rover_id: str) -> Literal["sync", "archive"]:
+    """``sync`` for rovers fed by the regular sync, ``archive`` for one-off imports."""
+    return "sync" if rover_id in SYNCABLE_ROVERS else "archive"
 
 
 @dataclass(frozen=True)
@@ -94,10 +129,18 @@ async def get_rover(session: AsyncSession, slug: str) -> RoverInfo:
     return RoverInfo(rover, counts.get(rover.id, 0))
 
 
-async def list_cameras(session: AsyncSession, slug: str) -> list[CameraInfo]:
-    """The rover's cameras ordered by code, with photo counts over all sample types."""
+async def list_cameras(
+    session: AsyncSession, slug: str, sol: int | None = None
+) -> list[CameraInfo]:
+    """The rover's cameras ordered by code, with photo counts over all sample types.
+
+    With ``sol`` the counts are for that sol only (all cameras are listed, zeros included).
+    """
     rover = await find_rover(session, slug)
-    rows = await rovers_repo.list_cameras_with_counts(session, rover.id)
+    if sol is None:
+        rows = await rovers_repo.list_cameras_with_counts(session, rover.id)
+    else:
+        rows = await rovers_repo.list_cameras_with_sol_counts(session, rover.id, sol)
     return [CameraInfo(camera, total) for camera, total in rows]
 
 
@@ -115,18 +158,31 @@ async def search_photos(
         camera_codes=await _camera_codes(session, rover.id, query.camera),
         sample_type=_sample_type(query.sample_type),
     )
-    return await _photo_page(session, rover, flt, page)
+    result = await _photo_page(session, rover, flt, page)
+    if result.total == 0 and (query.sol is not None or query.earth_date is not None):
+        before, after = await photos_repo.nearest_sols(
+            session, rover.id, sol=query.sol, earth_date=query.earth_date
+        )
+        result = replace(result, nearest_sols=NearestSols(before, after))
+    return result
 
 
 async def latest_photos(
-    session: AsyncSession, slug: str, camera: str | None, page: PageRequest
+    session: AsyncSession,
+    slug: str,
+    camera: str | None,
+    page: PageRequest,
+    sample_type: str | None = None,
 ) -> LatestPhotos:
     """Photos of the rover's highest sol over all sample types; no data → sol None."""
     rover = await find_rover(session, slug)
     camera_codes = await _camera_codes(session, rover.id, camera)
+    wanted_type = _sample_type(sample_type)
     if rover.max_sol is None:
         return LatestPhotos(None, PhotoPage([], page.page, page.per_page, 0))
-    flt = PhotoFilter(rover_id=rover.id, sol=rover.max_sol, camera_codes=camera_codes)
+    flt = PhotoFilter(
+        rover_id=rover.id, sol=rover.max_sol, camera_codes=camera_codes, sample_type=wanted_type
+    )
     return LatestPhotos(rover.max_sol, await _photo_page(session, rover, flt, page))
 
 
@@ -141,15 +197,44 @@ async def get_photo(session: AsyncSession, photo_id: int) -> Photo:
 
 
 @dataclass(frozen=True)
+class SolPosition:
+    """Place of a photo in its sol in the /photos order (newest first)."""
+
+    position: int | None
+    total: int
+    newer_id: int | None
+    older_id: int | None
+
+
+@dataclass(frozen=True)
 class PhotoDetail:
     photo: Photo
     location: PhotoLocation | None
+    in_sol: SolPosition
 
 
-async def get_photo_detail(session: AsyncSession, photo_id: int) -> PhotoDetail:
-    """The photo and the position where it was taken (``get_photo`` stays as it is)."""
+async def get_photo_detail(
+    session: AsyncSession,
+    photo_id: int,
+    camera: str | None = None,
+    sample_type: str | None = None,
+) -> PhotoDetail:
+    """The photo, where it was taken and its place in the sol (``get_photo`` stays as it is).
+
+    ``camera`` and ``sample_type`` only narrow the photos ``in_sol`` is counted among.
+    """
     photo = await get_photo(session, photo_id)
-    return PhotoDetail(photo, await photo_location(session, photo))
+    flt = PhotoFilter(
+        rover_id=photo.rover_id,
+        sol=photo.sol,
+        camera_codes=await _camera_codes(session, photo.rover_id, camera),
+        sample_type=_sample_type(sample_type),
+    )
+    position, total, newer_id, older_id = await photos_repo.sol_position(
+        session, flt, photo.taken_at, photo.id, _matches(photo, flt)
+    )
+    location = await photo_location(session, photo)
+    return PhotoDetail(photo, location, SolPosition(position, total, newer_id, older_id))
 
 
 @dataclass(frozen=True)
@@ -194,6 +279,13 @@ async def get_manifest(
         session, rover.rover.id, from_sol=from_sol, to_sol=to_sol, descending=True
     )
     return Manifest(rover, summaries)
+
+
+def _matches(photo: Photo, flt: PhotoFilter) -> bool:
+    """Whether the loaded photo passes the camera and sample type filters."""
+    if flt.camera_codes is not None and photo.camera.code not in flt.camera_codes:
+        return False
+    return flt.sample_type is None or photo.sample_type == flt.sample_type.lower()
 
 
 def _slug(rover: Rover) -> str:

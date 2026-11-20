@@ -236,7 +236,7 @@ async def test_v2_photos_json_matches_model_shape(
     response = await client.get("/api/v2/rovers/curiosity/photos", params=params)
 
     body = assert_model_shape(response, v2.PhotosResponse)
-    assert list(body) == ["items", "page", "per_page", "total"]
+    assert list(body) == ["items", "page", "per_page", "total", "nearest_sols"]
     for item in body["items"]:
         assert Z_DATETIME.match(item["taken_at"]), item["taken_at"]
 

@@ -52,6 +52,7 @@ async def test_photos_without_filters_return_exact_json_newest_first(
         "page": 1,
         "per_page": 25,
         "total": len(PERSEVERANCE_ORDER),
+        "nearest_sols": None,
     }
     assert_json(response.json(), expected)
 
@@ -120,7 +121,10 @@ async def test_photos_rover_without_data_return_empty_list(
     response = await client.get(photos_url("spirit"))
 
     assert response.status_code == 200
-    assert_json(response.json(), {"items": [], "page": 1, "per_page": 25, "total": 0})
+    assert_json(
+        response.json(),
+        {"items": [], "page": 1, "per_page": 25, "total": 0, "nearest_sols": None},
+    )
 
 
 async def test_photos_unknown_params_are_ignored(client: httpx.AsyncClient, world: World) -> None:
@@ -250,7 +254,8 @@ async def test_photos_filters_combine(client: httpx.AsyncClient, world: World) -
     response = await client.get(photos_url("curiosity"), params=params)
 
     assert response.status_code == 200
-    assert_json(response.json(), {**_page(world.photos(["c1-fhaz-lb"])), "total": 1})
+    expected = {**_page(world.photos(["c1-fhaz-lb"])), "total": 1, "nearest_sols": None}
+    assert_json(response.json(), expected)
 
 
 @pytest.mark.parametrize(
@@ -371,7 +376,13 @@ async def test_pagination_beyond_end_returns_empty_items_with_total(
     assert response.status_code == 200
     assert_json(
         response.json(),
-        {"items": [], "page": int(page), "per_page": int(per_page), "total": OPPORTUNITY_COUNT},
+        {
+            "items": [],
+            "page": int(page),
+            "per_page": int(per_page),
+            "total": OPPORTUNITY_COUNT,
+            "nearest_sols": None,  # total > 0: the page is only out of range
+        },
     )
 
 

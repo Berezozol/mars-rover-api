@@ -41,16 +41,19 @@
 **Rover**
 ```json
 {"id": "perseverance", "name": "Perseverance", "mission": "mars2020",
- "launch_date": "2020-07-30", "landing_date": "2021-02-18", "status": "active",
+ "launch_date": "2020-07-30", "landing_date": "2021-02-18", "end_date": null, "status": "active",
  "max_sol": 2031, "max_date": "2026-11-06", "total_photos": 579518,
- "cameras_count": 23, "last_synced_at": "2026-11-17T06:00:12Z"}
+ "cameras_count": 23, "last_synced_at": "2026-11-17T06:00:12Z", "data_source": "sync"}
 ```
 `max_sol`, `max_date` и `last_synced_at` равны `null`, пока данных нет.
+- `end_date` — дата официального завершения миссии; `null` у действующих. Spirit — `2011-05-25`, Opportunity — `2019-02-13` (справочные даты, не из источника). Последний снимок — по-прежнему `max_date`.
+- `data_source` — откуда снимки: `"sync"` — регулярная синхронизация с фидом (Curiosity, Perseverance), `"archive"` — разовый импорт архива (Spirit, Opportunity); у `"archive"` `last_synced_at` — время импорта.
 
 **Camera**
 ```json
 {"code": "NAVCAM_LEFT", "name": "Left Navigation Camera (Navcam)", "total_photos": 12345}
 ```
+В `/cameras?sol=N` `total_photos` — число снимков камеры за этот сол (см. эндпоинт).
 
 **Photo** (в списках)
 ```json
@@ -62,11 +65,20 @@
  "images": {"small": "..._320.jpg", "medium": "..._800.jpg", "large": "..._1200.jpg", "full": "...png"},
  "credit": "NASA/JPL-Caltech/LANL/CNES/IRAP",
  "source": {"id": "LRF_2031_0847237865_241EBY_N0930000SCAM01031_0100I4J",
-            "link": "https://mars.nasa.gov/mars2020/multimedia/raw-images/LRF_..."}}
+            "link": "https://mars.nasa.gov/mars2020/multimedia/raw-images/LRF_..."},
+ "width": 1648, "height": 1200}
 ```
+`width`, `height` — размер полного кадра в пикселях по данным источника (у Spirit и Opportunity — исходного продукта PDS); по ним можно заранее задать пропорции любого размера из `images`. Оба `null`, если источник размер не даёт (у Curiosity — всегда) или он неразборчив; по отдельности `null` не бывают.
+
 `img_src` всегда равен `images.full`. У Curiosity `small`, `medium` и `large` — `null`. У Spirit и Opportunity (этап 9a, решение владельца): `images.small` — уменьшенный JPEG архива NASA PDS (превью), `images.full` (и `img_src`) — абсолютная ссылка на нашу конвертацию полного кадра `{origin}/api/v2/photos/{id}/image?size=full` (`origin` — от хоста текущего запроса, как на странице `/`), `medium`, `large` и `title` — `null`, `source.link` — исходный продукт PDS `.img`.
 
-**PhotoDetail** = Photo + `caption`, `received_at`, `site`, `drive`, `extra` (объект с техническими полями источника).
+**PhotoDetail** = Photo + `caption`, `received_at`, `site`, `drive`, `extra` (объект с техническими полями источника), `location` (этап 11), `local_time`, `in_sol`.
+```json
+"local_time": {"time": "11:25:43", "kind": "lmst"},
+"in_sol": {"position": 17, "total": 52, "newer_id": 81233, "older_id": 81240}
+```
+- `local_time` — местное солнечное время съёмки на Марсе, `HH:MM:SS` (24 марсианских часа, без долей секунды). `kind`: `"lmst"` — среднее (Curiosity, Perseverance), `"ltst"` — истинное (Spirit, Opportunity; отличается от среднего до ~50 минут). `null`, если источник время не дал: у Curiosity — примерно у половины снимков, у Perseverance — у снимков, загруженных до этой доработки.
+- `in_sol` — место снимка в его соле в порядке списка `/photos` (`taken_at DESC, id DESC`): `position` — номер с 1, `total` — снимков в соле, `newer_id` — предыдущий в списке (снят позже), `older_id` — следующий (снят раньше); `null` у краёв. Учитывает параметры `camera` и `sample_type` запроса `/photos/{id}` (см. эндпоинт). Карточка кэшируется на час — у последних солов, куда снимки ещё доходят, `in_sol` может отставать на это время.
 
 ## Эндпоинты
 
@@ -111,7 +123,8 @@
 `200 Rover` · `404 rover_not_found`
 
 ### `GET /api/v2/rovers/{rover}/cameras`
-`200 {"items": [Camera, ...]}`, сортировка по `code`. · `404 rover_not_found`
+Параметр (необязательный): `sol` — целое ≥ 0, границы общие.
+`200 {"items": [Camera, ...]}`, сортировка по `code`. Без `sol` `total_photos` — по всей миссии; с `sol` — за этот сол, в списке все камеры марсохода, у не снимавших `total_photos: 0` (сол без снимков — все нули). · `404 rover_not_found` · `422 validation_error`
 
 ### `GET /api/v2/rovers/{rover}/photos`
 Параметры (все необязательные):
@@ -122,14 +135,22 @@
 - `page`, `per_page`.
 
 Сортировка всегда: `sol DESC, taken_at DESC, id DESC`.
+Ответ — список Photo с дополнительным ключом `nearest_sols`:
+```json
+{"items": [], "page": 1, "per_page": 25, "total": 0, "nearest_sols": {"before": 2028, "after": 2030}}
+```
+- `nearest_sols` — не `null` только если задан `sol` или `earth_date` и `total = 0`. `before` — наибольший сол со снимками меньше запрошенного, `after` — наименьший больше; `null`, если такого нет. Для `earth_date` сравнивается самая ранняя дата съёмки сола (`manifest.sols[].earth_date`). Фильтры `camera` и `sample_type` не учитываются: это ближайшие солы, где есть хоть какие-то снимки.
+- В остальных случаях `"nearest_sols": null`.
+
 `200` список Photo · `404 rover_not_found` · `422 validation_error`
 
 ### `GET /api/v2/rovers/{rover}/photos/latest`
-Фото за `max_sol` марсохода. Параметры: `camera`, `page`, `per_page`.
+Фото за `max_sol` марсохода (по всем типам). Параметры: `camera`, `sample_type` (как у `/photos`), `page`, `per_page`. `sol` в ответе — всегда `max_sol`, даже если с фильтрами снимков нет (`total: 0`).
 `200 {"sol": 2031, "items": [...], "page": 1, "per_page": 25, "total": 52}`. Если данных нет — `sol: null`, пустой список.
 
 ### `GET /api/v2/photos/{id}`
-`200 PhotoDetail` · `404 photo_not_found`
+Параметры (необязательные, влияют только на `in_sol`): `camera`, `sample_type` — как у `/photos`; неизвестная для марсохода снимка камера или неверный `sample_type` → `422`. С фильтрами `in_sol` считается по снимкам сола, подходящим под них; если сам снимок не подходит — `position: null`, а `newer_id`/`older_id` — ближайшие подходящие по порядку списка.
+`200 PhotoDetail` · `404 photo_not_found` · `422 validation_error`
 
 ### `GET /api/v2/photos/{id}/image?size=full|large|medium|small`
 `size` по умолчанию `full`. Ответ `302`, `Location` — URL NASA, `Cache-Control: public, max-age=86400`. Если нужного размера нет — редирект на `full`.
@@ -152,7 +173,7 @@
 {"rover": Rover,
  "sols": [{"sol": 2031, "earth_date": "2026-11-06", "total_photos": 52, "cameras": ["NAVCAM_LEFT", "SUPERCAM_RMI"]}]}
 ```
-Сортировка `sol DESC`. · `404 rover_not_found` · `422`, если `from_sol > to_sol`.
+Сортировка `sol DESC`; солы без снимков в `sols` отсутствуют. · `404 rover_not_found` · `422`, если `from_sol > to_sol`.
 
 **Waypoint** (стоянка марсохода)
 ```json
@@ -195,7 +216,7 @@
 
 `200` · `404 rover_not_found`
 
-**PhotoDetail**: добавляется поле `location` (последним ключом):
+**PhotoDetail**: добавляется поле `location` (после `extra`, перед `local_time` и `in_sol`):
 ```json
 "location": {"sol": 2020, "site": 93, "drive": 1840, "lat": 18.4447, "lon": 77.3951,
              "elev_geoid": -2489.7, "exact": true}

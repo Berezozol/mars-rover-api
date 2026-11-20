@@ -68,6 +68,26 @@ async def list_cameras_with_counts(
     return [(camera, int(total)) for camera, total in rows]
 
 
+async def list_cameras_with_sol_counts(
+    session: AsyncSession, rover_id: str, sol: int
+) -> list[tuple[Camera, int]]:
+    """All the rover's cameras ordered by code, each with its photo count in the sol
+    (0 for cameras without photos); counts come from camera_sol_counts."""
+    stmt = (
+        select(Camera, func.coalesce(CameraSolCount.total_photos, 0))
+        .outerjoin(
+            CameraSolCount,
+            (CameraSolCount.camera_id == Camera.id)
+            & (CameraSolCount.rover_id == Camera.rover_id)
+            & (CameraSolCount.sol == sol),
+        )
+        .where(Camera.rover_id == rover_id)
+        .order_by(Camera.code)
+    )
+    rows = await session.execute(stmt, execution_options=FRESH)
+    return [(camera, int(total)) for camera, total in rows]
+
+
 async def get_or_create_cameras(
     session: AsyncSession, rover_id: str, codes: Iterable[str]
 ) -> dict[str, Camera]:

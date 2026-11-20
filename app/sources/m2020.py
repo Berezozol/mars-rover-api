@@ -81,7 +81,12 @@ def parse_m2020_image(raw: Mapping[str, Any]) -> PhotoRecord | None:
 def _extra(raw: Mapping[str, Any], camera: Mapping[str, Any]) -> dict[str, Any]:
     camera_rest = {key: value for key, value in camera.items() if key != "instrument"}
     return compact(
-        {"extended": raw.get("extended"), "attitude": raw.get("attitude"), "camera": camera_rest}
+        {
+            "extended": raw.get("extended"),
+            "attitude": raw.get("attitude"),
+            "camera": camera_rest,
+            "date_taken_mars": clean(raw.get("date_taken_mars")),
+        }
     )
 
 

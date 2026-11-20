@@ -50,6 +50,7 @@ ROVER_STATIC: dict[str, dict[str, Any]] = {
         "mission": "msl",
         "launch_date": "2011-11-26",
         "landing_date": "2012-08-06",
+        "end_date": None,
         "status": "active",
     },
     "opportunity": {
@@ -58,6 +59,7 @@ ROVER_STATIC: dict[str, dict[str, Any]] = {
         "mission": "mer",
         "launch_date": "2003-07-07",
         "landing_date": "2004-01-25",
+        "end_date": "2019-02-13",
         "status": "complete",
     },
     "perseverance": {
@@ -66,6 +68,7 @@ ROVER_STATIC: dict[str, dict[str, Any]] = {
         "mission": "mars2020",
         "launch_date": "2020-07-30",
         "landing_date": "2021-02-18",
+        "end_date": None,
         "status": "active",
     },
     "spirit": {
@@ -74,8 +77,17 @@ ROVER_STATIC: dict[str, dict[str, Any]] = {
         "mission": "mer",
         "launch_date": "2003-06-10",
         "landing_date": "2004-01-04",
+        "end_date": "2011-05-25",
         "status": "complete",
     },
+}
+
+# Rover data source (docs/API.md): regular feed sync vs one-time archive import.
+DATA_SOURCE = {
+    "curiosity": "sync",
+    "perseverance": "sync",
+    "spirit": "archive",
+    "opportunity": "archive",
 }
 
 ROVER_KEYS = [
@@ -84,12 +96,14 @@ ROVER_KEYS = [
     "mission",
     "launch_date",
     "landing_date",
+    "end_date",
     "status",
     "max_sol",
     "max_date",
     "total_photos",
     "cameras_count",
     "last_synced_at",
+    "data_source",
 ]
 CAMERA_KEYS = ["code", "name", "total_photos"]
 PHOTO_KEYS = [
@@ -105,8 +119,10 @@ PHOTO_KEYS = [
     "images",
     "credit",
     "source",
+    "width",
+    "height",
 ]
-# Stage 11: `location` is the last key of PhotoDetail.
+# Stage 11: `location`; API v2 improvements: `local_time` and `in_sol` follow it.
 PHOTO_DETAIL_KEYS = [
     *PHOTO_KEYS,
     "caption",
@@ -115,8 +131,13 @@ PHOTO_DETAIL_KEYS = [
     "drive",
     "extra",
     "location",
+    "local_time",
+    "in_sol",
 ]
-LIST_KEYS = ["items", "page", "per_page", "total"]
+IN_SOL_KEYS = ["position", "total", "newer_id", "older_id"]
+LOCAL_TIME_KEYS = ["time", "kind"]
+NEAREST_SOLS_KEYS = ["before", "after"]
+LIST_KEYS = ["items", "page", "per_page", "total", "nearest_sols"]
 LATEST_KEYS = ["sol", "items", "page", "per_page", "total"]
 MANIFEST_KEYS = ["rover", "sols"]
 MANIFEST_SOL_KEYS = ["sol", "earth_date", "total_photos", "cameras"]
@@ -183,6 +204,11 @@ def perseverance_records() -> list[Any]:
             camera_code="NAVCAM_RIGHT",
             sample_type="full",
             taken_at=utc(2026, 11, 6, 10, 0, 0),
+            # Frame size and local time come from `extra` (docs/API.md, Photo/PhotoDetail).
+            extra={
+                "extended": {"dimension": "(1648,1200)", "scaleFactor": "4"},
+                "date_taken_mars": "Sol-02031M11:30:55.785",
+            },
         ),
         _perseverance(
             "p2031-tie2",
@@ -236,7 +262,14 @@ PERSEVERANCE_ORDER = [
 PERSEVERANCE_SOL_2031 = PERSEVERANCE_ORDER[:5]
 
 
-def _curiosity(source_id: str, sol: int, code: str, sample_type: str, hour: int) -> Any:
+def _curiosity(
+    source_id: str,
+    sol: int,
+    code: str,
+    sample_type: str,
+    hour: int,
+    extra: dict[str, Any] | None = None,
+) -> Any:
     taken_at = datetime.combine(date(2012, 8, 6) + timedelta(days=sol), datetime.min.time())
     taken_at = taken_at.replace(hour=hour, tzinfo=UTC)
     return build_record(
@@ -249,6 +282,7 @@ def _curiosity(source_id: str, sol: int, code: str, sample_type: str, hour: int)
         img_full=_img(source_id, ".JPG"),
         credit="NASA/JPL-Caltech/MSSS",
         source_link=f"https://mars.nasa.gov/msl/multimedia/raw-images/?id={source_id}",
+        extra=extra or {},
     )
 
 
@@ -260,7 +294,14 @@ def curiosity_records() -> list[Any]:
         _curiosity("c1-mixed", 1, "MAST_LEFT", "mixed", 4),
         _curiosity("c1-chem", 1, "CHEMCAM_RMI", "chemcam prc", 5),
         _curiosity("c1-down", 1, "MAST_LEFT", "downsampled", 6),
-        _curiosity("c5-mahli", 5, "MAHLI", "full", 7),
+        _curiosity(
+            "c5-mahli",
+            5,
+            "MAHLI",
+            "full",
+            7,
+            extra={"extended": {"lmst": "Sol-00005M11:25:43.222", "dimension": "(9,9)"}},
+        ),
         _curiosity("c10-nav", 10, "NAVCAM", "full", 8),
         _curiosity("c20-sub", 20, "FHAZ", "subframe", 9),
     ]
@@ -283,6 +324,12 @@ OPPORTUNITY_COUNT = 30
 OPPORTUNITY_SOL = 10
 
 
+# o-05 carries the PDS product size and the true solar time.
+OPPORTUNITY_EXTRA = {
+    "o-05": {"line_samples": 1024, "lines": 800, "local_true_solar_time": "12:45:26"}
+}
+
+
 def opportunity_records() -> list[Any]:
     base = datetime(2004, 2, 4, tzinfo=UTC)
     return [
@@ -293,6 +340,7 @@ def opportunity_records() -> list[Any]:
             taken_at=base + timedelta(minutes=n),
             earth_date=base.date(),
             img_full=_img(f"o-{n:02d}", ".jpg"),
+            extra=OPPORTUNITY_EXTRA.get(f"o-{n:02d}", {}),
         )
         for n in range(OPPORTUNITY_COUNT)
     ]
@@ -300,6 +348,17 @@ def opportunity_records() -> list[Any]:
 
 # taken_at grows with n, so newest first is n descending.
 OPPORTUNITY_ORDER = [f"o-{n:02d}" for n in reversed(range(OPPORTUNITY_COUNT))]
+
+# Expected frame size and local time derived from the `extra` of the dataset (by source_id).
+EXPECTED_SIZE: dict[str, tuple[int, int]] = {
+    "p2031-tie1": (1648, 1200),
+    "o-05": (1024, 800),
+}  # c5-mahli (Curiosity) has a "dimension" too, but the size is always null for MSL
+EXPECTED_LOCAL_TIME: dict[str, dict[str, str]] = {
+    "p2031-tie1": {"time": "11:30:55", "kind": "lmst"},
+    "c5-mahli": {"time": "11:25:43", "kind": "lmst"},
+    "o-05": {"time": "12:45:26", "kind": "ltst"},
+}
 
 # Rover cache fields over ALL sample types: (max_sol, max_date, total_photos).
 STATS: dict[str, tuple[int | None, str | None, int]] = {
@@ -333,6 +392,7 @@ class World:
             "total_photos": total,
             "cameras_count": CAMERAS_COUNT[rover_id],
             "last_synced_at": LAST_SYNCED.get(rover_id),
+            "data_source": DATA_SOURCE[rover_id],
         }
 
     def photo(self, source_id: str) -> dict[str, Any]:
@@ -364,6 +424,40 @@ class World:
             "images": images,
             "credit": record.credit,
             "source": {"id": record.source_id, "link": record.source_link},
+            "width": EXPECTED_SIZE.get(source_id, (None, None))[0],
+            "height": EXPECTED_SIZE.get(source_id, (None, None))[1],
+        }
+
+    def in_sol(
+        self, source_id: str, camera: str | None = None, sample_type: str | None = None
+    ) -> dict[str, Any]:
+        """Reference model of `in_sol`: the sol's photos in list order, optionally filtered."""
+        rover_id, record = self.records[source_id]
+        group = sorted(
+            (
+                (sid, rec)
+                for sid, (rid, rec) in self.records.items()
+                if rid == rover_id and rec.sol == record.sol
+            ),
+            key=lambda item: (item[1].taken_at, self.photo_ids[item[0]]),
+            reverse=True,
+        )
+
+        def matches(rec: Any) -> bool:
+            return (camera is None or rec.camera_code.upper() == camera.upper()) and (
+                sample_type is None or rec.sample_type == sample_type
+            )
+
+        matching = [sid for sid, rec in group if matches(rec)]
+        all_ids = [sid for sid, _ in group]
+        at = all_ids.index(source_id)
+        newer = [sid for sid in all_ids[:at] if sid in matching]
+        older = [sid for sid in all_ids[at + 1 :] if sid in matching]
+        return {
+            "position": len(newer) + 1 if source_id in matching else None,
+            "total": len(matching),
+            "newer_id": self.photo_ids[newer[-1]] if newer else None,
+            "older_id": self.photo_ids[older[0]] if older else None,
         }
 
     def photos(self, source_ids: Sequence[str]) -> list[dict[str, Any]]:
@@ -380,6 +474,8 @@ class World:
             "extra": record.extra,
             # No waypoints in the shared dataset: the location is always null here.
             "location": None,
+            "local_time": EXPECTED_LOCAL_TIME.get(source_id),
+            "in_sol": self.in_sol(source_id),
         }
 
     def ids(self, source_ids: Sequence[str]) -> list[int]:

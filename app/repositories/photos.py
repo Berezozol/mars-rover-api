@@ -2,7 +2,7 @@
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import Any, Literal
 
 from sqlalchemy import (
@@ -18,6 +18,7 @@ from sqlalchemy import (
     literal_column,
     or_,
     select,
+    tuple_,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, Insert, aggregate_order_by
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -332,3 +333,74 @@ async def newest_earth_date(session: AsyncSession, rover_id: str) -> date | None
     """Latest real earth_date of the rover's photos (index ix_photos_rover_id_earth_date)."""
     stmt = select(func.max(Photo.earth_date)).where(Photo.rover_id == rover_id)
     return await session.scalar(stmt)
+
+
+async def sol_position(
+    session: AsyncSession,
+    flt: PhotoFilter,
+    taken_at: datetime,
+    photo_id: int,
+    matches: bool = True,
+) -> tuple[int | None, int, int | None, int | None]:
+    """Place of a photo among the filter's photos of one sol, in the /photos order.
+
+    Returns ``(position, total, newer_id, older_id)``: ``position`` counts from 1 and is None
+    when the photo itself does not match the filter; neighbours are the nearest matching
+    photos before / after it in the list order (``taken_at DESC, id DESC``). ``flt.sol`` is
+    required. ``matches`` tells whether the photo itself passes the filter (the caller knows
+    it from the loaded photo).
+
+    Without camera / sample_type filters ``total`` comes from sol_summaries and assumes they
+    are in sync with photos (the sync commits both together).
+    """
+    if flt.sol is None:
+        raise ValueError("sol_position needs flt.sol")
+    key = tuple_(Photo.taken_at, Photo.id)
+    here = tuple_(taken_at, photo_id)
+    newer_stmt = (
+        _filtered(select(Photo.id), flt)
+        .where(key > here)
+        .order_by(Photo.taken_at, Photo.id)
+        .limit(1)
+    )
+    older_stmt = (
+        _filtered(select(Photo.id), flt)
+        .where(key < here)
+        .order_by(Photo.taken_at.desc(), Photo.id.desc())
+        .limit(1)
+    )
+    newer_id = await session.scalar(newer_stmt)
+    older_id = await session.scalar(older_stmt)
+    if flt.camera_codes is None and flt.sample_type is None:
+        total = await sol_total_photos(session, flt.rover_id, flt.sol)
+        ahead = await session.scalar(_filtered(select(func.count(Photo.id)), flt).where(key > here))
+        return (ahead or 0) + 1, total, newer_id, older_id
+    total = await count_photos(session, flt)
+    if not matches:
+        return None, total, newer_id, older_id
+    ahead = await session.scalar(_filtered(select(func.count(Photo.id)), flt).where(key > here))
+    return (ahead or 0) + 1, total, newer_id, older_id
+
+
+async def nearest_sols(
+    session: AsyncSession,
+    rover_id: str,
+    *,
+    sol: int | None = None,
+    earth_date: date | None = None,
+) -> tuple[int | None, int | None]:
+    """``(before, after)``: the nearest sols with photos below / above the sol or earth_date.
+
+    By ``earth_date`` the sol's earliest capture date (sol_summaries) is compared. Without
+    either argument both are None.
+    """
+    if sol is not None:
+        below, above = SolSummary.sol < sol, SolSummary.sol > sol
+    elif earth_date is not None:
+        below, above = SolSummary.earth_date < earth_date, SolSummary.earth_date > earth_date
+    else:
+        return None, None
+    base = SolSummary.rover_id == rover_id
+    before = await session.scalar(select(func.max(SolSummary.sol)).where(base, below))
+    after = await session.scalar(select(func.min(SolSummary.sol)).where(base, above))
+    return before, after

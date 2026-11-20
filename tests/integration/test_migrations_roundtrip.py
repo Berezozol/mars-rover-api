@@ -336,3 +336,41 @@ def test_migration_0006_downgrade_drops_location_tables_and_upgrade_recreates_th
         assert state["tables"] >= LOCATION_TABLES
     finally:
         command.upgrade(alembic_cfg, "head")
+
+
+# --- 0007: rovers.end_date (API v2 improvements) -----------------------------------------------
+
+
+def _rover_columns(url: str) -> set[str]:
+    rows = asyncio.run(
+        _fetch(
+            url,
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND table_name = 'rovers'",
+        )
+    )
+    return {r["column_name"] for r in rows}
+
+
+def test_migration_0007_downgrade_drops_end_date_and_upgrade_restores_seed_dates(
+    migrated_db: str, alembic_cfg: AlembicConfig
+) -> None:
+    try:
+        assert "end_date" in _rover_columns(migrated_db)
+        command.downgrade(alembic_cfg, "0006")
+        state = asyncio.run(_db_state(migrated_db))
+        assert state["versions"] == ["0006"]
+        assert "end_date" not in _rover_columns(migrated_db)
+        # Nothing else is touched.
+        assert state["counts"] == {"rovers": 4, "cameras": 17 + 7 + 6 + 6}
+        command.upgrade(alembic_cfg, "0007")
+        assert asyncio.run(_db_state(migrated_db))["versions"] == ["0007"]
+        rows = asyncio.run(_fetch(migrated_db, "SELECT id, end_date::text AS d FROM rovers"))
+        assert {r["id"]: r["d"] for r in rows} == {
+            "curiosity": None,
+            "perseverance": None,
+            "spirit": "2011-05-25",
+            "opportunity": "2019-02-13",
+        }
+    finally:
+        command.upgrade(alembic_cfg, "head")

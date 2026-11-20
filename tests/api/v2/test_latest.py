@@ -134,10 +134,108 @@ async def test_latest_invalid_param_returns_422(
     assert_validation_error(response, param)
 
 
-async def test_latest_ignores_sol_and_sample_type(client: httpx.AsyncClient, world: World) -> None:
-    """Only camera/page/per_page are parameters of latest; others are unknown -> ignored."""
-    params = {"sol": "1", "sample_type": "full"}
+async def test_latest_ignores_sol(client: httpx.AsyncClient, world: World) -> None:
+    """`sol` is not a parameter of latest (camera/sample_type/page/per_page are): ignored."""
+    params = {"sol": "1"}
     body = (await client.get(latest_url("perseverance"), params=params)).json()
 
     assert body["sol"] == 2031
     assert body["total"] == len(PERSEVERANCE_SOL_2031)
+
+
+# --- sample_type -------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("sample_type", "expected"),
+    [
+        ("full", ["p2031-next-day", "p2031-a", "p2031-tie1"]),
+        ("subframe", ["p2031-tie2"]),
+        ("downsampled", ["p2031-early"]),
+    ],
+)
+async def test_latest_filter_sample_type(
+    client: httpx.AsyncClient, world: World, sample_type: str, expected: list[str]
+) -> None:
+    response = await client.get(latest_url("perseverance"), params={"sample_type": sample_type})
+
+    assert response.status_code == 200
+    assert_json(
+        response.json(),
+        {
+            "sol": 2031,
+            "items": world.photos(expected),
+            "page": 1,
+            "per_page": 25,
+            "total": len(expected),
+        },
+    )
+
+
+async def test_latest_sample_type_and_camera_combine(
+    client: httpx.AsyncClient, world: World
+) -> None:
+    params = {"sample_type": "full", "camera": "NAVCAM_RIGHT"}
+
+    body = (await client.get(latest_url("perseverance"), params=params)).json()
+
+    assert body["sol"] == 2031
+    assert_json(body["items"], world.photos(["p2031-tie1"]))
+    assert body["total"] == 1
+
+
+async def test_latest_sample_type_pagination_counts_the_filtered_list(
+    client: httpx.AsyncClient, world: World
+) -> None:
+    params = {"sample_type": "full", "page": "2", "per_page": "2"}
+
+    body = (await client.get(latest_url("perseverance"), params=params)).json()
+
+    assert (body["sol"], body["page"], body["per_page"], body["total"]) == (2031, 2, 2, 3)
+    assert_json(body["items"], world.photos(["p2031-tie1"]))
+
+
+async def test_latest_sample_type_with_no_photos_on_max_sol_keeps_max_sol(
+    client: httpx.AsyncClient, world: World
+) -> None:
+    """Curiosity: sol 20 has only a subframe; the latest *full* frames are on sol 10."""
+    response = await client.get(latest_url("curiosity"), params={"sample_type": "full"})
+
+    assert response.status_code == 200
+    assert_json(response.json(), {"sol": 20, "items": [], "page": 1, "per_page": 25, "total": 0})
+
+
+async def test_latest_sample_type_matching_max_sol_returns_it(
+    client: httpx.AsyncClient, world: World
+) -> None:
+    response = await client.get(latest_url("curiosity"), params={"sample_type": "subframe"})
+
+    assert_json(
+        response.json(),
+        {"sol": 20, "items": world.photos(["c20-sub"]), "page": 1, "per_page": 25, "total": 1},
+    )
+
+
+async def test_latest_sample_type_for_rover_without_data_returns_null_sol(
+    client: httpx.AsyncClient, world: World
+) -> None:
+    response = await client.get(latest_url("spirit"), params={"sample_type": "full"})
+
+    assert response.status_code == 200
+    assert_json(response.json(), {"sol": None, "items": [], "page": 1, "per_page": 25, "total": 0})
+
+
+async def test_latest_sample_type_value_is_case_insensitive_like_in_photos(
+    client: httpx.AsyncClient, world: World
+) -> None:
+    response = await client.get(latest_url("perseverance"), params={"sample_type": "FULL"})
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 3
+
+
+async def test_latest_etag_differs_by_sample_type(client: httpx.AsyncClient, world: World) -> None:
+    plain = await client.get(latest_url("perseverance"))
+    full = await client.get(latest_url("perseverance"), params={"sample_type": "full"})
+
+    assert plain.headers["etag"] != full.headers["etag"]

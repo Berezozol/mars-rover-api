@@ -128,6 +128,7 @@ def test_parse_m2020_image_recorded_navcam_maps_every_field() -> None:
     assert record.extra == {
         "extended": raw["extended"],
         "attitude": "(0.540374,-0.0557616,-0.0466456,-0.838279)",
+        "date_taken_mars": raw["date_taken_mars"],
         "camera": {
             "camera_vector": raw["camera"]["camera_vector"],
             "camera_model_component_list": raw["camera"]["camera_model_component_list"],
@@ -185,6 +186,7 @@ def test_parse_m2020_image_quirks_are_normalized() -> None:
     assert record.drive is None  # "UNK"
     assert record.extra == {
         "extended": {"sclk": "755730347.366", "subframeRect": "(1,1,5120,3840)"},
+        "date_taken_mars": "Sol-01000M16:39:47.066",
         "camera": {"camera_model_type": "CAHVORE"},
     }
 
@@ -819,3 +821,50 @@ async def test_fetch_sols_refetches_only_sols_at_the_short_page_boundary(
     # 1003 straddles a boundary too, but that boundary delivered everything.
     assert single == {1002, 1001}
     assert route.call_count == 4 + 2 + 1
+
+
+# --- date_taken_mars lands in extra (API v2 improvements: local_time) ---------------------
+
+
+def test_parse_m2020_image_date_taken_mars_is_kept_in_extra() -> None:
+    raw = load_fixture("m2020/sol_2029_page1.json")["images"][0]
+    assert raw["date_taken_mars"] == "Sol-02024M13:07:38.713"  # fixture precondition
+
+    record = m2020.parse_m2020_image(raw)
+
+    assert record is not None
+    assert record.extra["date_taken_mars"] == "Sol-02024M13:07:38.713"
+
+
+def test_parse_m2020_image_date_taken_mars_gives_local_time_and_dimension_gives_size() -> None:
+    from app.sources.photo_meta import frame_size, local_time
+
+    raw = load_fixture("m2020/sol_2029_page1.json")["images"][0]
+
+    record = m2020.parse_m2020_image(raw)
+
+    assert record is not None
+    meta = local_time("perseverance", record.extra)
+    assert meta is not None and (meta.time, meta.kind) == ("13:07:38", "lmst")
+    assert frame_size("perseverance", record.extra) == (1648, 1200)
+
+
+@pytest.mark.parametrize("value", ["UNK", "", None], ids=["unk", "empty", "null"])
+def test_parse_m2020_image_unknown_date_taken_mars_is_not_stored(value: str | None) -> None:
+    raw = copy.deepcopy(load_fixture("m2020/sol_2029_page1.json")["images"][0])
+    raw["date_taken_mars"] = value
+
+    record = m2020.parse_m2020_image(raw)
+
+    assert record is not None
+    assert "date_taken_mars" not in record.extra
+
+
+def test_parse_m2020_image_missing_date_taken_mars_is_not_stored() -> None:
+    raw = copy.deepcopy(load_fixture("m2020/sol_2029_page1.json")["images"][0])
+    del raw["date_taken_mars"]
+
+    record = m2020.parse_m2020_image(raw)
+
+    assert record is not None
+    assert "date_taken_mars" not in record.extra

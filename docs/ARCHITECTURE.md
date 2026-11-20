@@ -58,6 +58,7 @@ app/
     msl.py             адаптер Curiosity
     registry.py        какие марсоходы синхронизируются и каким адаптером
     locations.py       адаптер положения (MMGIS): условный запрос, разбор waypoints/traverse (этап 11)
+    photo_meta.py      размер кадра и местное время из `extra` при чтении (чистые функции по формату миссии)
   services/
     sync.py            синхронизация марсохода
     backfill.py        загрузка истории пачками с возобновлением (через SyncService)
@@ -88,7 +89,7 @@ docs/
 
 ## Модель данных
 
-- `rovers` — `id` (slug: `curiosity`, `perseverance`, `opportunity`, `spirit`), `legacy_id` (smallint, уникальный; числовой `id` для v1, где `rover.id` и `camera.rover_id` — числа: Curiosity 5, Opportunity 6, Spirit 7, Perseverance 8), `name`, `mission` (`msl`, `mars2020`, `mer`), `launch_date`, `landing_date`, `status`, кэш-поля `max_sol`, `max_date`, `total_photos`, `last_synced_at` и те же счётчики только по полнокадровым снимкам для v1: `full_max_sol`, `full_max_date`, `full_total_photos`.
+- `rovers` — `id` (slug: `curiosity`, `perseverance`, `opportunity`, `spirit`), `legacy_id` (smallint, уникальный; числовой `id` для v1, где `rover.id` и `camera.rover_id` — числа: Curiosity 5, Opportunity 6, Spirit 7, Perseverance 8), `name`, `mission` (`msl`, `mars2020`, `mer`), `launch_date`, `landing_date`, `end_date` (миграция 0007: справочная дата завершения миссии, Spirit и Opportunity), `status`, кэш-поля `max_sol`, `max_date`, `total_photos`, `last_synced_at` и те же счётчики только по полнокадровым снимкам для v1: `full_max_sol`, `full_max_date`, `full_total_photos`.
 - `cameras` — `id`, `rover_id`, `code` (как в источнике, верхний регистр), `name` (полное имя из справочника в коде, иначе = code), `sort_order` (порядок оригинала — по нему сортирует v1). Уникальность `(rover_id, code)`. Неизвестная камера создаётся автоматически в конце порядка.
 - `photos` — `id` (bigserial), `rover_id`, `camera_id`, `source_id`, `sol`, `earth_date`, `taken_at`, `received_at`, `sample_type`, `img_full`, `img_small`, `img_medium`, `img_large`, `title`, `caption`, `credit`, `source_link`, `site`, `drive`, `extra` (jsonb), `created_at`, `updated_at`.
   Уникальность `(rover_id, source_id)`. Индексы под запросы API: `(rover_id, sol DESC, taken_at DESC)`, `(rover_id, earth_date)`, `(rover_id, camera_id, sol)`, частичный `(rover_id, sol, camera_id, id) WHERE sample_type = 'full'` — под v1.
@@ -102,6 +103,7 @@ docs/
   - `rover_traverse_segments` — маршрут: PK `(rover_id, seq)` (порядок движения), `sol` (`NULL` у Curiosity — источник его не даёт), `length_m`, `coordinates` jsonb `[[lon, lat], ...]` (без высоты, 7 знаков). `MultiLineString` источника разложен на `LineString`.
   - `location_datasets` — состояние файла: PK `(rover_id, kind)` (`waypoints`/`traverse`), `created_at` (первая попытка), `checked_at`, `succeeded_at` (успешная проверка: `304` или принятый `200`), `changed_at`, `etag`, `last_modified`, `content_sha256`, `items`, `dropped`, `max_sol`, `last_error`.
   - Снимок → стоянка — запросом во время чтения, без денормализации: стоянка того же `site` с наибольшим `drive ≤ drive` снимка (`exact`, если равен). `photos` не меняется.
+- **Вычисляемые поля v2 (доработки под интерфейс, 2026-11-20, `docs/proposals/api-v2-ui-improvements.md`).** `width`/`height` и `local_time` не хранятся отдельно: `app/sources/photo_meta.py` разбирает их из `extra` при чтении (M20 — `extended.dimension`, `date_taken_mars`; MSL — `extended.lmst`; MER — `line_samples`/`lines`, `local_true_solar_time` как LTST). `data_source` выводится из списка синхронизируемых марсоходов. `in_sol` — запросы по `(taken_at, id)` в пределах сола по индексу `(rover_id, sol, taken_at)`; `total` без фильтров — из `sol_summaries`. `nearest_sols` — по `sol_summaries`, только при пустом ответе.
 - `sync_runs` — журнал: `id`, `rover_id`, `mode` (`incremental` / `backfill`), `from_sol`, `to_sol`, `status` (`running` / `success` / `partial` / `failed`), `started_at`, `finished_at`, `photos_upserted`, `failed_sols` (массив солов), `source_total` (итог диапазона по данным источника, если известен), `error`. Строки `running`, оставшиеся от убитого процесса, следующий запуск того же марсохода (под его блокировкой) помечает `failed` с ошибкой `abandoned`.
 
 ## Синхронизация

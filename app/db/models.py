@@ -52,6 +52,8 @@ class Rover(Base):
     mission: Mapped[str] = mapped_column(Text)
     launch_date: Mapped[date] = mapped_column(Date)
     landing_date: Mapped[date] = mapped_column(Date)
+    # Official end of the mission; NULL for active rovers.
+    end_date: Mapped[date | None] = mapped_column(Date)
     status: Mapped[str] = mapped_column(Text)
     max_sol: Mapped[int | None] = mapped_column(Integer)
     max_date: Mapped[date | None] = mapped_column(Date)

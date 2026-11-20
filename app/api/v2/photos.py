@@ -7,7 +7,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.home import request_origin
-from app.api.v2.params import PhotoIdPath
+from app.api.v2.params import CameraParam, PhotoIdPath, SampleTypeParam
 from app.api.v2.schemas import ErrorResponse, PhotoDetailOut, photo_detail_out
 from app.db.session import get_session
 from app.services import v2
@@ -30,8 +30,12 @@ async def get_photo(
     request: Request,
     id: PhotoIdPath,
     session: Annotated[AsyncSession, Depends(get_session)],
+    camera: CameraParam = None,
+    sample_type: SampleTypeParam = None,
 ) -> PhotoDetailOut:
-    return photo_detail_out(await v2.get_photo_detail(session, id), request_origin(request))
+    # camera / sample_type narrow only in_sol; the ETag follows the body, so it differs with them.
+    detail = await v2.get_photo_detail(session, id, camera, sample_type)
+    return photo_detail_out(detail, request_origin(request))
 
 
 IMAGE_CACHE_CONTROL = "public, max-age=86400"

@@ -118,7 +118,7 @@ async def test_photo_detail_location_exact_stop(
     assert body["location"] == stop_json(PERSEVERANCE_STOPS[1], True)
     assert list(body["location"]) == LOCATION_KEYS
     assert list(body) == PHOTO_DETAIL_KEYS
-    assert list(body)[-1] == "location"
+    assert list(body)[-3] == "location"  # followed by local_time and in_sol
 
 
 async def test_photo_detail_location_first_stop_of_the_site_is_exact(

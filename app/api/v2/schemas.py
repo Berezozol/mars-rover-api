@@ -13,10 +13,14 @@ from app.services.locations import LocationData, PhotoLocation, TraverseData
 from app.services.v2 import (
     CameraInfo,
     LatestPhotos,
+    LocalTime,
     Manifest,
+    NearestSols,
     PhotoDetail,
+    PhotoMeta,
     PhotoPage,
     RoverInfo,
+    SolPosition,
 )
 
 
@@ -44,12 +48,14 @@ class RoverOut(BaseModel):
     mission: str
     launch_date: date
     landing_date: date
+    end_date: date | None
     status: str
     max_sol: int | None
     max_date: date | None
     total_photos: int
     cameras_count: int
     last_synced_at: UtcDateTime | None
+    data_source: Literal["sync", "archive"]
 
 
 class RoversResponse(BaseModel):
@@ -96,6 +102,8 @@ class PhotoOut(BaseModel):
     images: ImagesOut
     credit: str | None
     source: SourceOut
+    width: int | None
+    height: int | None
 
 
 class PhotoLocationOut(BaseModel):
@@ -109,6 +117,18 @@ class PhotoLocationOut(BaseModel):
     exact: bool
 
 
+class LocalTimeOut(BaseModel):
+    time: str
+    kind: Literal["lmst", "ltst"]
+
+
+class InSolOut(BaseModel):
+    position: int | None
+    total: int
+    newer_id: int | None
+    older_id: int | None
+
+
 class PhotoDetailOut(PhotoOut):
     caption: str | None
     received_at: UtcDateTime | None
@@ -116,6 +136,8 @@ class PhotoDetailOut(PhotoOut):
     drive: int | None
     extra: dict[str, Any]
     location: PhotoLocationOut | None
+    local_time: LocalTimeOut | None
+    in_sol: InSolOut
 
 
 class WaypointOut(BaseModel):
@@ -170,11 +192,17 @@ class TraverseResponse(BaseModel):
     features: list[TraverseFeatureOut]
 
 
+class NearestSolsOut(BaseModel):
+    before: int | None
+    after: int | None
+
+
 class PhotosResponse(BaseModel):
     items: list[PhotoOut]
     page: int
     per_page: int
     total: int
+    nearest_sols: NearestSolsOut | None
 
 
 class LatestPhotosResponse(BaseModel):
@@ -217,12 +245,14 @@ def rover_dict(info: RoverInfo) -> Json:
         "mission": rover.mission,
         "launch_date": rover.launch_date,
         "landing_date": rover.landing_date,
+        "end_date": rover.end_date,
         "status": rover.status,
         "max_sol": rover.max_sol,
         "max_date": rover.max_date,
         "total_photos": rover.total_photos,
         "cameras_count": info.cameras_count,
         "last_synced_at": _utc_z_or_none(rover.last_synced_at),
+        "data_source": v2.data_source(rover.id),
     }
 
 
@@ -244,8 +274,9 @@ def _image_urls(photo: Photo, origin: str) -> tuple[str | None, str]:
     return photo.img_small, photo.img_full
 
 
-def photo_dict(photo: Photo, origin: str) -> Json:
+def photo_dict(photo: Photo, origin: str, meta: PhotoMeta | None = None) -> Json:
     small, full = _image_urls(photo, origin)
+    meta = meta or v2.photo_meta(photo)
     return {
         "id": photo.id,
         "rover": photo.rover_id,
@@ -264,6 +295,8 @@ def photo_dict(photo: Photo, origin: str) -> Json:
         },
         "credit": photo.credit,
         "source": {"id": photo.source_id, "link": photo.source_link},
+        "width": meta.width,
+        "height": meta.height,
     }
 
 
@@ -284,15 +317,37 @@ def photo_location_out(location: PhotoLocation | None) -> PhotoLocationOut | Non
 
 def photo_detail_out(detail: PhotoDetail, origin: str) -> PhotoDetailOut:
     photo = detail.photo
+    meta = v2.photo_meta(photo)
     return PhotoDetailOut(
-        **photo_dict(photo, origin),
+        **photo_dict(photo, origin, meta),
         caption=photo.caption,
         received_at=photo.received_at,
         site=photo.site,
         drive=photo.drive,
         extra=photo.extra or {},
         location=photo_location_out(detail.location),
+        local_time=_local_time_out(meta.local_time),
+        in_sol=_in_sol_out(detail.in_sol),
     )
+
+
+def _local_time_out(value: LocalTime | None) -> LocalTimeOut | None:
+    return LocalTimeOut(time=value.time, kind=value.kind) if value is not None else None
+
+
+def _in_sol_out(value: SolPosition) -> InSolOut:
+    return InSolOut(
+        position=value.position,
+        total=value.total,
+        newer_id=value.newer_id,
+        older_id=value.older_id,
+    )
+
+
+def _nearest_sols_dict(value: NearestSols | None) -> Json | None:
+    if value is None:
+        return None
+    return {"before": value.before, "after": value.after}
 
 
 def photos_body(result: PhotoPage, origin: str) -> Json:
@@ -301,6 +356,7 @@ def photos_body(result: PhotoPage, origin: str) -> Json:
         "page": result.page,
         "per_page": result.per_page,
         "total": result.total,
+        "nearest_sols": _nearest_sols_dict(result.nearest_sols),
     }
 
 
