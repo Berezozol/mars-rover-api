@@ -6,7 +6,7 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, PlainSerializer, StrictInt, StrictStr
 
 from app.api.v2.params import MAX_SOL
-from app.db.models import Photo, SolSummary, SyncRun
+from app.db.models import IngenuityFlight, Photo, SolSummary, SyncRun
 from app.services import v2
 from app.services.admin import RunPage
 from app.services.locations import LocationData, PhotoLocation, TraverseData
@@ -138,6 +138,28 @@ class PhotoDetailOut(PhotoOut):
     location: PhotoLocationOut | None
     local_time: LocalTimeOut | None
     in_sol: InSolOut
+    flight: int | None
+
+
+class FlightOut(BaseModel):
+    """An Ingenuity flight; ``from``/``to`` are Python keywords, hence the aliases."""
+
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
+
+    flight: int
+    sol: int
+    date: date
+    distance_m: int
+    max_altitude_m: int
+    max_groundspeed_mps: float
+    duration_s: float
+    from_: str = Field(alias="from")
+    to: str | None
+    total_photos: int
+
+
+class FlightsResponse(BaseModel):
+    items: list[FlightOut]
 
 
 class WaypointOut(BaseModel):
@@ -328,7 +350,28 @@ def photo_detail_out(detail: PhotoDetail, origin: str) -> PhotoDetailOut:
         location=photo_location_out(detail.location),
         local_time=_local_time_out(meta.local_time),
         in_sol=_in_sol_out(detail.in_sol),
+        flight=detail.flight,
     )
+
+
+def flight_dict(flight: IngenuityFlight, total_photos: int) -> Json:
+    """Numerics are sent as JSON numbers (``Decimal`` columns become floats)."""
+    return {
+        "flight": flight.flight,
+        "sol": flight.sol,
+        "date": flight.date,
+        "distance_m": flight.distance_m,
+        "max_altitude_m": flight.max_altitude_m,
+        "max_groundspeed_mps": float(flight.max_groundspeed_mps),
+        "duration_s": float(flight.duration_s),
+        "from": flight.route_from,
+        "to": flight.route_to,
+        "total_photos": total_photos,
+    }
+
+
+def flights_body(items: list[tuple[IngenuityFlight, int]]) -> Json:
+    return {"items": [flight_dict(flight, total) for flight, total in items]}
 
 
 def _local_time_out(value: LocalTime | None) -> LocalTimeOut | None:

@@ -9,6 +9,7 @@ import {
   type PhotoDetail,
   type PhotoQuery,
 } from "../api/types";
+import { FlightBadge, FlightBlock } from "../components/FlightBlock";
 import { LocationBlock } from "../components/LocationBlock";
 import { photoHref } from "../components/PhotoTile";
 import { PhotoTile } from "../components/PhotoTile";
@@ -56,11 +57,16 @@ export function parseFrom(from: string | null): { rover: string; query: PhotoQue
   if (parts.length !== 2 || parts[0] !== "rovers" || !parts[1]) return null;
   const q = url.searchParams;
   const num = (k: string) => (/^\d+$/.test(q.get(k) ?? "") ? Number(q.get(k)) : undefined);
+  const raw = (k: string) => q.get(k) ?? undefined;
   const query: PhotoQuery = {
     sol: num("sol"),
     earth_date: q.get("earth_date") ?? undefined,
     camera: q.get("camera") ?? undefined,
     sample_type: q.get("sample_type") ?? undefined,
+    // Stop filters are passed as-is, even when invalid: the API answers 422 and says why.
+    site: raw("site"),
+    drive_from: raw("drive_from"),
+    drive_to: raw("drive_to"),
     page: num("page") ?? 1,
     per_page: num("per_page") ?? 24,
   };
@@ -97,7 +103,10 @@ export interface ListContext {
 export function listContext(from: string | null): ListContext {
   const ctx = parseFrom(from);
   if (!from || !ctx) return { from: null, byDate: false, filters: {} };
-  if (ctx.query.earth_date !== undefined) return { from, byDate: true, filters: {} };
+  // Earth-date and stop lists are not a single sol: `in_sol` cannot describe them, they are walked.
+  if (ctx.query.earth_date !== undefined || ctx.query.site !== undefined) {
+    return { from, byDate: true, filters: {} };
+  }
   const camera = ctx.query.camera?.toUpperCase();
   const st = ctx.query.sample_type;
   return {
@@ -122,7 +131,7 @@ export function neighborsFromInSol(inSol: InSol, from: string | null): Neighbors
   };
 }
 
-/** Earth-date lists only: neighbours inside the list page the visitor came from (edges fetch one more page). */
+/** Earth-date and stop lists: neighbours inside the list page the visitor came from (edges fetch one more page). */
 async function loadDateNeighbors(photo: PhotoDetail, from: string): Promise<Neighbors | null> {
   const ctx = parseFrom(from);
   if (!ctx || ctx.rover !== photo.rover) return null;
@@ -549,6 +558,7 @@ function Meta({
         <div class="row" style={{ gap: 8, marginBottom: "var(--s3)" }}>
           <span class="badge no-dot">{photo.sample_type}</span>
           <span class="badge no-dot mono">#{photo.id}</span>
+          <FlightBadge photo={photo} />
         </div>
         <dl>
           <dt>Rover</dt>
@@ -611,6 +621,8 @@ function Meta({
           )}
         </dl>
       </section>
+
+      <FlightBlock photo={photo} />
 
       {photo.location && <LocationBlock rover={photo.rover} roverName={rn} loc={photo.location} />}
 

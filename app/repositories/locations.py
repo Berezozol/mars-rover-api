@@ -98,6 +98,17 @@ async def list_traverse(session: AsyncSession, rover_id: str) -> Sequence[Row[An
     return (await session.execute(query)).all()
 
 
+async def latest_waypoint(session: AsyncSession, rover_id: str) -> RoverWaypoint | None:
+    """The last stop in driving order (highest sol, site, drive), or None without stops."""
+    query = (
+        select(RoverWaypoint)
+        .where(RoverWaypoint.rover_id == rover_id)
+        .order_by(RoverWaypoint.sol.desc(), RoverWaypoint.site.desc(), RoverWaypoint.drive.desc())
+        .limit(1)
+    )
+    return await session.scalar(query)
+
+
 async def find_waypoint_for_photo(
     session: AsyncSession, rover_id: str, site: int, drive: int
 ) -> RoverWaypoint | None:

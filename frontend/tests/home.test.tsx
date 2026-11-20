@@ -79,7 +79,8 @@ describe("Home", () => {
     render(<App />);
     await screen.findByText("All 52 full frames of sol 2031 →");
     expect(screen.getByText(/ended 2011-05-25/)).toBeTruthy();
-    expect(screen.getByText(/^Imported/)).toBeTruthy();
+    expect(screen.getByText("Imported")).toBeTruthy(); // the badge
+    expect(screen.getByText(/one-off archive, not updated/)).toBeTruthy();
     expect(screen.getAllByText(/^Synced/)).toHaveLength(1); // only the active, synced rover
     expect(screen.getAllByRole("link", { name: "Route map" })[0]?.getAttribute("href")).toBe(
       "/rovers/perseverance/map",

@@ -85,6 +85,25 @@ export interface PhotoDetail extends Photo {
   location?: PhotoLocation | null;
   local_time?: LocalTime | null;
   in_sol?: InSol | null;
+  /** Ingenuity only: number of the flight made on the sol of the photo, or null. Always null for other rovers. */
+  flight?: number | null;
+}
+
+/** One Ingenuity flight from the flight log (`GET /rovers/ingenuity/flights`). */
+export interface Flight {
+  flight: number;
+  sol: number;
+  /** Pacific time, as in the log; the sol is the reliable key. */
+  date: string;
+  distance_m: number;
+  max_altitude_m: number;
+  max_groundspeed_mps: number;
+  duration_s: number;
+  from: string;
+  /** null when the log does not name a landing site. */
+  to: string | null;
+  /** All Ingenuity photos of the flight's sol (not only those from the flight). */
+  total_photos: number;
 }
 
 export interface PhotoPage {
@@ -122,6 +141,10 @@ export interface PhotoQuery {
   earth_date?: string;
   camera?: string;
   sample_type?: string;
+  /** Stop filter: `drive_from` / `drive_to` only together with `site` (inclusive). */
+  site?: number | string;
+  drive_from?: number | string;
+  drive_to?: number | string;
   page?: number;
   per_page?: number;
 }

@@ -32,6 +32,7 @@ APP_TABLES = {
     "rover_waypoints",
     "rover_traverse_segments",
     "location_datasets",
+    "ingenuity_flights",
 }
 
 
@@ -102,7 +103,7 @@ def test_migrations_downgrade_to_base_and_upgrade_restores_schema_and_seed(
     after_up = asyncio.run(_db_state(migrated_db))
     assert after_up["tables"] >= APP_TABLES
     assert after_up["versions"] == [head]
-    assert after_up["counts"] == {"rovers": 4, "cameras": 17 + 7 + 6 + 6}
+    assert after_up["counts"] == {"rovers": 5, "cameras": 17 + 7 + 6 + 6 + 2}
 
 
 def test_migrations_step_down_and_up_each_revision(

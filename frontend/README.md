@@ -41,21 +41,22 @@ interface routes (`/`, `/rovers/{rover}`, `/rovers/{rover}/timeline`, `/rovers/{
 
 ## Addresses
 
-| Path                       | Screen                                                                                                                            |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `/`                        | rovers, quick jump, latest photos                                                                                                 |
-| `/rovers/{rover}`          | photo browser; query `sol` or `earth_date`, `camera`, `sample_type`, `page`, `per_page`; without sol/date: latest sol (`max_sol`) |
-| `/rovers/{rover}/timeline` | mission timeline; query `from_sol`, `to_sol`                                                                                      |
-| `/rovers/{rover}/map`      | route map (SVG on a lat/lon grid, no basemap); query `from_sol`, `to_sol` (highlight), `sol`+`site`+`drive` (selected stop)       |
-| `/photos/{id}`             | photo card; `?from=/rovers/...` carries the list's camera/sample type (for `in_sol`) or an Earth-date list (page walking)         |
-| anything else              | "Page not found" inside the interface                                                                                             |
+| Path                       | Screen                                                                                                                                                                                                    |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/`                        | rovers, quick jump, latest photos                                                                                                                                                                         |
+| `/rovers/{rover}`          | photo browser; query `sol` or `earth_date`, `camera`, `sample_type`, `page`, `per_page`; stop filter `site`+`drive_from`[+`drive_to`] (all sols of a stop); without sol/date/stop: latest sol (`max_sol`) |
+| `/rovers/{rover}/timeline` | mission timeline; query `from_sol`, `to_sol`                                                                                                                                                              |
+| `/rovers/{rover}/map`      | route map (SVG on a lat/lon grid, no basemap); query `from_sol`, `to_sol` (highlight), `sol`+`site`+`drive` (selected stop)                                                                               |
+| `/rovers/{rover}/flights`  | Ingenuity flight log: summary tiles, sortable table, `#flight-N` anchors                                                                                                                                  |
+| `/photos/{id}`             | photo card; `?from=/rovers/...` carries the list's camera/sample type (for `in_sol`) or an Earth-date list (page walking)                                                                                 |
+| anything else              | "Page not found" inside the interface                                                                                                                                                                     |
 
 `/developers` and `/docs` are server pages: plain links, not SPA routes.
 
 ## Layout
 
 - `src/api/` — the only API client (`client.ts`), v2 types, and error wording (`errors.ts`).
-- `src/pages/` — Home, Photos, Photo, Timeline, RouteMap, NotFound. `src/lib/mapgeo.ts` — pure map geometry (projection, fit, compact paths). `src/components/` — shared pieces.
+- `src/pages/` — Home, Photos, Photo, Timeline, RouteMap, Flights, NotFound. `src/lib/flights.ts` — flight log helpers (totals, sorting, records); `src/lib/maplinks.ts` — stop photos recipe. `src/lib/mapgeo.ts` — pure map geometry (projection, fit, compact paths). `src/components/` — shared pieces.
 - `tests/` — unit tests (client, error parsing, routing) and screen tests with a mocked `fetch`.
 
 ## Test fixtures

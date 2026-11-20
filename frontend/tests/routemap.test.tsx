@@ -61,7 +61,9 @@ function mapRoutes(over: Record<string, unknown> = {}) {
   return mockApi({
     "/api/v2/rovers": { items: [{ ...perseverance, max_sol: 50 }, curiosity, spirit] },
     "/api/v2/rovers/perseverance/traverse": traverse([20, 30, 40]),
-    "/api/v2/rovers/perseverance/location": location(),
+    // `?latest=true` has its own tests below; here the strip stays out of the way.
+    "/api/v2/rovers/perseverance/location": (url: URL) =>
+      url.searchParams.get("latest") === "true" ? { ...location(), items: [] } : location(),
     ...over,
   });
 }

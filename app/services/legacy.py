@@ -26,6 +26,9 @@ from app.repositories.photos import FULL_SAMPLE_TYPE, PhotoFilter
 _MAX_INT4 = 2**31 - 1
 _MAX_INT8 = 2**63 - 1
 
+# Rovers the old API knew; v1 shows only these (Ingenuity is v2-only, docs/LEGACY-API.md).
+LEGACY_ROVERS: frozenset[str] = frozenset({"curiosity", "perseverance", "opportunity", "spirit"})
+
 _LARGE_IMAGE_ROVERS = frozenset({"perseverance"})
 
 # Rovers whose v1 photos, latest_photos, /photos/{id}, manifest and rover counters cover every
@@ -134,8 +137,8 @@ def legacy_img_src(rover_id: str, photo: Photo) -> str:
 
 
 async def list_rovers(session: AsyncSession) -> list[LegacyRover]:
-    """All rovers ordered by name, each with its cameras (two queries in total)."""
-    rovers = await rovers_repo.list_rovers(session)
+    """The legacy rovers ordered by name, each with its cameras (two queries in total)."""
+    rovers = [r for r in await rovers_repo.list_rovers(session) if r.id in LEGACY_ROVERS]
     cameras: dict[str, list[Camera]] = {rover.id: [] for rover in rovers}
     for camera in await rovers_repo.list_all_cameras(session):
         cameras.setdefault(camera.rover_id, []).append(camera)
@@ -192,7 +195,7 @@ async def get_photo(session: AsyncSession, raw_id: str) -> LegacyPhoto:
     if not 0 < photo_id <= _MAX_INT8:
         raise PhotoNotFound()
     photo = await photos_repo.get_photo(session, photo_id)
-    if photo is None or not _visible(photo):
+    if photo is None or photo.rover_id not in LEGACY_ROVERS or not _visible(photo):
         raise PhotoNotFound()
     rover = await get_rover(session, photo.rover_id)
     return LegacyPhoto(rover, _photo_item(rover.rover, photo))
@@ -213,7 +216,7 @@ async def _find_rover(session: AsyncSession, name: str) -> Rover:
     if not _ROVER_NAME_RE.fullmatch(name):
         raise InvalidRoverName()
     rover = await rovers_repo.get_rover(session, name)
-    if rover is None:
+    if rover is None or rover.id not in LEGACY_ROVERS:
         raise InvalidRoverName()
     return rover
 

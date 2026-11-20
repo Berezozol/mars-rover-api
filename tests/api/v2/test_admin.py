@@ -613,7 +613,9 @@ async def test_admin_sync_unknown_or_malformed_rover_returns_404(
     assert await sync_runs(clean_db) == []
 
 
-@pytest.mark.parametrize("rover", ["spirit", "opportunity", "Spirit", "OPPORTUNITY"])
+@pytest.mark.parametrize(
+    "rover", ["spirit", "opportunity", "Spirit", "OPPORTUNITY", "ingenuity", "Ingenuity"]
+)
 async def test_admin_sync_rover_without_source_returns_422_on_rover(
     admin: httpx.AsyncClient, clean_db: Factory, rover: str
 ) -> None:
@@ -626,14 +628,15 @@ async def test_admin_sync_rover_without_source_returns_422_on_rover(
     assert await sync_runs(clean_db) == []
 
 
+@pytest.mark.parametrize("rover", ["spirit", "ingenuity"])
 async def test_admin_sync_rover_without_source_returns_422_with_default_factory(
-    settings: Settings, clean_db: Factory
+    settings: Settings, clean_db: Factory, rover: str
 ) -> None:
     """Without the test override the real registry decides (and no request leaves the box)."""
     app = create_app(admin_settings(settings))
     try:
         async with app.router.lifespan_context(app), make_client(app) as client:
-            response = await client.post(SYNC, headers=AUTH, json={"rover": "spirit"})
+            response = await client.post(SYNC, headers=AUTH, json={"rover": rover})
     finally:
         await app.state.engine.dispose()
 

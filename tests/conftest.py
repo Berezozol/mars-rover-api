@@ -243,8 +243,14 @@ async def session_factory(migrated_db: str) -> AsyncIterator[async_sessionmaker[
         await engine.dispose()
 
 
-# Number of seed cameras per rover (migration 0002); sort_order starts at 1.
-SEED_CAMERA_COUNTS = {"perseverance": 17, "curiosity": 7, "opportunity": 6, "spirit": 6}
+# Number of seed cameras per rover (migrations 0002, 0008); sort_order starts at 1.
+SEED_CAMERA_COUNTS = {
+    "perseverance": 17,
+    "curiosity": 7,
+    "opportunity": 6,
+    "spirit": 6,
+    "ingenuity": 2,  # stage 12 (migration 0008)
+}
 
 _CLEAN_STATEMENTS = [
     "TRUNCATE photos, sol_summaries, sync_runs RESTART IDENTITY",

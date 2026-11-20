@@ -73,12 +73,13 @@ AdapterBuilder = Callable[[AsyncExitStack], Awaitable[SourceAdapter]]
 BatchesCommand = Callable[[str, int, int | None, int, bool, Settings], Awaitable[int]]
 
 
-def _rover_argument(parser: argparse.ArgumentParser) -> None:
+def _rover_argument(parser: argparse.ArgumentParser, *, one_off: bool = False) -> None:
+    rovers = (*SYNCABLE_ROVERS, "ingenuity") if one_off else SYNCABLE_ROVERS
     parser.add_argument(
         "--rover",
         required=True,
         type=str.lower,
-        help=f"rover slug, case-insensitive ({', '.join(SYNCABLE_ROVERS)})",
+        help=f"rover slug, case-insensitive ({', '.join(rovers)})",
     )
 
 
@@ -119,7 +120,7 @@ def _build_parser() -> argparse.ArgumentParser:
     backfill = commands.add_parser(
         "backfill", help="load the full history in batches, from --to-sol down to --from-sol"
     )
-    _rover_argument(backfill)
+    _rover_argument(backfill, one_off=True)
     _batch_arguments(backfill)
 
     download = commands.add_parser(

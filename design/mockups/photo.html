@@ -62,6 +62,7 @@
       <a href="photos.html?rover=perseverance" aria-current="page" title="Latest sol">Photos</a>
       <a href="manifest.html">Timeline</a>
       <a href="map.html">Route map</a>
+      <a href="flights.html">Flights</a>
       <a href="index.html#api">API</a>
     </nav>
     <button class="theme-toggle" type="button" aria-label="Toggle colour theme">Theme</button>
@@ -89,6 +90,13 @@
       <strong>Mockup</strong>
       <button class="btn btn-sm" type="button" id="variant">Show Curiosity variant (full size only)</button>
       <span>· sizes are drawn to scale of their pixel width</span>
+    </div>
+    <div class="mock-bar" role="group" aria-label="Rover variants (not part of the product)">
+      <strong>Mockup &middot; rover</strong>
+      <button class="btn btn-sm" type="button" data-rv="per" aria-pressed="true">Perseverance</button>
+      <button class="btn btn-sm" type="button" data-rv="flight" aria-pressed="false">Ingenuity, flight day</button>
+      <button class="btn btn-sm" type="button" data-rv="noflight" aria-pressed="false">Ingenuity, no flight that sol</button>
+      <span>&middot; PhotoDetail.flight: number or null; location is always null for Ingenuity</span>
     </div>
     <div class="mock-bar" role="group" aria-label="Location block states (not part of the product)">
       <strong>Mockup &middot; location</strong>
@@ -158,21 +166,41 @@
       <!-- Metadata -->
       <aside class="card panel meta" aria-labelledby="ph-title">
         <section>
-          <h1 id="ph-title">Mars Perseverance Sol 2031: SuperCam Camera</h1>
+          <h1 id="ph-title" data-rv-t>Mars Perseverance Sol 2031: SuperCam Camera</h1>
           <div class="row" style="gap:8px;margin-bottom:var(--s3)">
             <span class="badge no-dot">full</span>
             <span class="badge no-dot mono">#81234</span>
+            <a class="badge no-dot" id="flight-badge" href="flights.html#flight-9" hidden style="background:var(--accent-soft);color:var(--text);text-decoration:none">Flight 9</a>
           </div>
           <dl>
-            <dt>Rover</dt><dd><a href="photos.html?rover=perseverance">Perseverance</a></dd>
+            <dt>Rover</dt><dd id="rv-rover"><a href="photos.html?rover=perseverance">Perseverance</a></dd>
             <dt>Sol</dt><dd><a href="photos.html?rover=perseverance&amp;sol=2031">2031</a></dd>
             <dt>Earth date</dt><dd>2026-11-06</dd>
             <dt>Taken at</dt><dd><time datetime="2026-11-06T12:16:25Z">2026-11-06 12:16:25 UTC</time></dd>
-            <dt>Camera</dt><dd><span class="mono">SUPERCAM_RMI</span><br><span class="muted">SuperCam Remote Micro Imager</span></dd>
+            <dt>Camera</dt><dd id="rv-cam"><span class="mono">SUPERCAM_RMI</span><br><span class="muted">SuperCam Remote Micro Imager</span></dd>
             <dt>Sample type</dt><dd>full</dd>
             <dt>Site / drive</dt><dd id="sitedrive">93 / 412</dd>
             <dt>Received</dt><dd><time datetime="2026-11-07T03:41:09Z">2026-11-07 03:41:09 UTC</time> <span class="muted">(15 h after capture)</span></dd>
           </dl>
+        </section>
+
+        <section id="flight" aria-labelledby="fl-h" hidden>
+          <h2 id="fl-h">Flight</h2>
+          <!-- PhotoDetail.flight = 9 (number) -> GET /api/v2/rovers/ingenuity/flights/9 for the details below -->
+          <dl>
+            <dt>Flight</dt><dd><a href="flights.html#flight-9">Flight 9</a> <span class="muted">of 72</span></dd>
+            <dt>Date (PT)</dt><dd>2021-07-05 <span class="muted">(sol 133)</span></dd>
+            <dt>Route</dt><dd>Airfield E → Airfield F</dd>
+            <dt>Distance</dt><dd>625 m · max altitude 10 m</dd>
+            <dt>Duration</dt><dd>2:46 (166.4 s)</dd>
+          </dl>
+          <p class="loc-note">The flight took place on this sol. The frame may have been taken before or after it: the link is by sol only.</p>
+          <p class="small" style="margin:var(--s2) 0 0"><a href="photos.html?rover=ingenuity&amp;sol=133">All photos of sol 133</a> &middot; <a href="flights.html">All flights</a></p>
+        </section>
+
+        <section id="noflight" aria-labelledby="nf-h" hidden>
+          <h2 id="nf-h">Flight</h2>
+          <p class="small muted" style="margin:0">No flight on this sol (<code>flight: null</code>). <a href="flights.html">See all 72 flights</a>.</p>
         </section>
 
         <section id="loc" aria-labelledby="loc-h">
@@ -303,6 +331,29 @@ GET /api/v2/photos/81234/image?size=large</pre>
       : 'Full is the original file as published by the source (PNG for Perseverance).';
     e.target.textContent = curiosity ? 'Back to Perseverance' : 'Show Curiosity variant (full size only)';
   };
+
+  // Mockup only: rover variants (Perseverance / Ingenuity with and without a flight).
+  (function () {
+    const q = s => document.querySelector(s);
+    const orig = { title: q('#ph-title').textContent, rover: q('#rv-rover').innerHTML, cam: q('#rv-cam').innerHTML,
+                   credit: [...document.querySelectorAll('.credit-line strong')].map(n => n.textContent) };
+    const credit = c => { document.querySelectorAll('.credit-line strong').forEach(n => n.textContent = c);
+      document.querySelectorAll('dt').forEach(d => { if (d.textContent === 'Credit') d.nextElementSibling.textContent = c; }); };
+    function setRv(k) {
+      document.querySelectorAll('[data-rv]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.rv === k)));
+      const heli = k !== 'per';
+      q('#ph-title').textContent = heli ? 'Mars Helicopter Sol 133: Return-to-Earth Camera' : orig.title;
+      q('#rv-rover').innerHTML = heli ? '<a href="photos.html?rover=ingenuity">Ingenuity</a>' : orig.rover;
+      q('#rv-cam').innerHTML = heli ? '<span class="mono">HELI_RTE</span><br><span class="muted">Helicopter Return-to-Earth Camera</span>' : orig.cam;
+      credit(heli ? 'NASA/JPL-Caltech' : orig.credit[0]);
+      q('#flight-badge').hidden = k !== 'flight';
+      q('#flight').hidden = k !== 'flight';
+      q('#noflight').hidden = k !== 'noflight';
+      if (heli) { q('#loc').hidden = true; q('#sitedrive').textContent = '—'; }
+      else renderLoc('approx');
+    }
+    document.querySelectorAll('[data-rv]').forEach(b => b.onclick = () => setRv(b.dataset.rv));
+  })();
 
   document.querySelector('.theme-toggle').onclick = () => {
     const r = document.documentElement;

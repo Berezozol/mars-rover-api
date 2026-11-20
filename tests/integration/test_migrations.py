@@ -45,6 +45,10 @@ EXPECTED_COLUMNS = {
         "rover_id", "site", "drive", "sol", "lat", "lon", "elev_geoid", "easting", "northing",
         "roll", "pitch", "yaw", "tilt", "dist_m", "dist_total_m",
     },
+    "ingenuity_flights": {
+        "flight", "sol", "date", "distance_m", "max_altitude_m", "max_groundspeed_mps",
+        "duration_s", "route_from", "route_to",
+    },
     "rover_traverse_segments": {"rover_id", "seq", "sol", "length_m", "coordinates"},
     "location_datasets": {
         "rover_id", "kind", "checked_at", "succeeded_at", "changed_at", "etag", "last_modified",
@@ -59,8 +63,8 @@ def _head(alembic_cfg: AlembicConfig) -> str:
     return head
 
 
-def test_migrations_head_revision_is_0007(alembic_cfg: AlembicConfig) -> None:
-    assert _head(alembic_cfg) == "0007"
+def test_migrations_head_revision_is_0009(alembic_cfg: AlembicConfig) -> None:
+    assert _head(alembic_cfg) == "0009"
 
 
 def test_migrations_single_head(alembic_cfg: AlembicConfig) -> None:
@@ -333,6 +337,7 @@ async def test_migration_0007_end_date_is_nullable_and_seeded_for_mer_only(
     assert nullable == "YES"
     assert dict(rows.all()) == {
         "curiosity": None,
+        "ingenuity": "2024-01-25",  # stage 12 (0008)
         "opportunity": "2019-02-13",
         "perseverance": None,
         "spirit": "2011-05-25",

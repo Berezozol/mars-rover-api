@@ -91,6 +91,20 @@ export const pending: Rover = {
   max_date: null,
 };
 
+export const ingenuity: Rover = {
+  ...perseverance,
+  id: "ingenuity",
+  name: "Ingenuity",
+  mission: "mars2020",
+  status: "complete",
+  end_date: "2024-01-25",
+  data_source: "archive",
+  max_sol: 1069,
+  max_date: "2024-02-22",
+  total_photos: 14553,
+  cameras_count: 2,
+};
+
 export function photo(id: number, over: Partial<Photo> = {}): Photo {
   return {
     id,

@@ -54,7 +54,8 @@ app/
     base.py            протокол SourceAdapter + dataclass PhotoRecord
     normalize.py       общие правила нормализации: "UNK"/null → None, числа-строки, время в UTC
     http.py            общий httpx-клиент: таймауты, ретраи, лимит частоты, User-Agent
-    m2020.py           адаптер Perseverance
+    m2020.py           адаптер Perseverance (параметризован: rover_id, category)
+    ingenuity.py       адаптер вертолёта Ingenuity — наследник M2020Adapter, category=ingenuity (этап 12)
     msl.py             адаптер Curiosity
     registry.py        какие марсоходы синхронизируются и каким адаптером
     locations.py       адаптер положения (MMGIS): условный запрос, разбор waypoints/traverse (этап 11)
@@ -103,6 +104,7 @@ docs/
   - `rover_traverse_segments` — маршрут: PK `(rover_id, seq)` (порядок движения), `sol` (`NULL` у Curiosity — источник его не даёт), `length_m`, `coordinates` jsonb `[[lon, lat], ...]` (без высоты, 7 знаков). `MultiLineString` источника разложен на `LineString`.
   - `location_datasets` — состояние файла: PK `(rover_id, kind)` (`waypoints`/`traverse`), `created_at` (первая попытка), `checked_at`, `succeeded_at` (успешная проверка: `304` или принятый `200`), `changed_at`, `etag`, `last_modified`, `content_sha256`, `items`, `dropped`, `max_sol`, `last_error`.
   - Снимок → стоянка — запросом во время чтения, без денормализации: стоянка того же `site` с наибольшим `drive ≤ drive` снимка (`exact`, если равен). `photos` не меняется.
+- **Ingenuity (этап 12, миграции 0008–0009).** Строка `rovers` `ingenuity` с `legacy_id 9` — только ключ advisory-блокировки, в v1 марсоход скрыт списком `LEGACY_ROVERS` (`app/services/legacy.py`). Не входит в `SYNCABLE_ROVERS`: снимки загружены разово через `backfill`. `ingenuity_flights` — `flight` smallint PK, `sol` UNIQUE, `date` (по тихоокеанскому времени, как в журнале), `distance_m`, `max_altitude_m`, `max_groundspeed_mps`, `duration_s`, `route_from`, `route_to`; 72 строки — сидом в миграции 0008 (журнал заморожен). Полёт ↔ снимки — по солу; `total_photos` полёта — из `sol_summaries` при чтении. `site`/`drive` у снимков вертолёта всегда `NULL`. Индекс `ix_photos_rover_id_site_drive (rover_id, site, drive) WHERE site IS NOT NULL` (0009) — под фильтр `/photos?site=`.
 - **Вычисляемые поля v2 (доработки под интерфейс, 2026-11-20, `docs/proposals/api-v2-ui-improvements.md`).** `width`/`height` и `local_time` не хранятся отдельно: `app/sources/photo_meta.py` разбирает их из `extra` при чтении (M20 — `extended.dimension`, `date_taken_mars`; MSL — `extended.lmst`; MER — `line_samples`/`lines`, `local_true_solar_time` как LTST). `data_source` выводится из списка синхронизируемых марсоходов. `in_sol` — запросы по `(taken_at, id)` в пределах сола по индексу `(rover_id, sol, taken_at)`; `total` без фильтров — из `sol_summaries`. `nearest_sols` — по `sol_summaries`, только при пустом ответе.
 - `sync_runs` — журнал: `id`, `rover_id`, `mode` (`incremental` / `backfill`), `from_sol`, `to_sol`, `status` (`running` / `success` / `partial` / `failed`), `started_at`, `finished_at`, `photos_upserted`, `failed_sols` (массив солов), `source_total` (итог диапазона по данным источника, если известен), `error`. Строки `running`, оставшиеся от убитого процесса, следующий запуск того же марсохода (под его блокировкой) помечает `failed` с ошибкой `abandoned`.
 

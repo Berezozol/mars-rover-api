@@ -9,14 +9,20 @@ from app.api.home import request_origin
 from app.api.responses import FastJSONResponse, GeoJSONResponse
 from app.api.v2.params import (
     CameraParam,
+    DriveParam,
     EarthDateParam,
+    FlightNumberPath,
+    LatestParam,
     Pagination,
     SampleTypeParam,
+    SiteParam,
     SolParam,
 )
 from app.api.v2.schemas import (
     CamerasResponse,
     ErrorResponse,
+    FlightOut,
+    FlightsResponse,
     LatestPhotosResponse,
     LocationResponse,
     ManifestResponse,
@@ -25,6 +31,8 @@ from app.api.v2.schemas import (
     RoversResponse,
     TraverseResponse,
     camera_out,
+    flight_dict,
+    flights_body,
     latest_body,
     location_body,
     manifest_body,
@@ -78,8 +86,19 @@ async def list_photos(
     earth_date: EarthDateParam = None,
     camera: CameraParam = None,
     sample_type: SampleTypeParam = None,
+    site: SiteParam = None,
+    drive_from: DriveParam = None,
+    drive_to: DriveParam = None,
 ) -> FastJSONResponse:
-    query = PhotoQuery(sol=sol, earth_date=earth_date, camera=camera, sample_type=sample_type)
+    query = PhotoQuery(
+        sol=sol,
+        earth_date=earth_date,
+        camera=camera,
+        sample_type=sample_type,
+        site=site,
+        drive_from=drive_from,
+        drive_to=drive_to,
+    )
     return FastJSONResponse(
         photos_body(
             await v2.search_photos(session, rover, query, pagination), request_origin(request)
@@ -110,6 +129,17 @@ async def get_manifest(
     return FastJSONResponse(manifest_body(await v2.get_manifest(session, rover, from_sol, to_sol)))
 
 
+@router.get("/rovers/{rover}/flights", response_model=FlightsResponse, responses=_ERRORS)
+async def list_flights(rover: str, session: Session) -> FastJSONResponse:
+    return FastJSONResponse(flights_body(await v2.list_flights(session, rover)))
+
+
+@router.get("/rovers/{rover}/flights/{n}", response_model=FlightOut, responses=_ERRORS)
+async def get_flight(rover: str, n: FlightNumberPath, session: Session) -> FastJSONResponse:
+    flight, total_photos = await v2.get_flight(session, rover, n)
+    return FastJSONResponse(flight_dict(flight, total_photos))
+
+
 @router.get("/rovers/{rover}/location", response_model=LocationResponse, responses=_ERRORS)
 async def get_location(
     rover: str,
@@ -117,8 +147,9 @@ async def get_location(
     sol: SolParam = None,
     from_sol: SolParam = None,
     to_sol: SolParam = None,
+    latest: LatestParam = False,
 ) -> FastJSONResponse:
-    result = await locations.get_location(session, rover, sol, from_sol, to_sol)
+    result = await locations.get_location(session, rover, sol, from_sol, to_sol, latest)
     return FastJSONResponse(location_body(result))
 
 

@@ -40,11 +40,17 @@ export function Layout({ route, pathname, children }: Props) {
   }, []);
 
   const own =
-    route.name === "photos" || route.name === "timeline" || route.name === "map"
+    route.name === "photos" ||
+    route.name === "timeline" ||
+    route.name === "map" ||
+    route.name === "flights"
       ? route.rover
       : null;
   const list = rovers.status === "ok" ? visibleRovers(rovers.data) : [];
   const rover = own ?? list[0]?.id ?? "perseverance";
+
+  // Only Ingenuity flies; the item appears once the API lists it.
+  const hasFlights = rovers.status === "ok" && rovers.data.some((r) => r.id === "ingenuity");
 
   const cur = (name: RouteMatch["name"]) => (route.name === name ? "page" : undefined);
 
@@ -84,6 +90,11 @@ export function Layout({ route, pathname, children }: Props) {
             <Link href={`/rovers/${rover}/map`} aria-current={cur("map")}>
               Route map
             </Link>
+            {hasFlights && (
+              <Link href="/rovers/ingenuity/flights" aria-current={cur("flights")}>
+                Flights
+              </Link>
+            )}
             <a href="/docs">API docs</a>
           </nav>
           <button

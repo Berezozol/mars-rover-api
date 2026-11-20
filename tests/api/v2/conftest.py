@@ -40,7 +40,7 @@ from tests.conftest import SEED_CAMERA_COUNTS, _clean_database, build_record
 V2 = "/api/v2"
 MER_ROVERS = ("spirit", "opportunity")
 
-ROVER_IDS = ["curiosity", "opportunity", "perseverance", "spirit"]  # sorted by id
+ROVER_IDS = ["curiosity", "ingenuity", "opportunity", "perseverance", "spirit"]  # sorted by id
 
 # Static rover data (migration 0002 seed snapshot).
 ROVER_STATIC: dict[str, dict[str, Any]] = {
@@ -52,6 +52,15 @@ ROVER_STATIC: dict[str, dict[str, Any]] = {
         "landing_date": "2012-08-06",
         "end_date": None,
         "status": "active",
+    },
+    "ingenuity": {
+        "id": "ingenuity",
+        "name": "Ingenuity",
+        "mission": "mars2020",
+        "launch_date": "2020-07-30",
+        "landing_date": "2021-02-18",
+        "end_date": "2024-01-25",
+        "status": "complete",
     },
     "opportunity": {
         "id": "opportunity",
@@ -88,6 +97,7 @@ DATA_SOURCE = {
     "perseverance": "sync",
     "spirit": "archive",
     "opportunity": "archive",
+    "ingenuity": "archive",
 }
 
 ROVER_KEYS = [
@@ -133,6 +143,7 @@ PHOTO_DETAIL_KEYS = [
     "location",
     "local_time",
     "in_sol",
+    "flight",  # stage 12, last key
 ]
 IN_SOL_KEYS = ["position", "total", "newer_id", "older_id"]
 LOCAL_TIME_KEYS = ["time", "kind"]
@@ -368,6 +379,7 @@ STATS: dict[str, tuple[int | None, str | None, int]] = {
     "curiosity": (20, "2012-08-26", 9),
     "opportunity": (OPPORTUNITY_SOL, "2004-02-04", OPPORTUNITY_COUNT),
     "spirit": (None, None, 0),
+    "ingenuity": (None, None, 0),
 }
 CAMERAS_COUNT = {
     **SEED_CAMERA_COUNTS,
@@ -476,6 +488,7 @@ class World:
             "location": None,
             "local_time": EXPECTED_LOCAL_TIME.get(source_id),
             "in_sol": self.in_sol(source_id),
+            "flight": None,  # only Ingenuity photos can have a flight
         }
 
     def ids(self, source_ids: Sequence[str]) -> list[int]:

@@ -4,6 +4,7 @@ from app.core.config import Settings
 from app.core.errors import NoSourceForRover
 from app.sources.base import SourceAdapter
 from app.sources.http import UpstreamClient
+from app.sources.ingenuity import IngenuityAdapter
 from app.sources.m2020 import M2020Adapter
 from app.sources.msl import MslAdapter
 
@@ -12,6 +13,8 @@ SYNCABLE_ROVERS: tuple[str, ...] = ("perseverance", "curiosity")
 _ADAPTERS: dict[str, type[M2020Adapter] | type[MslAdapter]] = {
     "perseverance": M2020Adapter,
     "curiosity": MslAdapter,
+    # One-off load by ``backfill`` only: not in SYNCABLE_ROVERS (the mission is over).
+    "ingenuity": IngenuityAdapter,
 }
 
 

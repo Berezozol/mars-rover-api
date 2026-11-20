@@ -11,8 +11,9 @@ from typing import Literal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import InvalidParam, PhotoNotFound
-from app.db.models import Camera, Photo, Rover, SolSummary
+from app.core.errors import FlightNotFound, InvalidParam, NotFoundError, PhotoNotFound
+from app.db.models import Camera, IngenuityFlight, Photo, Rover, SolSummary
+from app.repositories import flights as flights_repo
 from app.repositories import photos as photos_repo
 from app.repositories import rovers as rovers_repo
 from app.repositories.photos import PhotoFilter
@@ -30,6 +31,12 @@ IMAGE_SIZES: tuple[str, ...] = ("full", "large", "medium", "small")
 
 # Rovers whose full frames are converted from PDS3 products (stage 9a).
 MER_ROVERS: frozenset[str] = frozenset({"spirit", "opportunity"})
+
+# The only rover with a flight log.
+FLIGHT_ROVER = "ingenuity"
+
+# Flight numbers are smallint; anything outside cannot exist and is answered without a query.
+_MAX_FLIGHT = 2**15 - 1
 
 # Photo ids are bigint; anything outside cannot exist and is answered without a query.
 _MAX_INT8 = 2**63 - 1
@@ -63,6 +70,10 @@ class PhotoQuery:
     earth_date: date | None = None
     camera: str | None = None
     sample_type: str | None = None
+    # Stop filter; the drive range needs the site.
+    site: int | None = None
+    drive_from: int | None = None
+    drive_to: int | None = None
 
 
 @dataclass(frozen=True)
@@ -150,6 +161,7 @@ async def search_photos(
     """Photos by optional sol / real earth_date / camera / sample type, newest first."""
     if query.sol is not None and query.earth_date is not None:
         raise InvalidParam("earth_date", "sol and earth_date cannot be used together")
+    _check_drive_range(query)
     rover = await find_rover(session, slug)
     flt = PhotoFilter(
         rover_id=rover.id,
@@ -157,6 +169,9 @@ async def search_photos(
         earth_date=query.earth_date,
         camera_codes=await _camera_codes(session, rover.id, query.camera),
         sample_type=_sample_type(query.sample_type),
+        site=query.site,
+        drive_from=query.drive_from,
+        drive_to=query.drive_to,
     )
     result = await _photo_page(session, rover, flt, page)
     if result.total == 0 and (query.sol is not None or query.earth_date is not None):
@@ -211,6 +226,8 @@ class PhotoDetail:
     photo: Photo
     location: PhotoLocation | None
     in_sol: SolPosition
+    # Ingenuity: the flight made in the photo's sol; None for other rovers or sols.
+    flight: int | None = None
 
 
 async def get_photo_detail(
@@ -234,7 +251,10 @@ async def get_photo_detail(
         session, flt, photo.taken_at, photo.id, _matches(photo, flt)
     )
     location = await photo_location(session, photo)
-    return PhotoDetail(photo, location, SolPosition(position, total, newer_id, older_id))
+    flight = None
+    if photo.rover_id == FLIGHT_ROVER:
+        flight = await flights_repo.flight_by_sol(session, photo.sol)
+    return PhotoDetail(photo, location, SolPosition(position, total, newer_id, older_id), flight)
 
 
 @dataclass(frozen=True)
@@ -279,6 +299,43 @@ async def get_manifest(
         session, rover.rover.id, from_sol=from_sol, to_sol=to_sol, descending=True
     )
     return Manifest(rover, summaries)
+
+
+async def list_flights(session: AsyncSession, slug: str) -> list[tuple[IngenuityFlight, int]]:
+    """All flights of Ingenuity by number, each with the photos of its sol."""
+    await _flight_rover(session, slug)
+    return await flights_repo.list_flights(session)
+
+
+async def get_flight(session: AsyncSession, slug: str, number: int) -> tuple[IngenuityFlight, int]:
+    """One flight with its photo count; no such flight (``0``, out of range) → 404."""
+    await _flight_rover(session, slug)
+    if not 1 <= number <= _MAX_FLIGHT:
+        raise FlightNotFound()
+    found = await flights_repo.get_flight(session, number)
+    if found is None:
+        raise FlightNotFound()
+    return found
+
+
+async def _flight_rover(session: AsyncSession, slug: str) -> Rover:
+    """The rover of a flight endpoint: only Ingenuity has flights."""
+    rover = await find_rover(session, slug)
+    if rover.id != FLIGHT_ROVER:
+        raise NotFoundError(f"Rover {rover.id} has no flights")
+    return rover
+
+
+def _check_drive_range(query: PhotoQuery) -> None:
+    has_drive = query.drive_from is not None or query.drive_to is not None
+    if has_drive and query.site is None:
+        raise InvalidParam("site", "drive_from and drive_to need site")
+    if (
+        query.drive_from is not None
+        and query.drive_to is not None
+        and query.drive_from > query.drive_to
+    ):
+        raise InvalidParam("drive_from", "drive_from must be less than or equal to drive_to")
 
 
 def _matches(photo: Photo, flt: PhotoFilter) -> bool:
@@ -329,6 +386,8 @@ async def _total(session: AsyncSession, rover: Rover, flt: PhotoFilter) -> int:
     Not rovers.total_photos: that cache is refreshed only when a sync finishes, while photos
     and summaries are committed per sol, so it lags during a sync or after a crash.
     """
+    if flt.site is not None:
+        return await photos_repo.count_photos(session, flt)
     by_date = flt.sol is not None or flt.earth_date is not None
     sample_type = flt.sample_type.lower() if flt.sample_type is not None else None
     full_or_any = sample_type in (None, photos_repo.FULL_SAMPLE_TYPE)

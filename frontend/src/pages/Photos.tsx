@@ -8,6 +8,7 @@ import { PhotoTile } from "../components/PhotoTile";
 import { RoverTabs } from "../components/RoverTabs";
 import { EmptyState, ErrorAlert, GridSkeleton, PageSkeleton } from "../components/States";
 import { fmt, short, statusLabel } from "../lib/format";
+import { stopLabel, type StopFilter } from "../lib/maplinks";
 import { useAsync, useRovers, useTitle } from "../lib/hooks";
 import { Link, navigate, qs, useQuery } from "../router";
 
@@ -18,6 +19,10 @@ interface Filters {
   earth_date?: string;
   camera?: string;
   sample_type?: string;
+  /** Stop filter from the route map; `drive_from` / `drive_to` only count together with `site`. */
+  site?: string;
+  drive_from?: string;
+  drive_to?: string;
   page?: number;
   per_page?: number;
 }
@@ -32,6 +37,10 @@ function parseFilters(q: URLSearchParams): Filters {
     earth_date: q.get("earth_date") ?? undefined,
     camera: q.get("camera")?.toUpperCase() || undefined,
     sample_type: q.get("sample_type") ?? undefined,
+    // Stop filters are passed as-is, even when invalid: the API answers 422 and says why.
+    site: q.get("site") ?? undefined,
+    drive_from: q.get("drive_from") ?? undefined,
+    drive_to: q.get("drive_to") ?? undefined,
     page: num("page"),
     per_page: num("per_page"),
   };
@@ -43,6 +52,9 @@ export function photosUrl(rover: string, f: Filters): string {
     earth_date: f.earth_date,
     camera: f.camera,
     sample_type: f.sample_type,
+    site: f.site,
+    drive_from: f.drive_from,
+    drive_to: f.drive_to,
     page: f.page && f.page > 1 ? f.page : undefined,
     per_page: f.per_page && f.per_page !== 24 ? f.per_page : undefined,
   })}`;
@@ -94,6 +106,11 @@ function PageHead({ rover }: { rover: Rover }) {
           Sols 0 – {rover.max_sol} · {fmt(rover.total_photos)} photos
         </span>
       )}
+      {rover.id === "ingenuity" && (
+        <Link class="btn btn-sm" href={`/rovers/${rover.id}/flights`}>
+          Flights
+        </Link>
+      )}
     </div>
   );
 }
@@ -101,10 +118,16 @@ function PageHead({ rover }: { rover: Rover }) {
 function Browser({ rover, maxSol }: { rover: Rover; maxSol: number }) {
   const f = parseFilters(useQuery());
   const byDate = f.earth_date !== undefined;
-  // Without sol/earth_date the browser shows the latest sol (decision of the owner).
+  // `drive_from` / `drive_to` are optional; any stop parameter counts as a stop filter and is sent
+  // as-is, so the API explains a bad or incomplete one (422), as it does for `sol`.
+  const stopped = f.site !== undefined || f.drive_from !== undefined || f.drive_to !== undefined;
+  const stop: StopFilter | null =
+    f.site !== undefined ? { site: f.site, drive_from: f.drive_from, drive_to: f.drive_to } : null;
+  // Without sol/earth_date the browser shows the latest sol (decision of the owner);
+  // a stop is the exception: its photos can span several sols, so all of them are listed.
   const effective: Filters = {
     ...f,
-    sol: byDate ? f.sol : (f.sol ?? String(maxSol)),
+    sol: byDate || stopped ? f.sol : (f.sol ?? String(maxSol)),
   };
   const perPage = f.per_page ?? 24;
   const page = f.page ?? 1;
@@ -113,6 +136,9 @@ function Browser({ rover, maxSol }: { rover: Rover; maxSol: number }) {
     earth_date: f.earth_date,
     camera: f.camera,
     sample_type: f.sample_type,
+    site: f.site,
+    drive_from: f.drive_from,
+    drive_to: f.drive_to,
     page,
     per_page: perPage,
   };
@@ -125,7 +151,18 @@ function Browser({ rover, maxSol }: { rover: Rover; maxSol: number }) {
 
   const [photos, retry] = useAsync(
     (signal) => api.photos(rover.id, apiQuery, signal),
-    [rover.id, rawSol, f.earth_date, f.camera, f.sample_type, page, perPage],
+    [
+      rover.id,
+      rawSol,
+      f.earth_date,
+      f.camera,
+      f.sample_type,
+      f.site,
+      f.drive_from,
+      f.drive_to,
+      page,
+      perPage,
+    ],
   );
 
   const anchorSol =
@@ -134,14 +171,16 @@ function Browser({ rover, maxSol }: { rover: Rover; maxSol: number }) {
       : photos.status === "ok"
         ? photos.data.items[0]?.sol
         : undefined;
-  // Camera counts are for the sol being viewed (`/cameras?sol=`). An Earth-date search can span
-  // sols, so it shows the mission-wide counts.
+  // Camera counts are for the sol being viewed (`/cameras?sol=`). An Earth-date or stop search can
+  // span sols, so it shows the mission-wide counts.
+  const wide = byDate || rawSol === undefined;
   const [cameras] = useAsync(
-    () => api.cameras(rover.id, byDate ? undefined : anchorSol).catch(() => [] as Camera[]),
-    [rover.id, byDate, anchorSol],
+    () => api.cameras(rover.id, wide ? undefined : anchorSol).catch(() => [] as Camera[]),
+    [rover.id, wide, anchorSol],
   );
-  const prevSol = anchorSol !== undefined && anchorSol > 0 ? anchorSol - 1 : undefined;
-  const nextSol = anchorSol !== undefined && anchorSol < maxSol ? anchorSol + 1 : undefined;
+  const prevSol = !wide && anchorSol !== undefined && anchorSol > 0 ? anchorSol - 1 : undefined;
+  const nextSol =
+    !wide && anchorSol !== undefined && anchorSol < maxSol ? anchorSol + 1 : undefined;
   const solDate = photos.status === "ok" ? photos.data.items[0]?.earth_date : undefined;
 
   const go = (next: Filters, opts?: { replace?: boolean }) =>
@@ -159,7 +198,10 @@ function Browser({ rover, maxSol }: { rover: Rover; maxSol: number }) {
     resultsRef.current?.scrollIntoView?.({ block: "start" });
   }, [page]);
 
-  const heading = byDate ? (f.earth_date as string) : `Sol ${rawSol}`;
+  const base = byDate ? (f.earth_date as string) : rawSol === undefined ? "" : `Sol ${rawSol}`;
+  const heading = stop ? [base, stopLabel(stop)].filter(Boolean).join(" · ") : base;
+  const clearStop = () =>
+    go({ ...f, site: undefined, drive_from: undefined, drive_to: undefined, page: 1 });
   const fromUrl = photosUrl(rover.id, { ...effective, page, per_page: perPage });
   const hrefForPage = (p: number) =>
     photosUrl(rover.id, { ...f, sol: effective.sol, page: p, per_page: perPage });
@@ -171,8 +213,10 @@ function Browser({ rover, maxSol }: { rover: Rover; maxSol: number }) {
         maxSol={maxSol}
         byDate={byDate}
         sol={rawSol ?? ""}
+        stop={stop}
+        onClearStop={clearStop}
         earthDate={f.earth_date ?? solDate ?? rover.max_date ?? ""}
-        perSol={!byDate && anchorSol !== undefined}
+        perSol={!wide && anchorSol !== undefined}
         anchorSol={anchorSol}
         camera={f.camera}
         sampleType={f.sample_type}
@@ -189,7 +233,17 @@ function Browser({ rover, maxSol }: { rover: Rover; maxSol: number }) {
               })
             : go({ ...f, earth_date: undefined, sol: String(anchorSol ?? maxSol), page: 1 })
         }
-        onLatest={() => go({ ...f, earth_date: undefined, sol: undefined, page: 1 })}
+        onLatest={() =>
+          go({
+            ...f,
+            earth_date: undefined,
+            sol: undefined,
+            site: undefined,
+            drive_from: undefined,
+            drive_to: undefined,
+            page: 1,
+          })
+        }
         onCamera={(c) => change({ camera: c })}
         onSample={(s) => change({ sample_type: s })}
         prevSol={prevSol}
@@ -249,10 +303,18 @@ function Browser({ rover, maxSol }: { rover: Rover; maxSol: number }) {
             heading={heading}
             sol={anchorSol}
             byDate={byDate}
-            filtered={!!(f.camera || f.sample_type)}
+            filtered={!!(f.camera || f.sample_type || stopped)}
             fromUrl={fromUrl}
             hrefForPage={hrefForPage}
-            onReset={() => change({ camera: undefined, sample_type: undefined })}
+            onReset={() =>
+              change({
+                camera: undefined,
+                sample_type: undefined,
+                site: undefined,
+                drive_from: undefined,
+                drive_to: undefined,
+              })
+            }
           />
         )}
         <p class="api-line">
@@ -261,6 +323,13 @@ function Browser({ rover, maxSol }: { rover: Rover; maxSol: number }) {
       </section>
     </>
   );
+}
+
+function stopTitle(s: StopFilter): string {
+  const from = s.drive_from ?? 0;
+  const base = `Photos with site ${s.site}, drive ${from}`;
+  if (s.drive_to === undefined) return `${base} and later drives of the same site`;
+  return String(s.drive_to) === String(from) ? base : `${base} to ${s.drive_to}`;
 }
 
 function resultSummary(
@@ -316,7 +385,7 @@ function Results(p: ResultsProps) {
           </button>
         }
       >
-        Try another camera or sample type.
+        Try another camera or sample type, or clear the stop filter.
       </EmptyState>
     );
   }
@@ -324,7 +393,13 @@ function Results(p: ResultsProps) {
     const near = data.nearest_sols;
     return (
       <EmptyState
-        title={p.byDate ? `No photos on ${p.heading}` : `No photos on ${p.heading.toLowerCase()}`}
+        title={
+          !p.heading
+            ? "No photos found"
+            : p.byDate
+              ? `No photos on ${p.heading}`
+              : `No photos on ${p.heading.toLowerCase()}`
+        }
         actions={
           <>
             {near?.before != null && (
@@ -382,6 +457,8 @@ interface FormProps {
   maxSol: number;
   byDate: boolean;
   sol: string;
+  stop: StopFilter | null;
+  onClearStop: () => void;
   earthDate: string;
   /** Camera counts are for the viewed sol (true) or the whole mission (false). */
   perSol: boolean;
@@ -512,6 +589,26 @@ function FilterForm(p: FormProps) {
           Sol and Earth date can’t be combined — pick one.
         </span>
       </div>
+
+      {p.stop && (
+        <div class="filter-block" role="group" aria-labelledby="stop-label">
+          <span class="label" id="stop-label">
+            Route stop
+          </span>
+          <div class="chips">
+            <button
+              type="button"
+              class="chip chip-clear"
+              aria-pressed="true"
+              aria-label={`${stopLabel(p.stop)}: clear this filter`}
+              title={stopTitle(p.stop)}
+              onClick={p.onClearStop}
+            >
+              {stopLabel(p.stop)} <span aria-hidden="true">×</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       <div class="filter-block" role="group" aria-labelledby="cam-label">
         <span class="label" id="cam-label">

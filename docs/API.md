@@ -12,7 +12,7 @@
 ## Общие правила v2
 
 - Базовый путь `/api/v2`, JSON, UTF-8. Даты — `YYYY-MM-DD`, время — ISO 8601 в UTC с `Z`.
-- `{rover}` — slug: `curiosity`, `perseverance`, `opportunity`, `spirit`. Регистр не важен.
+- `{rover}` — slug: `curiosity`, `perseverance`, `opportunity`, `spirit`, `ingenuity` (этап 12). Регистр не важен.
 - Пагинация: `page` (с 1, по умолчанию 1), `per_page` (по умолчанию 25, от 1 до 100). Ответ-список:
   ```json
   {"items": [], "page": 1, "per_page": 25, "total": 0}
@@ -23,7 +23,7 @@
   ```
   | HTTP | code | когда |
   |---|---|---|
-  | 404 | `rover_not_found`, `photo_not_found`, `not_found` | нет сущности или пути |
+  | 404 | `rover_not_found`, `photo_not_found`, `flight_not_found`, `not_found` | нет сущности или пути |
   | 422 | `validation_error` | неверные параметры; `details` — список `{"field", "message"}` |
   | 401 | `unauthorized` | admin-ручка без верного `X-Admin-Token` |
   | 409 | `sync_in_progress` | синхронизация марсохода уже идёт |
@@ -48,6 +48,7 @@
 `max_sol`, `max_date` и `last_synced_at` равны `null`, пока данных нет.
 - `end_date` — дата официального завершения миссии; `null` у действующих. Spirit — `2011-05-25`, Opportunity — `2019-02-13` (справочные даты, не из источника). Последний снимок — по-прежнему `max_date`.
 - `data_source` — откуда снимки: `"sync"` — регулярная синхронизация с фидом (Curiosity, Perseverance), `"archive"` — разовый импорт архива (Spirit, Opportunity); у `"archive"` `last_synced_at` — время импорта.
+- `ingenuity` (этап 12) — вертолёт Ingenuity (миссия Mars 2020). Солы — солы Perseverance; `landing_date` — посадка вместе с Perseverance, `end_date` — `2024-01-25`, `status: "complete"`, `data_source: "archive"` (разовая загрузка фида, `last_synced_at` — время загрузки). Камеры `HELI_NAV`, `HELI_RTE`. В v1 Ingenuity нет.
 
 **Camera**
 ```json
@@ -72,13 +73,14 @@
 
 `img_src` всегда равен `images.full`. У Curiosity `small`, `medium` и `large` — `null`. У Spirit и Opportunity (этап 9a, решение владельца): `images.small` — уменьшенный JPEG архива NASA PDS (превью), `images.full` (и `img_src`) — абсолютная ссылка на нашу конвертацию полного кадра `{origin}/api/v2/photos/{id}/image?size=full` (`origin` — от хоста текущего запроса, как на странице `/`), `medium`, `large` и `title` — `null`, `source.link` — исходный продукт PDS `.img`.
 
-**PhotoDetail** = Photo + `caption`, `received_at`, `site`, `drive`, `extra` (объект с техническими полями источника), `location` (этап 11), `local_time`, `in_sol`.
+**PhotoDetail** = Photo + `caption`, `received_at`, `site`, `drive`, `extra` (объект с техническими полями источника), `location` (этап 11), `local_time`, `in_sol`, `flight` (этап 12).
 ```json
 "local_time": {"time": "11:25:43", "kind": "lmst"},
 "in_sol": {"position": 17, "total": 52, "newer_id": 81233, "older_id": 81240}
 ```
 - `local_time` — местное солнечное время съёмки на Марсе, `HH:MM:SS` (24 марсианских часа, без долей секунды). `kind`: `"lmst"` — среднее (Curiosity, Perseverance), `"ltst"` — истинное (Spirit, Opportunity; отличается от среднего до ~50 минут). `null`, если источник время не дал: у Curiosity — примерно у половины снимков, у Perseverance — у снимков, загруженных до этой доработки.
 - `in_sol` — место снимка в его соле в порядке списка `/photos` (`taken_at DESC, id DESC`): `position` — номер с 1, `total` — снимков в соле, `newer_id` — предыдущий в списке (снят позже), `older_id` — следующий (снят раньше); `null` у краёв. Учитывает параметры `camera` и `sample_type` запроса `/photos/{id}` (см. эндпоинт). Карточка кэшируется на час — у последних солов, куда снимки ещё доходят, `in_sol` может отставать на это время.
+- `flight` (этап 12, последним ключом) — у снимков Ingenuity номер полёта, совершённого в сол снимка, или `null` (в этот сол полёта не было); у остальных марсоходов всегда `null`. Связь только по солу: снимок мог быть сделан до или после полёта в тот же сол. У Ingenuity `location` всегда `null`, `site`/`drive` — `null`.
 
 ## Эндпоинты
 
@@ -89,7 +91,7 @@
 
 ### `GET /health/sync`
 Свежесть данных — для внешнего мониторинга (этап 9). `HEAD` — тот же статус и заголовки без тела (UptimeRobot по умолчанию проверяет методом `HEAD`). Без авторизации, без лимита частоты, `Cache-Control: no-store`, секретов и текстов ошибок не содержит.
-Учитываются только марсоходы с синхронизацией (`curiosity`, `perseverance`); Spirit и Opportunity — нет.
+Учитываются только марсоходы с синхронизацией (`curiosity`, `perseverance`); Spirit, Opportunity и Ingenuity — нет.
 ```json
 {"status": "ok",
  "rovers": [{"rover": "curiosity", "last_success_at": "2026-11-18T20:15:03Z", "newest_photo_date": "2026-11-17",
@@ -132,6 +134,7 @@
 - `earth_date` — `YYYY-MM-DD`; вместе с `sol` → `422`;
 - `camera` — код камеры без учёта регистра; неизвестный для этого марсохода код → `422`, в `details` — список допустимых кодов;
 - `sample_type` — `full`, `subframe`, `downsampled`; без параметра — все типы;
+- `site` — целое ≥ 0; `drive_from`, `drive_to` — целые ≥ 0, только вместе с `site` (иначе `422`), включительно, любой можно опустить; `drive_from > drive_to` → `422`. Снимки без `site`/`drive` под эти фильтры не попадают. Сочетаются с остальными параметрами (И). Рецепт для стоянки `(S, D)` из `/location`: «снято на стоянке» — `site=S&drive_from=D&drive_to=D`; «как в `location` карточки» (на стоянке и в пути до следующей) — `site=S&drive_from=D&drive_to={drive следующей стоянки того же site} − 1` (у последней стоянки `site` — без `drive_to`). Снимки стоянки могут относиться к нескольким солам;
 - `page`, `per_page`.
 
 Сортировка всегда: `sol DESC, taken_at DESC, id DESC`.
@@ -139,7 +142,7 @@
 ```json
 {"items": [], "page": 1, "per_page": 25, "total": 0, "nearest_sols": {"before": 2028, "after": 2030}}
 ```
-- `nearest_sols` — не `null` только если задан `sol` или `earth_date` и `total = 0`. `before` — наибольший сол со снимками меньше запрошенного, `after` — наименьший больше; `null`, если такого нет. Для `earth_date` сравнивается самая ранняя дата съёмки сола (`manifest.sols[].earth_date`). Фильтры `camera` и `sample_type` не учитываются: это ближайшие солы, где есть хоть какие-то снимки.
+- `nearest_sols` — не `null` только если задан `sol` или `earth_date` и `total = 0`. `before` — наибольший сол со снимками меньше запрошенного, `after` — наименьший больше; `null`, если такого нет. Для `earth_date` сравнивается самая ранняя дата съёмки сола (`manifest.sols[].earth_date`). Фильтры `camera`, `sample_type`, `site`, `drive_from`, `drive_to` не учитываются: это ближайшие солы, где есть хоть какие-то снимки.
 - В остальных случаях `"nearest_sols": null`.
 
 `200` список Photo · `404 rover_not_found` · `422 validation_error`
@@ -187,6 +190,7 @@
 
 ### `GET /api/v2/rovers/{rover}/location`
 Стоянки марсохода. Параметры (необязательные): `sol` — целое ≥ 0; `from_sol`, `to_sol` — диапазон включительно. `sol` вместе с `from_sol` или `to_sol` → `422`; `from_sol > to_sol` → `422`; границы — общие. Без пагинации.
+- `latest` — `true` или `false` (также `1`/`0`), по умолчанию `false`; другое значение → `422`. При `true` в `items` — только последняя стоянка (наибольшие `sol`, `site`, `drive`) или `[]`, если стоянок нет; вместе с `sol`, `from_sol` или `to_sol` → `422`. Остальные члены ответа — как без параметра.
 ```json
 {"rover": "perseverance", "available": true,
  "updated_at": "2026-10-28T15:05:06Z", "source_max_sol": 2022,
@@ -225,6 +229,23 @@
 - `location: null`, если у снимка нет `site` или `drive`, у марсохода нет источника положения (Spirit, Opportunity) или стоянки этого `site` с `drive` не больше снимкового нет.
 - Photo в списках не меняется.
 
+**Flight** (этап 12; полёт Ingenuity, журнал NASA)
+```json
+{"flight": 9, "sol": 133, "date": "2021-07-05",
+ "distance_m": 625, "max_altitude_m": 10, "max_groundspeed_mps": 5.0, "duration_s": 166.4,
+ "from": "Airfield E", "to": "Airfield F", "total_photos": 312}
+```
+- `date` — дата полёта по тихоокеанскому времени (так в журнале), не UTC; надёжный ключ — `sol`.
+- `distance_m` — горизонтальная дистанция, м; `max_altitude_m` — м; `max_groundspeed_mps` — м/с; `duration_s` — с. Значения журнала без пересчёта; футы и мили не отдаются.
+- `from` — площадка взлёта; `to` — площадка посадки, `null`, если в журнале не указана (в 27 полётах, обычно — посадка на той же площадке).
+- `total_photos` — снимков Ingenuity за `sol` полёта (все типы); снимки — `/rovers/ingenuity/photos?sol={sol}`.
+
+### `GET /api/v2/rovers/{rover}/flights`
+Только `ingenuity`. `200 {"items": [Flight, ...]}` — все полёты без пагинации, сортировка `flight ASC`. Другой существующий марсоход → `404 not_found`; неизвестный → `404 rover_not_found`. `Cache-Control: public, max-age=300`.
+
+### `GET /api/v2/rovers/{rover}/flights/{n}`
+`n` — целое ≥ 1; нечисловое → `422`; нет такого полёта (в т.ч. `0`, отрицательные и любые числа больше 32 767) → `404 flight_not_found`. `200 Flight` · `404 rover_not_found` / `not_found` (как у списка).
+
 ## Admin
 
 Заголовок `X-Admin-Token`. Если `ADMIN_TOKEN` не задан в настройках, этих ручек нет (`404`).
@@ -232,7 +253,7 @@
 ### `POST /api/v2/admin/sync`
 Тело: `{"rover": "perseverance", "from_sol": 2025, "to_sol": 2031}`. `from_sol` и `to_sol` необязательны: без них — инкремент.
 `202 {"run_id": 17, "status": "running"}` · `401` · `404 rover_not_found` · `409 sync_in_progress` · `422`
-`422 validation_error` также для `spirit` и `opportunity`: миссии завершены (Spirit — 2011, Opportunity — 2019), синхронизация не поддерживается, их снимки загружаются разовым импортом (этап 8).
+`422 validation_error` также для `spirit` и `opportunity`: миссии завершены (Spirit — 2011, Opportunity — 2019), синхронизация не поддерживается, их снимки загружаются разовым импортом (этап 8). То же для `ingenuity` (этап 12): миссия завершена, снимки загружены разово.
 
 ### `GET /api/v2/admin/sync/runs?rover=&page=&per_page=`
 `200` список:

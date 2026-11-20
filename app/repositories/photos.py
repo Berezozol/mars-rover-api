@@ -67,6 +67,10 @@ class PhotoFilter:
     # Case-insensitive exact codes; an empty list matches nothing.
     camera_codes: Sequence[str] | None = None
     sample_type: str | None = None
+    # Stop filter: ``site`` alone, or with an inclusive ``drive`` range (either end may be open).
+    site: int | None = None
+    drive_from: int | None = None
+    drive_to: int | None = None
 
 
 async def upsert_photos(
@@ -151,6 +155,12 @@ def _filtered(stmt: Select[Any], flt: PhotoFilter, *, joined_camera: bool = Fals
         stmt = stmt.where(Camera.code.in_(codes))
     if flt.sample_type is not None:
         stmt = stmt.where(Photo.sample_type == flt.sample_type.lower())
+    if flt.site is not None:
+        stmt = stmt.where(Photo.site == flt.site)
+    if flt.drive_from is not None:
+        stmt = stmt.where(Photo.drive >= flt.drive_from)
+    if flt.drive_to is not None:
+        stmt = stmt.where(Photo.drive <= flt.drive_to)
     return stmt
 
 

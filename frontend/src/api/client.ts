@@ -1,6 +1,7 @@
 // The single module that talks to the API. v2 errors are parsed here, once.
 import type {
   Camera,
+  Flight,
   ImageSize,
   LatestPhotos,
   LocationResponse,
@@ -180,6 +181,25 @@ export const api = {
   /** Stops of a rover (whole list is fetched once per rover and cached). */
   location: (rover: string) =>
     cached(`location:${rover}`, () => request<LocationResponse>(`/rovers/${slug(rover)}/location`)),
+  /** Only the last stop (`items` has one element, or none). Not cached: it is one small request. */
+  locationLatest: (rover: string, signal?: AbortSignal) =>
+    request<LocationResponse>(`/rovers/${slug(rover)}/location`, { latest: "true" }, signal),
+  /** The flight log (Ingenuity only): all flights in one response, flight ASC. */
+  flights: (rover: string) =>
+    cached(`flights:${rover}`, () =>
+      request<{ items: Flight[] }>(`/rovers/${slug(rover)}/flights`).then((r) => r.items),
+    ),
+  /** One flight; taken from the flight list when that is already loaded, else `/flights/{n}`. */
+  flight: (rover: string, n: number): Promise<Flight> => {
+    const list = cache.get(`flights:${rover}`) as Promise<Flight[]> | undefined;
+    const single = () =>
+      cached(`flight:${rover}:${n}`, () => request<Flight>(`/rovers/${slug(rover)}/flights/${n}`));
+    if (!list) return single();
+    return list.then(
+      (items) => items.find((f) => f.flight === n) ?? single(),
+      () => single(),
+    );
+  },
   /** The whole route as GeoJSON (large for Curiosity: fetched once per rover and cached). */
   traverse: (rover: string) =>
     cached(`traverse:${rover}`, () => request<Traverse>(`/rovers/${slug(rover)}/traverse`)),

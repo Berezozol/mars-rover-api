@@ -1,0 +1,64 @@
+{
+  "items": [
+    {
+      "flight": 1,
+      "sol": 58,
+      "date": "2021-04-19",
+      "distance_m": 0,
+      "max_altitude_m": 3,
+      "max_groundspeed_mps": 0.0,
+      "duration_s": 39.1,
+      "from": "Wright Brothers Field",
+      "to": null,
+      "total_photos": 139
+    },
+    {
+      "flight": 9,
+      "sol": 133,
+      "date": "2021-07-05",
+      "distance_m": 625,
+      "max_altitude_m": 10,
+      "max_groundspeed_mps": 5.0,
+      "duration_s": 166.4,
+      "from": "Airfield E",
+      "to": "Airfield F",
+      "total_photos": 479
+    },
+    {
+      "flight": 25,
+      "sol": 403,
+      "date": "2022-04-08",
+      "distance_m": 704,
+      "max_altitude_m": 10,
+      "max_groundspeed_mps": 5.5,
+      "duration_s": 161.3,
+      "from": "Airfield P",
+      "to": "Airfield Q",
+      "total_photos": 242
+    },
+    {
+      "flight": 59,
+      "sol": 915,
+      "date": "2023-09-16",
+      "distance_m": 0,
+      "max_altitude_m": 20,
+      "max_groundspeed_mps": 0.0,
+      "duration_s": 142.6,
+      "from": "Airfield Sigma",
+      "to": null,
+      "total_photos": 456
+    },
+    {
+      "flight": 68,
+      "sol": 1003,
+      "date": "2023-12-15",
+      "distance_m": 702,
+      "max_altitude_m": 16,
+      "max_groundspeed_mps": 10.0,
+      "duration_s": 131.1,
+      "from": "Airfield Chi",
+      "to": null,
+      "total_photos": 413
+    }
+  ]
+}

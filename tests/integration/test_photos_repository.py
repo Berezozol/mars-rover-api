@@ -314,6 +314,7 @@ async def test_list_rovers_ordered_by_legacy_id(db_session: AsyncSession) -> Non
         ("opportunity", 6),
         ("spirit", 7),
         ("perseverance", 8),
+        ("ingenuity", 9),  # stage 12: the repository sees it; v1 hides it in the service
     ]
 
 

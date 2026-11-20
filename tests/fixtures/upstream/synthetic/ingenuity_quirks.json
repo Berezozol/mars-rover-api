@@ -1,0 +1,128 @@
+{
+ "_comment": "Synthetic Ingenuity quirks derived from a recorded item: thumbnail, a real stop (site/drive numbers), string sol / naive time / UNK local time / lowercase camera.",
+ "images": [
+  {
+   "extended": {
+    "mastAz": "UNK",
+    "mastEl": "UNK",
+    "sclk": "761837429.3722999",
+    "scaleFactor": "1",
+    "xyz": "UNK",
+    "subframeRect": "UNK",
+    "dimension": "(640,480)"
+   },
+   "sol": 1069,
+   "attitude": "UNK",
+   "image_files": {
+    "medium": "https://mars.nasa.gov/mars2020-raw-images/pub/ods/surface/sol/01069/ids/edr/browse/heli/HNM_1069_0761837420_372ECM_N0720001HELI00173_0000A0J01_800.jpg",
+    "small": "https://mars.nasa.gov/mars2020-raw-images/pub/ods/surface/sol/01069/ids/edr/browse/heli/HNM_1069_0761837420_372ECM_N0720001HELI00173_0000A0J01_320.jpg",
+    "full_res": "https://mars.nasa.gov/mars2020-raw-images/pub/ods/surface/sol/01069/ids/edr/browse/heli/HNM_1069_0761837420_372ECM_N0720001HELI00173_0000A0J01.png",
+    "large": "https://mars.nasa.gov/mars2020-raw-images/pub/ods/surface/sol/01069/ids/edr/browse/heli/HNM_1069_0761837420_372ECM_N0720001HELI00173_0000A0J01_1200.jpg"
+   },
+   "imageid": "SYN_ING_THUMBNAIL",
+   "camera": {
+    "filter_name": "UNK",
+    "camera_vector": "UNK",
+    "camera_model_component_list": "(0.0,0.0619,0.1374);(0.00256683,-0.0580188,0.998312);(-0.0176873,-293.879,310.679);(276.142,-15.3003,248.479);(0.00583129,-0.0520831,0.998626);(0.0,0.001066,-0.000398);(0.0,0.0,0.0);3.0;0.0",
+    "camera_position": "(0.0,0.0619,0.1374)",
+    "instrument": "HELI_NAV",
+    "camera_model_type": "CAHVORE"
+   },
+   "caption": "NASA's Ingenuity Mars Helicopter acquired this image using its navigation camera. This camera is mounted in the helicopter's fuselage and pointed directly downward to track the ground during flight. \n\nThis image was acquired on Feb. 22, 2024 (Sol 1069 of the Perseverance rover mission) at the local mean solar time of 11:41:52.",
+   "sample_type": "Thumbnail",
+   "date_taken_mars": "Sol-01069M11:41:52.53212",
+   "credit": "NASA/JPL-Caltech",
+   "date_taken_utc": "2024-02-22T01:44:30.900092",
+   "json_link": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=ingenuity&feedtype=json&id=HNM_1069_0761837420_372ECM_N0720001HELI00173_0000A0J",
+   "link": "https://mars.nasa.gov/mars2020/multimedia/raw-images/HNM_1069_0761837420_372ECM_N0720001HELI00173_0000A0J",
+   "drive": "None",
+   "title": "Mars Helicopter Sol 1069: Navigation Camera",
+   "site": 0,
+   "date_received": "2024-02-26T16:30:51Z"
+  },
+  {
+   "extended": {
+    "mastAz": "UNK",
+    "mastEl": "UNK",
+    "sclk": "761837429.3722999",
+    "scaleFactor": "1",
+    "xyz": "UNK",
+    "subframeRect": "UNK",
+    "dimension": "(640,480)"
+   },
+   "sol": 1069,
+   "attitude": "UNK",
+   "image_files": {
+    "medium": "https://mars.nasa.gov/mars2020-raw-images/pub/ods/surface/sol/01069/ids/edr/browse/heli/HNM_1069_0761837420_372ECM_N0720001HELI00173_0000A0J01_800.jpg",
+    "small": "https://mars.nasa.gov/mars2020-raw-images/pub/ods/surface/sol/01069/ids/edr/browse/heli/HNM_1069_0761837420_372ECM_N0720001HELI00173_0000A0J01_320.jpg",
+    "full_res": "https://mars.nasa.gov/mars2020-raw-images/pub/ods/surface/sol/01069/ids/edr/browse/heli/HNM_1069_0761837420_372ECM_N0720001HELI00173_0000A0J01.png",
+    "large": "https://mars.nasa.gov/mars2020-raw-images/pub/ods/surface/sol/01069/ids/edr/browse/heli/HNM_1069_0761837420_372ECM_N0720001HELI00173_0000A0J01_1200.jpg"
+   },
+   "imageid": "SYN_ING_STOP",
+   "camera": {
+    "filter_name": "UNK",
+    "camera_vector": "UNK",
+    "camera_model_component_list": "(0.0,0.0619,0.1374);(0.00256683,-0.0580188,0.998312);(-0.0176873,-293.879,310.679);(276.142,-15.3003,248.479);(0.00583129,-0.0520831,0.998626);(0.0,0.001066,-0.000398);(0.0,0.0,0.0);3.0;0.0",
+    "camera_position": "(0.0,0.0619,0.1374)",
+    "instrument": "HELI_NAV",
+    "camera_model_type": "CAHVORE"
+   },
+   "caption": "NASA's Ingenuity Mars Helicopter acquired this image using its navigation camera. This camera is mounted in the helicopter's fuselage and pointed directly downward to track the ground during flight. \n\nThis image was acquired on Feb. 22, 2024 (Sol 1069 of the Perseverance rover mission) at the local mean solar time of 11:41:52.",
+   "sample_type": "Full",
+   "date_taken_mars": "Sol-01069M11:41:52.53212",
+   "credit": "NASA/JPL-Caltech",
+   "date_taken_utc": "2024-02-22T01:44:30.900092",
+   "json_link": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=ingenuity&feedtype=json&id=HNM_1069_0761837420_372ECM_N0720001HELI00173_0000A0J",
+   "link": "https://mars.nasa.gov/mars2020/multimedia/raw-images/HNM_1069_0761837420_372ECM_N0720001HELI00173_0000A0J",
+   "drive": "123",
+   "title": "Mars Helicopter Sol 1069: Navigation Camera",
+   "site": 5,
+   "date_received": "2024-02-26T16:30:51Z"
+  },
+  {
+   "extended": {
+    "mastAz": "UNK",
+    "mastEl": "UNK",
+    "sclk": "761837429.3722999",
+    "scaleFactor": "1",
+    "xyz": "UNK",
+    "subframeRect": "UNK",
+    "dimension": "(640,480)"
+   },
+   "sol": "1069",
+   "attitude": "UNK",
+   "image_files": {
+    "medium": "https://mars.nasa.gov/mars2020-raw-images/pub/ods/surface/sol/01069/ids/edr/browse/heli/HNM_1069_0761837420_372ECM_N0720001HELI00173_0000A0J01_800.jpg",
+    "small": "https://mars.nasa.gov/mars2020-raw-images/pub/ods/surface/sol/01069/ids/edr/browse/heli/HNM_1069_0761837420_372ECM_N0720001HELI00173_0000A0J01_320.jpg",
+    "full_res": "https://mars.nasa.gov/mars2020-raw-images/pub/ods/surface/sol/01069/ids/edr/browse/heli/HNM_1069_0761837420_372ECM_N0720001HELI00173_0000A0J01.png",
+    "large": "https://mars.nasa.gov/mars2020-raw-images/pub/ods/surface/sol/01069/ids/edr/browse/heli/HNM_1069_0761837420_372ECM_N0720001HELI00173_0000A0J01_1200.jpg"
+   },
+   "imageid": "SYN_ING_QUIRKS",
+   "camera": {
+    "filter_name": "UNK",
+    "camera_vector": "UNK",
+    "camera_model_component_list": "(0.0,0.0619,0.1374);(0.00256683,-0.0580188,0.998312);(-0.0176873,-293.879,310.679);(276.142,-15.3003,248.479);(0.00583129,-0.0520831,0.998626);(0.0,0.001066,-0.000398);(0.0,0.0,0.0);3.0;0.0",
+    "camera_position": "(0.0,0.0619,0.1374)",
+    "instrument": "heli_nav",
+    "camera_model_type": "CAHVORE"
+   },
+   "caption": "",
+   "sample_type": "Full",
+   "date_taken_mars": "UNK",
+   "credit": "NASA/JPL-Caltech",
+   "date_taken_utc": "2024-02-22T23:59:59.9",
+   "json_link": "https://mars.nasa.gov/rss/api/?feed=raw_images&category=ingenuity&feedtype=json&id=HNM_1069_0761837420_372ECM_N0720001HELI00173_0000A0J",
+   "link": "https://mars.nasa.gov/mars2020/multimedia/raw-images/HNM_1069_0761837420_372ECM_N0720001HELI00173_0000A0J",
+   "drive": "None",
+   "title": "  Synthetic helicopter image  ",
+   "site": 0,
+   "date_received": "2024-02-26T16:30:51Z"
+  }
+ ],
+ "per_page": "100",
+ "total_results": 3,
+ "type": "ingenuity-images-list-1.1",
+ "page": 0,
+ "mission": "ingenuity",
+ "total_images": 14553
+}

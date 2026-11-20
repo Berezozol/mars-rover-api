@@ -46,6 +46,7 @@
       <a href="photos.html?rover=perseverance" title="Latest sol">Photos</a>
       <a href="manifest.html">Timeline</a>
       <a href="map.html">Route map</a>
+      <a href="flights.html">Flights</a>
       <a href="#api">API</a>
     </nav>
     <button class="theme-toggle" type="button" aria-label="Toggle colour theme">Theme</button>
@@ -135,6 +136,31 @@
           </div>
         </article>
 
+
+        <!-- Ingenuity: GET /rovers item {"name":"Ingenuity","slug":"ingenuity","status":"complete","end_date":"2024-01-25","data_source":"archive",...}
+             Finished mission, one-off import: "Complete" + "Imported" badges, no "Synced", flights link. -->
+        <article class="card rover" aria-labelledby="r-ingenuity">
+          <div class="ph ph-sky rover-art" role="img" aria-label="Placeholder sky above the Martian surface for Ingenuity"></div>
+          <div class="rover-body">
+            <div class="rover-head">
+              <h2 id="r-ingenuity"><a href="photos.html?rover=ingenuity" style="color:inherit;text-decoration:none">Ingenuity</a></h2>
+              <span class="row" style="gap:6px;flex-wrap:nowrap"><span class="badge badge-complete">Complete</span><span class="badge no-dot">Imported</span></span>
+            </div>
+            <div class="rover-mission">Mission mars2020 · helicopter · landed 2021-02-18 · ended 2024-01-25</div>
+            <dl class="stats">
+              <div><dt>Flights</dt><dd>72</dd></div>
+              <div><dt>Latest sol</dt><dd>1069</dd></div>
+              <div><dt>Photos</dt><dd>14,553</dd></div>
+              <div><dt>Cameras</dt><dd>2</dd></div>
+            </dl>
+            <div class="synced">Imported <time datetime="2026-11-18T09:30:00Z">2026-11-18</time> &middot; one-off archive, not updated</div>
+            <div class="rover-actions">
+              <a class="btn btn-primary btn-sm" href="flights.html">72 flights</a>
+              <a class="btn btn-sm" href="photos.html?rover=ingenuity">Photos</a>
+              <a class="btn btn-sm" href="manifest.html?rover=ingenuity">Timeline</a>
+            </div>
+          </div>
+        </article>
       </div>
       <p class="small muted" style="margin-top:var(--s3)">More rovers appear when their archives are imported.</p>
     </section>

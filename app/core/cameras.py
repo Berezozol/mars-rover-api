@@ -53,6 +53,9 @@ CAMERA_NAMES: dict[str, str] = {
     "SHERLOC_WATSON": "SHERLOC WATSON Camera",
     "SUPERCAM_RMI": "SuperCam Remote Micro Imager",
     "LCAM": "Lander Vision System Camera",
+    # Ingenuity
+    "HELI_NAV": "Navigation Camera",
+    "HELI_RTE": "Color Camera",
 }
 
 

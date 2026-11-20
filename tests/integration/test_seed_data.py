@@ -14,6 +14,7 @@ ROVERS = [
     ("opportunity", 6, "Opportunity", "mer", date(2003, 7, 7), date(2004, 1, 25), "complete"),
     ("spirit", 7, "Spirit", "mer", date(2003, 6, 10), date(2004, 1, 4), "complete"),
     ("perseverance", 8, "Perseverance", "mars2020", date(2020, 7, 30), date(2021, 2, 18), "active"),
+    ("ingenuity", 9, "Ingenuity", "mars2020", date(2020, 7, 30), date(2021, 2, 18), "complete"),
 ]
 
 MER_CAMERAS = ["FHAZ", "RHAZ", "NAVCAM", "PANCAM", "MINITES", "ENTRY"]
@@ -28,6 +29,7 @@ CAMERAS = {
     "curiosity": ["FHAZ", "RHAZ", "MAST", "CHEMCAM", "MAHLI", "MARDI", "NAVCAM"],
     "opportunity": MER_CAMERAS,
     "spirit": MER_CAMERAS,
+    "ingenuity": ["HELI_NAV", "HELI_RTE"],  # stage 12
 }  # fmt: skip
 
 # Names pinned by the contract for the legacy codes.

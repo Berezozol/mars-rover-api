@@ -12,7 +12,7 @@ from typing import Any, Literal
 _DIMENSION_RE = re.compile(r"^\((\d{1,6}),(\d{1,6})\)$", re.ASCII)
 _TIME_RE = re.compile(r"^(?:Sol-\d+M)?(\d{2}):(\d{2}):(\d{2})", re.ASCII)
 
-_M2020 = "perseverance"
+_M2020 = frozenset({"perseverance", "ingenuity"})
 _MSL = "curiosity"
 _MER = frozenset({"spirit", "opportunity"})
 
@@ -27,7 +27,7 @@ class LocalTime:
 
 def frame_size(rover_id: str, extra: Mapping[str, Any]) -> tuple[int, int] | None:
     """``(width, height)`` of the full frame in pixels, or None when unknown."""
-    if rover_id == _M2020:
+    if rover_id in _M2020:
         return _parse_dimension(_mapping(extra.get("extended")).get("dimension"))
     if rover_id in _MER:
         return _positive_pair(extra.get("line_samples"), extra.get("lines"))
@@ -36,7 +36,7 @@ def frame_size(rover_id: str, extra: Mapping[str, Any]) -> tuple[int, int] | Non
 
 def local_time(rover_id: str, extra: Mapping[str, Any]) -> LocalTime | None:
     """Local solar time of the capture, or None when the source gave none."""
-    if rover_id == _M2020:
+    if rover_id in _M2020:
         return _make_time(extra.get("date_taken_mars"), "lmst")
     if rover_id == _MSL:
         return _make_time(_mapping(extra.get("extended")).get("lmst"), "lmst")

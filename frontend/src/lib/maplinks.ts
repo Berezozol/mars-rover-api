@@ -36,3 +36,51 @@ export function mapHref(
     to_sol: o.to,
   })}`;
 }
+
+/** The filters of the photo browser for the photos of a stop (contract recipe, API.md `/photos`). */
+export interface StopFilter {
+  /** Strings are hand-made addresses, sent as-is so that the API explains what is wrong (422). */
+  site: number | string;
+  drive_from?: number | string;
+  /** Absent for the last stop of a site: everything after it belongs to it. */
+  drive_to?: number | string;
+}
+
+/**
+ * "As in the photo's `location`": on the stop and on the way to the next one. `drive_to` is the
+ * drive of the next stop of the same site minus 1; the last stop of a site has no `drive_to`.
+ */
+export function stopFilter(
+  stops: { site: number; drive: number }[],
+  stop: { site: number; drive: number },
+): StopFilter {
+  let next: number | null = null;
+  for (const w of stops) {
+    if (w.site === stop.site && w.drive > stop.drive && (next === null || w.drive < next)) {
+      next = w.drive;
+    }
+  }
+  return {
+    site: stop.site,
+    drive_from: stop.drive,
+    ...(next !== null ? { drive_to: next - 1 } : {}),
+  };
+}
+
+/** Address of the photo browser limited to a stop. */
+export function stopPhotosHref(
+  rover: string,
+  stops: { site: number; drive: number }[],
+  stop: { site: number; drive: number },
+): string {
+  const f = stopFilter(stops, stop);
+  return `/rovers/${rover}${qs({ site: f.site, drive_from: f.drive_from, drive_to: f.drive_to })}`;
+}
+
+/** Short label of a stop filter: `Stop 93/412`, `Stop 93/412–517` or `Stop 93/412+`. */
+export function stopLabel(f: StopFilter): string {
+  if (f.drive_from === undefined && f.drive_to === undefined) return `Stop ${f.site}`;
+  const base = `Stop ${f.site}/${f.drive_from ?? 0}`;
+  if (f.drive_to === undefined) return `${base}+`;
+  return String(f.drive_to) === String(f.drive_from ?? 0) ? base : `${base}–${f.drive_to}`;
+}

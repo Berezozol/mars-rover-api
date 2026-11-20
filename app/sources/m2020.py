@@ -1,4 +1,4 @@
-"""Perseverance (Mars 2020) adapter for the mars.nasa.gov raw images RSS/JSON feed."""
+"""Mars 2020 adapter (Perseverance; Ingenuity subclasses it) for the raw images feed."""
 
 import logging
 from collections.abc import AsyncGenerator, AsyncIterator, Mapping
@@ -26,11 +26,8 @@ from app.sources.normalize import clean, compact, parse_datetime_utc, to_int
 logger = logging.getLogger(__name__)
 
 THUMBNAIL = "thumbnail"
-BASE_PARAMS: dict[str, str | int] = {
-    "feed": "raw_images",
-    "category": "mars2020",
-    "feedtype": "json",
-}
+PERSEVERANCE = "perseverance"
+INGENUITY = "ingenuity"
 
 
 def _mapping(value: Any) -> Mapping[str, Any]:
@@ -47,12 +44,20 @@ def _upper(value: Any) -> str | None:
     return value.upper() if isinstance(value, str) else None
 
 
-def parse_m2020_image(raw: Mapping[str, Any]) -> PhotoRecord | None:
+def _without_position(raw: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Ingenuity has no stops: its feed's ``site``/``drive`` (0 and "None", or helicopter
+    counters) are not rover positions, so both are dropped silently."""
+    return {**raw, "site": None, "drive": None}
+
+
+def parse_m2020_image(raw: Mapping[str, Any], rover_id: str = PERSEVERANCE) -> PhotoRecord | None:
     """Map one feed image to a record; None for thumbnails and incomplete images."""
+    if rover_id == INGENUITY:
+        raw = _without_position(raw)
     imageid = clean(raw.get("imageid"))
     sample_type = _lower(raw.get("sample_type"))
     if sample_type == THUMBNAIL:
-        logger.debug("Skipping Perseverance thumbnail %s", imageid)
+        logger.debug("Skipping %s thumbnail %s", rover_id, imageid)
         return None
     camera = _mapping(raw.get("camera"))
     files = _mapping(raw.get("image_files"))
@@ -75,7 +80,7 @@ def parse_m2020_image(raw: Mapping[str, Any]) -> PhotoRecord | None:
         "drive": to_int(raw.get("drive"), field="drive"),
         "extra": _extra(raw, camera),
     }
-    return build_record(fields, label=f"perseverance:{imageid}")
+    return build_record(fields, label=f"{rover_id}:{imageid}")
 
 
 def _extra(raw: Mapping[str, Any], camera: Mapping[str, Any]) -> dict[str, Any]:
@@ -91,18 +96,33 @@ def _extra(raw: Mapping[str, Any], camera: Mapping[str, Any]) -> dict[str, Any]:
 
 
 class M2020Adapter:
-    """Fetches Perseverance photos by sol range with the ``condition_*:sol`` filters."""
+    """Fetches Mars 2020 feed photos by sol range with the ``condition_*:sol`` filters.
 
-    rover_id = "perseverance"
+    ``rover_id`` and ``category`` select the rover and its feed category; subclasses
+    (Ingenuity) override them and ``parse``.
+    """
+
+    rover_id: str = PERSEVERANCE
+    category: str = "mars2020"
 
     def __init__(self, client: UpstreamClient, settings: Settings) -> None:
         self._client = client
         self._url = settings.m2020_feed_url
         self._page_size = settings.m2020_page_size
         self._max_pages = settings.upstream_max_pages
+        self._label = self.rover_id.capitalize()
+        self._base_params: dict[str, str | int] = {
+            "feed": "raw_images",
+            "category": self.category,
+            "feedtype": "json",
+        }
+
+    def parse(self, raw: Mapping[str, Any]) -> PhotoRecord | None:
+        """Map one feed image to a record (hook for subclasses)."""
+        return parse_m2020_image(raw, self.rover_id)
 
     async def latest_sol(self) -> int:
-        data = await self._client.get_json(self._url, {**BASE_PARAMS, "latest": "true"})
+        data = await self._client.get_json(self._url, {**self._base_params, "latest": "true"})
         sol = to_int(data.get("latest_sol"), field="latest_sol") if isinstance(data, dict) else None
         if sol is None:
             raise UpstreamError(self._url, None, "latest_sol is missing")
@@ -111,7 +131,7 @@ class M2020Adapter:
     async def source_total(self) -> int | None:
         """``total_results`` of an unbounded ``sol >= 0`` query with one image per page."""
         params: dict[str, str | int] = {
-            **BASE_PARAMS,
+            **self._base_params,
             "order": "sol desc",
             "num": 1,
             "page": 0,
@@ -158,7 +178,8 @@ class M2020Adapter:
             if raw_sol != current_sol:
                 if current_sol is not None and raw_sol > current_sol:
                     logger.warning(
-                        "Perseverance feed out of order: sol %d after sol %d",
+                        "%s feed out of order: sol %d after sol %d",
+                        self._label,
                         raw_sol,
                         current_sol,
                     )
@@ -181,8 +202,9 @@ class M2020Adapter:
         if missing > 0:
             planned = _short_page_sols(state.pages, from_sol, to_sol) - stats.refetched_sols
             logger.warning(
-                "Perseverance sols %d..%d: range short by %d images; refetching %d sol(s) "
+                "%s sols %d..%d: range short by %d images; refetching %d sol(s) "
                 "next to short pages: %s",
+                self._label,
                 from_sol,
                 to_sol,
                 missing,
@@ -207,7 +229,7 @@ class M2020Adapter:
     ) -> list[PhotoRecord]:
         """Dedupe a finished sol, also against records already yielded for it; a sol of a
         multi-sol range with repeated images is refetched alone instead."""
-        unique = dedupe_by_source_id(bucket, label=f"perseverance sol {sol}")
+        unique = dedupe_by_source_id(bucket, label=f"{self.rover_id} sol {sol}")
         duplicates = len(bucket) - len(unique)
         if duplicates and state.refetch:
             state.duplicates[sol] = state.duplicates.get(sol, 0) + duplicates
@@ -249,7 +271,8 @@ class M2020Adapter:
         fresh = [record for record in collected if record.source_id not in known]
         known.update(record.source_id for record in fresh)
         logger.warning(
-            "Perseverance sol %d refetched alone (%s): %d images instead of %d",
+            "%s sol %d refetched alone (%s): %d images instead of %d",
+            self._label,
             sol,
             reason,
             sub.sol(sol).received,
@@ -296,12 +319,13 @@ class M2020Adapter:
                 raise IncompleteResponse(
                     self._url,
                     None,
-                    f"perseverance sols {from_sol}..{to_sol}: page {page} is empty with "
+                    f"{self.rover_id} sols {from_sol}..{to_sol}: page {page} is empty with "
                     f"{fetched} of {total} images fetched",
                 )
             if raw_count < self._page_size:
                 logger.warning(
-                    "Perseverance sols %d..%d: page %d returned %d of %d images",
+                    "%s sols %d..%d: page %d returned %d of %d images",
+                    self._label,
                     from_sol,
                     to_sol,
                     page,
@@ -312,7 +336,7 @@ class M2020Adapter:
                 raise PageLimitExceeded(
                     self._url,
                     None,
-                    f"perseverance sols {from_sol}..{to_sol}: page limit reached after "
+                    f"{self.rover_id} sols {from_sol}..{to_sol}: page limit reached after "
                     f"{page + 1} pages ({fetched} of {total} images)",
                 )
             page += 1
@@ -322,7 +346,7 @@ class M2020Adapter:
     ) -> tuple[list[Mapping[str, Any]], int, int]:
         """Return ``(images, raw image count, total_results)`` of one feed page."""
         params: dict[str, str | int] = {
-            **BASE_PARAMS,
+            **self._base_params,
             "order": "sol desc",
             "num": self._page_size,
             "page": page,
@@ -337,17 +361,17 @@ class M2020Adapter:
         images = [item for item in raw_images if isinstance(item, Mapping)]
         return images, len(raw_images), total
 
-    @staticmethod
     def _parse_in_range(
-        raw: Mapping[str, Any], from_sol: int, to_sol: int
+        self, raw: Mapping[str, Any], from_sol: int, to_sol: int
     ) -> tuple[int | None, PhotoRecord | None]:
         """The image's sol (None if unknown) and its record (None if rejected)."""
-        record = parse_m2020_image(raw)
+        record = self.parse(raw)
         if record is None:
             return _raw_sol(raw), None
         if not from_sol <= record.sol <= to_sol:
             logger.warning(
-                "Skipping Perseverance image %s: sol %d outside %d..%d",
+                "Skipping %s image %s: sol %d outside %d..%d",
+                self._label,
                 record.source_id,
                 record.sol,
                 from_sol,

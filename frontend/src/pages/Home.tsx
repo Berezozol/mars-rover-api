@@ -7,8 +7,18 @@ import { fmt, statusLabel, visibleRovers } from "../lib/format";
 import { useAsync, useRovers, useTitle } from "../lib/hooks";
 import { Link, navigate, qs } from "../router";
 
+/** Only the Ingenuity helicopter has a flight log. */
+const hasFlightLog = (rover: Rover): boolean => rover.id === "ingenuity";
+
 function RoverCard({ rover, index }: { rover: Rover; index: number }) {
   const hrefLatest = `/rovers/${rover.id}`;
+  const flightLog = hasFlightLog(rover);
+  // The number of flights is the length of the (cached) flight list; the card works without it.
+  const [flights] = useAsync(
+    () => (flightLog ? api.flights(rover.id) : Promise.resolve(null)),
+    [rover.id, flightLog],
+  );
+  const flightCount = flights.status === "ok" && flights.data ? flights.data.length : null;
   return (
     <li class="card rover">
       <div class={`rover-art art-${index % 4}`} aria-hidden="true" />
@@ -17,23 +27,35 @@ function RoverCard({ rover, index }: { rover: Rover; index: number }) {
           <h2 id={`r-${rover.id}`}>
             <Link href={hrefLatest}>{rover.name}</Link>
           </h2>
-          <span class={`badge ${rover.status === "active" ? "badge-active" : "badge-complete"}`}>
-            {statusLabel(rover.status)}
+          <span class="row" style={{ gap: 6, flexWrap: "nowrap" }}>
+            <span class={`badge ${rover.status === "active" ? "badge-active" : "badge-complete"}`}>
+              {statusLabel(rover.status)}
+            </span>
+            {rover.data_source === "archive" && <span class="badge no-dot">Imported</span>}
           </span>
         </div>
         <div class="rover-mission">
-          Mission {rover.mission} · landed {rover.landing_date}
+          Mission {rover.mission}
+          {flightLog && <> · helicopter</>} · landed {rover.landing_date}
           {rover.end_date && <> · ended {rover.end_date}</>}
         </div>
         <dl class="stats">
+          {flightLog && (
+            <div>
+              <dt>Flights</dt>
+              <dd>{flightCount ?? "—"}</dd>
+            </div>
+          )}
           <div>
             <dt>Latest sol</dt>
             <dd>{rover.max_sol}</dd>
           </div>
-          <div>
-            <dt>Latest date</dt>
-            <dd>{rover.max_date}</dd>
-          </div>
+          {!flightLog && (
+            <div>
+              <dt>Latest date</dt>
+              <dd>{rover.max_date}</dd>
+            </div>
+          )}
           <div>
             <dt>Photos</dt>
             <dd>{fmt(rover.total_photos)}</dd>
@@ -49,18 +71,34 @@ function RoverCard({ rover, index }: { rover: Rover; index: number }) {
             <time dateTime={rover.last_synced_at}>
               {rover.last_synced_at.slice(0, 16).replace("T", " ")} UTC
             </time>
+            {rover.data_source === "archive" && <> · one-off archive, not updated</>}
           </div>
         )}
         <div class="rover-actions">
-          <Link class="btn btn-primary btn-sm" href={hrefLatest}>
-            Latest sol {rover.max_sol}
-          </Link>
+          {flightLog ? (
+            <>
+              <Link class="btn btn-primary btn-sm" href={`/rovers/${rover.id}/flights`}>
+                {flightCount !== null
+                  ? `${flightCount} ${flightCount === 1 ? "flight" : "flights"}`
+                  : "Flights"}
+              </Link>
+              <Link class="btn btn-sm" href={hrefLatest}>
+                Photos
+              </Link>
+            </>
+          ) : (
+            <Link class="btn btn-primary btn-sm" href={hrefLatest}>
+              Latest sol {rover.max_sol}
+            </Link>
+          )}
           <Link class="btn btn-sm" href={`/rovers/${rover.id}/timeline`}>
             Timeline
           </Link>
-          <Link class="btn btn-sm" href={`/rovers/${rover.id}/map`}>
-            Route map
-          </Link>
+          {!flightLog && (
+            <Link class="btn btn-sm" href={`/rovers/${rover.id}/map`}>
+              Route map
+            </Link>
+          )}
         </div>
       </article>
     </li>

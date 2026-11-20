@@ -18,6 +18,12 @@
   .view-tabs a[aria-disabled="true"] { cursor: not-allowed; opacity: .75; }
   .view-tabs a[aria-disabled="true"]:hover { color: var(--text-muted); }
 
+  .latest-pos { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4); align-items: center; padding: var(--s3) var(--s4); margin: var(--s3) 0; border-left: 4px solid var(--map-latest); }
+  .latest-pos[hidden] { display: none; }
+  .latest-pos .k { font-size: var(--fs-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; display: flex; align-items: center; gap: 6px; }
+  .latest-pos .k i { width: 10px; height: 10px; background: var(--map-latest); transform: rotate(45deg); display: inline-block; }
+  .latest-pos .v { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .latest-pos .api { flex-basis: 100%; font: var(--fs-xs) var(--mono); color: var(--text-faint); }
   .summary { display: grid; gap: var(--s3); grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: var(--s4); }
   @media (min-width: 800px) { .summary { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
   .tile-stat { padding: var(--s3) var(--s4); }
@@ -115,6 +121,7 @@
       <a href="photos.html?rover=perseverance" title="Latest sol">Photos</a>
       <a href="manifest.html">Timeline</a>
       <a href="map.html" aria-current="page">Route map</a>
+      <a href="flights.html">Flights</a>
       <a href="index.html#api">API</a>
     </nav>
     <button class="theme-toggle" type="button" aria-label="Toggle colour theme">Theme</button>
@@ -148,11 +155,14 @@
       <a href="photos.html" id="tab-photos">Photos</a>
       <a href="manifest.html" id="tab-timeline">Timeline</a>
       <a href="map.html" aria-current="page">Route map</a>
-      <a href="#" id="tab-ingenuity" aria-disabled="true" title="Ingenuity flight data is not available yet">Ingenuity flights <span class="badge no-dot badge-warn">Soon</span></a>
+      <a href="flights.html" id="tab-ingenuity" title="Flights of the Ingenuity helicopter, which flew from Perseverance's landing site">Flights</a>
     </nav>
 
     <h1 id="title">Perseverance route map</h1>
     <p class="muted" id="lede">Where the rover has stopped, sol by sol. Select a stop to see its details and open that sol&rsquo;s photos.</p>
+
+    <!-- Latest position. Data: GET /api/v2/rovers/{rover}/location?latest=true -> items: [last Waypoint] -->
+    <section class="card latest-pos" id="latest-pos" aria-label="Latest position" hidden></section>
 
     <div id="banner"></div>
 
@@ -426,10 +436,11 @@ function renderSel() {
     <dt>Total (source)</dt><dd>${km(w.dist_total_m)}</dd>
   </dl>
   <div class="row" style="margin-top:var(--s3);align-items:center">
-    <a class="btn btn-primary btn-sm" href="photos.html?rover=${r.id}&amp;sol=${w.sol}" id="open-photos">Browse sol ${w.sol} photos</a>
+    <a class="btn btn-primary btn-sm" href="photos.html?rover=${r.id}&amp;sol=${w.sol}" id="open-photos">Photos of sol ${w.sol}</a>
+    <a class="btn btn-sm" href="photos.html?rover=${r.id}&amp;site=${w.site}&amp;drive=${w.drive}" id="open-stop-photos" title="Photos taken at site ${w.site}, drive ${w.drive}">Photos at this stop</a>
     <button class="btn btn-sm" type="button" id="clear-sel">Clear</button>
   </div>
-  <p class="apx" style="margin:var(--s2) 0 0">The stop is where the drive ended; photos of this sol may have been taken at other stops.</p>`;
+  <p class="apx" style="margin:var(--s2) 0 0"><strong>Photos of sol ${w.sol}</strong> = everything taken that day, possibly at several stops. <strong>Photos at this stop</strong> = only frames with site ${w.site} / drive ${w.drive}. The second needs <code>site</code>/<code>drive</code> filters in <code>/photos</code> (NOTES, proposal 13).</p>`;
   $('#clear-sel').onclick = () => select(null);
 }
 function renderList() {
@@ -458,6 +469,21 @@ function renderSummary() {
     <div class="card tile-stat"><div class="k">Latest stop</div><div class="v">Sol ${last.sol}</div><div class="s">site ${last.site}, drive ${last.drive}</div></div>
     <div class="card tile-stat"><div class="k">Updated</div><div class="v" style="font-size:var(--fs-md)">${r.updated_at.slice(0, 10)}</div><div class="s">data through sol ${d.source_max_sol}</div></div>`;
 }
+function renderLatest() {
+  const r = ROVERS[state.rover], d = DATA[state.rover], el = $('#latest-pos');
+  if (!d.available || state.view !== 'data' && state.view !== 'empty' || !d.items.length) { el.hidden = true; el.innerHTML = ''; return; }
+  const w = d.items[d.items.length - 1], behind = r.max_sol != null && w.sol < r.max_sol;
+  el.hidden = false;
+  el.innerHTML = `
+    <div><div class="k"><i></i>Latest position</div><div class="v">Sol ${w.sol} &middot; site ${w.site}, drive ${w.drive}</div></div>
+    <div><div class="k">Coordinates</div><div class="v">${latS(w.lat)}, ${lonS(w.lon)}</div></div>
+    <div><div class="k">Elevation</div><div class="v">${fmt(w.elev_geoid, 1)} m</div></div>
+    <button class="btn btn-sm" type="button" id="latest-show">Show on map</button>
+    <a class="btn btn-sm" href="photos.html?rover=${r.id}&amp;sol=${w.sol}">Photos of sol ${w.sol}</a>
+    ${behind ? `<span class="small muted">Latest published stop; photos reach sol ${r.max_sol}.</span>` : ''}
+    <span class="api">GET /api/v2/rovers/${r.id}/location?latest=true</span>`;
+  $('#latest-show').onclick = () => select(d.items.length - 1, true);
+}
 function renderBanner() {
   const r = ROVERS[state.rover], d = DATA[state.rover], el = $('#banner'); el.innerHTML = '';
   if (!d.available || state.view !== 'data' && state.view !== 'empty') return;
@@ -474,10 +500,10 @@ function render() {
   $('#title').textContent = r.name + ' route map';
   document.querySelectorAll('.rover-tabs a').forEach(a => { a.removeAttribute('aria-current'); if (a.dataset.rover === state.rover) a.setAttribute('aria-current', 'page'); });
   $('#tab-photos').href = `photos.html?rover=${r.id}`; $('#tab-timeline').href = `manifest.html?rover=${r.id}`;
-  $('#tab-ingenuity').hidden = state.rover !== 'perseverance';
+  $('#tab-ingenuity').hidden = state.rover !== 'perseverance'; /* Ingenuity flew from Perseverance's site; Flights link only here */
   $('#from-sol').value = state.from ?? ''; $('#to-sol').value = state.to ?? '';
   document.querySelectorAll('[data-state]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.state === state.view)));
-  prepare(); renderSummary(); renderBanner(); tip.style.display = 'none';
+  prepare(); renderSummary(); renderLatest(); renderBanner(); tip.style.display = 'none';
 
   const rangeQs = [state.from != null ? 'from_sol=' + state.from : '', state.to != null ? 'to_sol=' + state.to : ''].filter(Boolean).join('&');
   $('#api-line').textContent = `GET /api/v2/rovers/${r.id}/traverse  +  GET /api/v2/rovers/${r.id}/location${rangeQs ? '?' + rangeQs : ''}`;
@@ -604,7 +630,6 @@ document.querySelector('.theme-toggle').onclick = () => {
   const r = document.documentElement, dark = r.dataset.theme ? r.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
   r.dataset.theme = dark ? 'light' : 'dark';
 };
-document.getElementById('tab-ingenuity').addEventListener('click', e => e.preventDefault());
 new ResizeObserver(() => { if (!route || state.view === 'loading') return; const r = mapEl.getBoundingClientRect(); if (!r.width) return; W = r.width; H = r.height; svg.setAttribute('viewBox', `0 0 ${W} ${H}`); drawMap(); showTip(state.sel); }).observe(mapEl);
 
 render();

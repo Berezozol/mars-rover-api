@@ -48,8 +48,14 @@ async def get_location(
     sol: int | None,
     from_sol: int | None,
     to_sol: int | None,
+    latest: bool = False,
 ) -> LocationData:
-    """Waypoints of the rover, optionally for one sol or a sol range (inclusive)."""
+    """Waypoints of the rover, optionally for one sol or a sol range (inclusive).
+
+    With ``latest`` only the last stop (or none); it excludes ``sol``, ``from_sol``, ``to_sol``.
+    """
+    if latest and (sol is not None or from_sol is not None or to_sol is not None):
+        raise InvalidParam("latest", "latest cannot be used together with sol, from_sol or to_sol")
     if sol is not None and (from_sol is not None or to_sol is not None):
         raise InvalidParam("sol", "sol cannot be used together with from_sol or to_sol")
     if from_sol is not None and to_sol is not None and from_sol > to_sol:
@@ -60,7 +66,11 @@ async def get_location(
     if sol is not None:
         from_sol = to_sol = sol
     dataset = await locations_repo.get_dataset(session, rover.id, "waypoints")
-    items = await locations_repo.list_waypoints(session, rover.id, from_sol, to_sol)
+    if latest:
+        last = await locations_repo.latest_waypoint(session, rover.id)
+        items: Sequence[RoverWaypoint] = [last] if last is not None else []
+    else:
+        items = await locations_repo.list_waypoints(session, rover.id, from_sol, to_sol)
     return LocationData(
         rover.id,
         True,

@@ -58,7 +58,30 @@ SampleTypeParam = Annotated[
     str | None,
     Query(description=f"One of {', '.join(SAMPLE_TYPES)} (case-insensitive); default: all."),
 ]
+# A stop of the rover: ``site`` and an inclusive ``drive`` range (docs/API.md, /photos).
+SiteParam = Annotated[int | None, Query(ge=0, le=MAX_SOL, description="Stop number."), StrictInt]
+DriveParam = Annotated[int | None, Query(ge=0, le=MAX_SOL), StrictInt]
+FlightNumberPath = Annotated[int, Path(description="Flight number, from 1."), StrictInt]
 PhotoIdPath = Annotated[int, Path(), StrictInt]
+
+
+def _strict_bool(value: object) -> object:
+    """``true``/``false``/``1``/``0`` (case-insensitive); anything else is rejected."""
+    if not isinstance(value, str):
+        return value
+    lowered = value.lower()
+    if lowered in ("true", "1"):
+        return True
+    if lowered in ("false", "0"):
+        return False
+    raise ValueError("must be true, false, 1 or 0")
+
+
+LatestParam = Annotated[
+    bool,
+    Query(description="true: only the last stop; not combinable with sol, from_sol, to_sol."),
+    BeforeValidator(_strict_bool),
+]
 
 
 def page_request(

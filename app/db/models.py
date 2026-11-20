@@ -4,6 +4,7 @@ Alembic imports this module, so every model must be defined or imported here.
 """
 
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
@@ -15,6 +16,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     SmallInteger,
     Text,
     UniqueConstraint,
@@ -30,6 +32,7 @@ __all__ = [
     "Base",
     "Camera",
     "CameraSolCount",
+    "IngenuityFlight",
     "LocationDataset",
     "Photo",
     "Rover",
@@ -102,6 +105,14 @@ class Photo(Base):
         ),
         # Filter by real earth_date (v2).
         Index("ix_photos_rover_id_earth_date", "rover_id", "earth_date"),
+        # Filter by stop (site, drive range) (v2); photos without a position are not indexed.
+        Index(
+            "ix_photos_rover_id_site_drive",
+            "rover_id",
+            "site",
+            "drive",
+            postgresql_where=text("site IS NOT NULL"),
+        ),
         # Filter by camera (v2).
         Index("ix_photos_rover_id_camera_id_sol", "rover_id", "camera_id", "sol"),
         # v1 serves full-frame photos only, ordered by camera then id.
@@ -208,6 +219,25 @@ class SyncRun(Base):
     )
     # Total the source declared for the run's range, when known.
     source_total: Mapped[int | None] = mapped_column(BigInteger)
+
+
+class IngenuityFlight(Base):
+    """One flight of the Ingenuity helicopter from NASA's flight log (seeded by migration 0008)."""
+
+    __tablename__ = "ingenuity_flights"
+    __table_args__ = (CheckConstraint("flight > 0", name="flight_positive"),)
+
+    flight: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
+    # Sol of Perseverance's mission clock; unique, it links a flight to photos.
+    sol: Mapped[int] = mapped_column(Integer, unique=True)
+    # Pacific time date, as in the log (not UTC).
+    date: Mapped[date] = mapped_column(Date)
+    distance_m: Mapped[int] = mapped_column(Integer)
+    max_altitude_m: Mapped[int] = mapped_column(Integer)
+    max_groundspeed_mps: Mapped[Decimal] = mapped_column(Numeric(5, 2))
+    duration_s: Mapped[Decimal] = mapped_column(Numeric(6, 1))
+    route_from: Mapped[str] = mapped_column(Text)
+    route_to: Mapped[str | None] = mapped_column(Text)
 
 
 class RoverWaypoint(Base):

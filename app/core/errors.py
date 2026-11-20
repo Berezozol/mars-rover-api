@@ -210,6 +210,15 @@ class PhotoNotFound(NotFoundError):
         super().__init__("Photo not found")
 
 
+class FlightNotFound(NotFoundError):
+    """v2: no such Ingenuity flight."""
+
+    code = "flight_not_found"
+
+    def __init__(self) -> None:
+        super().__init__("Flight not found")
+
+
 class RoverNotFound(NotFoundError):
     """v2: unknown or malformed rover slug."""
 

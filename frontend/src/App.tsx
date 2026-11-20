@@ -1,5 +1,6 @@
 import { Component, type ComponentChildren } from "preact";
 import { Layout } from "./components/Layout";
+import { Flights } from "./pages/Flights";
 import { Home } from "./pages/Home";
 import { NotFound } from "./pages/NotFound";
 import { PhotoPage } from "./pages/Photo";
@@ -63,6 +64,9 @@ export function App() {
       break;
     case "map":
       page = <RouteMapPage key={route.rover} roverId={route.rover} />;
+      break;
+    case "flights":
+      page = <Flights key={route.rover} roverId={route.rover} />;
       break;
     case "photo":
       page = <PhotoPage key={route.id} id={route.id} />;

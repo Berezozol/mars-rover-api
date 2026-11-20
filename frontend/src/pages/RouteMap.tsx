@@ -32,7 +32,7 @@ import {
   type Prepared,
   type View,
 } from "../lib/mapgeo";
-import { findStop, mapHref } from "../lib/maplinks";
+import { findStop, mapHref, stopPhotosHref } from "../lib/maplinks";
 import { Link, navigate, qs, useQuery } from "../router";
 
 const LIST_PAGE = 8;
@@ -63,6 +63,7 @@ export function RouteMapPage({ roverId }: { roverId: string }) {
   return (
     <>
       <RoverTabs rovers={rovers.data} current={rover.id} to={(id) => `/rovers/${id}/map`} />
+      <ViewTabs rover={rover} rovers={rovers.data} />
       <h1>{rover.name} route map</h1>
       <p class="muted">
         Where the rover has stopped, sol by sol. Select a stop to see its details and open that
@@ -70,6 +71,90 @@ export function RouteMapPage({ roverId }: { roverId: string }) {
       </p>
       <MapLoader rover={rover} />
     </>
+  );
+}
+
+/** Photos / Timeline / Route map of this rover, plus Flights next to Perseverance (where Ingenuity flew). */
+function ViewTabs({ rover, rovers }: { rover: Rover; rovers: Rover[] }) {
+  const heli = rovers.find((r) => r.id === "ingenuity");
+  return (
+    <nav class="view-tabs" aria-label={`Views of ${rover.name}`}>
+      <Link href={`/rovers/${rover.id}`}>Photos</Link>
+      <Link href={`/rovers/${rover.id}/timeline`}>Timeline</Link>
+      <Link href={`/rovers/${rover.id}/map`} aria-current="page">
+        Route map
+      </Link>
+      {heli && (rover.id === "perseverance" || rover.id === "ingenuity") && (
+        <Link
+          href={`/rovers/${heli.id}/flights`}
+          title="Flights of the Ingenuity helicopter, which flew from Perseverance’s landing site"
+        >
+          Flights
+        </Link>
+      )}
+    </nav>
+  );
+}
+
+/** The last published stop from `location?latest=true`; it is a bonus, so any failure hides it. */
+function LatestPosition({
+  rover,
+  stops,
+  onShow,
+}: {
+  rover: Rover;
+  stops: Waypoint[];
+  onShow: (index: number) => void;
+}) {
+  const [state] = useAsync(
+    (signal) => api.locationLatest(rover.id, signal).catch(() => null),
+    [rover.id],
+  );
+  const res = state.status === "ok" ? state.data : null;
+  // A server that ignores `latest` would return every stop: the last one is still the latest.
+  const w = res?.available ? (res.items[res.items.length - 1] ?? null) : null;
+  if (!res || !w) return null;
+  const index = findStop(stops, w.sol, w.site, w.drive);
+  const behind = rover.max_sol !== null && w.sol < rover.max_sol;
+  return (
+    <section class="card latest-pos" aria-label="Latest position">
+      <div>
+        <div class="k">
+          <i />
+          Latest position
+        </div>
+        <div class="v">
+          Sol {w.sol} · site {w.site}, drive {w.drive}
+        </div>
+      </div>
+      <div>
+        <div class="k">Coordinates</div>
+        <div class="v">
+          {latLabel(w.lat)}, {lonLabel(w.lon)}
+        </div>
+      </div>
+      {w.elev_geoid !== null && (
+        <div>
+          <div class="k">Elevation</div>
+          <div class="v">{metres(w.elev_geoid)}</div>
+        </div>
+      )}
+      <button
+        class="btn btn-sm"
+        type="button"
+        disabled={index === null}
+        onClick={() => index !== null && onShow(index)}
+      >
+        Show on map
+      </button>
+      <Link class="btn btn-sm" href={`/rovers/${rover.id}${qs({ sol: w.sol })}`}>
+        Photos of sol {w.sol}
+      </Link>
+      {behind && (
+        <span class="small muted">Latest published stop; photos reach sol {rover.max_sol}.</span>
+      )}
+      <span class="api">GET /api/v2/rovers/{rover.id}/location?latest=true</span>
+    </section>
   );
 }
 
@@ -154,8 +239,10 @@ function MapData({
                 <>
                   <h2>No location data for {rover.name}</h2>
                   <p class="small muted">
-                    Positions are published for Curiosity and Perseverance only. {rover.name}’s
-                    photos are still available.
+                    {rover.id === "ingenuity"
+                      ? "The helicopter has no route of its own: it flew short hops near Perseverance. "
+                      : "Positions are published for Curiosity and Perseverance only. "}
+                    {rover.name}’s photos are still available.
                   </p>
                 </>
               ) : (
@@ -541,6 +628,8 @@ function RouteMapView({
 
   return (
     <>
+      <LatestPosition rover={rover} stops={stops} onShow={(i) => select(i, true)} />
+
       {notes.length > 0 && <div class="banner">{notes}</div>}
 
       <section class="mp-summary" aria-label="Route summary">
@@ -855,13 +944,23 @@ function RouteMapView({
                   >
                     Photos of sol {selected.sol}
                   </Link>
+                  <Link
+                    class="btn btn-sm"
+                    href={stopPhotosHref(rover.id, stops, selected)}
+                    id="open-stop-photos"
+                    title={`Photos taken at site ${selected.site}, drive ${selected.drive}`}
+                  >
+                    Photos at this stop
+                  </Link>
                   <button class="btn btn-sm" type="button" onClick={() => setSel(null)}>
                     Clear
                   </button>
                 </div>
                 <p class="apx" style={{ margin: "var(--s2) 0 0" }}>
-                  The stop is where the drive ended; photos of this sol may have been taken at other
-                  stops.
+                  <strong>Photos of sol {selected.sol}</strong> = everything taken that day,
+                  possibly at several stops. <strong>Photos at this stop</strong> = frames taken
+                  here and on the way to the next stop (site {selected.site}, from drive{" "}
+                  {selected.drive}).
                 </p>
               </div>
             ) : (
