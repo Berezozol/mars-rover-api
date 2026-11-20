@@ -14,5 +14,19 @@
       "Bash(git log *)",
       "Bash(git rev-parse *)"
     ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --no-project --quiet python \"$CLAUDE_PROJECT_DIR/.claude/hooks/agent_budget_reminder.py\"",
+            "timeout": 20
+          }
+        ]
+      }
+    ]
   }
 }

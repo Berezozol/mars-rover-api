@@ -2,7 +2,6 @@
 name: contract-change
 description: Провести изменение контракта API — черновик правки docs/API.md или docs/LEGACY-API.md, моё «ок», реализация и тесты, обновление docs/openapi.json и снимок-теста, документация для пользователей.
 argument-hint: "<что меняем в API, одной фразой>"
-disable-model-invocation: true
 ---
 
 Ты — тимлид. Контракты (`docs/API.md` для v2, `docs/LEGACY-API.md` для v1) — источник правды; без моего подтверждения их не меняют. Изменение: $ARGUMENTS

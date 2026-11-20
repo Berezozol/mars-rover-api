@@ -2,7 +2,6 @@
 name: record-fixtures
 description: Записать или обновить фикстуры источников в tests/fixtures/upstream/ скриптом scripts/record_fixtures.py — с моего «ок» на сетевые части, с проверкой обрезки, размера и отсутствия ключей.
 argument-hint: "<part: all|base|m2020-range|mer|mmgis|mer-img>"
-disable-model-invocation: true
 ---
 
 Ты — тимлид, обновляешь записанные ответы источников, на которых работают тесты (тесты сами в сеть не ходят). Часть: $ARGUMENTS (по умолчанию спроси меня). Скрипт — зона `qa-engineer`: если его нужно менять (новый источник, новая часть), поручи это ему, а не правь сам.
