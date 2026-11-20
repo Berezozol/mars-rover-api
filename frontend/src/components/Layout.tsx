@@ -39,7 +39,10 @@ export function Layout({ route, pathname, children }: Props) {
     return () => window.removeEventListener("resize", set);
   }, []);
 
-  const own = route.name === "photos" || route.name === "timeline" ? route.rover : null;
+  const own =
+    route.name === "photos" || route.name === "timeline" || route.name === "map"
+      ? route.rover
+      : null;
   const list = rovers.status === "ok" ? visibleRovers(rovers.data) : [];
   const rover = own ?? list[0]?.id ?? "perseverance";
 
@@ -77,6 +80,9 @@ export function Layout({ route, pathname, children }: Props) {
             </Link>
             <Link href={`/rovers/${rover}/timeline`} aria-current={cur("timeline")}>
               Timeline
+            </Link>
+            <Link href={`/rovers/${rover}/map`} aria-current={cur("map")}>
+              Route map
             </Link>
             <a href="/docs">API docs</a>
           </nav>

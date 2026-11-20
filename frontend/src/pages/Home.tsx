@@ -23,6 +23,7 @@ function RoverCard({ rover, index }: { rover: Rover; index: number }) {
         </div>
         <div class="rover-mission">
           Mission {rover.mission} · landed {rover.landing_date}
+          {rover.end_date && <> · ended {rover.end_date}</>}
         </div>
         <dl class="stats">
           <div>
@@ -42,9 +43,9 @@ function RoverCard({ rover, index }: { rover: Rover; index: number }) {
             <dd>{rover.cameras_count}</dd>
           </div>
         </dl>
-        {rover.status === "active" && rover.last_synced_at && (
+        {(rover.status === "active" || rover.data_source === "archive") && rover.last_synced_at && (
           <div class="synced">
-            Synced{" "}
+            {rover.data_source === "archive" ? "Imported" : "Synced"}{" "}
             <time dateTime={rover.last_synced_at}>
               {rover.last_synced_at.slice(0, 16).replace("T", " ")} UTC
             </time>
@@ -56,6 +57,9 @@ function RoverCard({ rover, index }: { rover: Rover; index: number }) {
           </Link>
           <Link class="btn btn-sm" href={`/rovers/${rover.id}/timeline`}>
             Timeline
+          </Link>
+          <Link class="btn btn-sm" href={`/rovers/${rover.id}/map`}>
+            Route map
           </Link>
         </div>
       </article>
@@ -110,7 +114,7 @@ function QuickJump({ rovers }: { rovers: Rover[] }) {
 
 function LatestStrip({ rover }: { rover: Rover }) {
   const [state, reload] = useAsync(
-    (signal) => api.latest(rover.id, { per_page: 6 }, signal),
+    (signal) => api.latest(rover.id, { sample_type: "full", per_page: 6 }, signal),
     [rover.id],
   );
   if (state.status === "error") {
@@ -126,7 +130,7 @@ function LatestStrip({ rover }: { rover: Rover }) {
     );
   }
   const { sol, items, total } = state.data;
-  const from = `/rovers/${rover.id}${qs({ sol })}`;
+  const from = `/rovers/${rover.id}${qs({ sol, sample_type: "full" })}`;
   return (
     <>
       <div class="section-head">
@@ -136,12 +140,12 @@ function LatestStrip({ rover }: { rover: Rover }) {
         </h2>
         {sol !== null && (
           <Link href={from} class="small">
-            All {fmt(total)} photos of sol {sol} →
+            All {fmt(total)} full frames of sol {sol} →
           </Link>
         )}
       </div>
       {items.length === 0 ? (
-        <p class="muted">No photos yet.</p>
+        <p class="muted">{sol === null ? "No photos yet." : `No full frames on sol ${sol} yet.`}</p>
       ) : (
         <ul class="latest-strip">
           {items.map((p) => (

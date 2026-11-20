@@ -40,6 +40,14 @@
   --seq-3: #c25e33;
   --seq-4: #8c3613;
 
+  /* route map (plain background, no imagery); graphics >= 3:1 on --map-bg */
+  --map-bg: #efebe6;
+  --map-grid: #d6cec4;
+  --map-route: #857a6e;
+  --map-route-hi: #a83c17;
+  --map-stop: #6b6157;
+  --map-latest: #1f5fbf;
+
   --focus: #1f5fbf;
   --skeleton: #e6e0d8;
   --skeleton-hi: #f3efea;
@@ -98,6 +106,12 @@
     --seq-2: #9a4e2c;
     --seq-3: #d9764a;
     --seq-4: #f7b08c;
+    --map-bg: #1a1714;
+    --map-grid: #2e2924;
+    --map-route: #8f857a;
+    --map-route-hi: #f08f62;
+    --map-stop: #b3aaa0;
+    --map-latest: #7fb2ff;
     --focus: #7fb2ff;
     --skeleton: #2a2621;
     --skeleton-hi: #36312b;
@@ -132,6 +146,12 @@
   --seq-2: #9a4e2c;
   --seq-3: #d9764a;
   --seq-4: #f7b08c;
+  --map-bg: #1a1714;
+  --map-grid: #2e2924;
+  --map-route: #8f857a;
+  --map-route-hi: #f08f62;
+  --map-stop: #b3aaa0;
+  --map-latest: #7fb2ff;
   --focus: #7fb2ff;
   --skeleton: #2a2621;
   --skeleton-hi: #36312b;

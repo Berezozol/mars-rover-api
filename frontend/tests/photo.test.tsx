@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/preact";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
 import { apiError, detail, mockApi, page, perseverance, photo } from "./helpers";
+import { dimensionOf, listContext, neighborsFromInSol, positionText } from "../src/pages/Photo";
 
 describe("Photo card", () => {
   it("shows metadata, credit, source link and the image via the image endpoint", async () => {
@@ -35,8 +36,9 @@ describe("Photo card", () => {
     );
     fireEvent.click(screen.getByLabelText("Full"));
     await waitFor(() =>
-      expect(screen.getByAltText(/frame from Perseverance/).getAttribute("width")).toBe("2048"),
-    ); // reserved from extra.dimension
+      expect(screen.getByAltText(/frame from Perseverance/).getAttribute("width")).toBe("1648"),
+    ); // reserved from width/height
+    expect(screen.getByAltText(/frame from Perseverance/).getAttribute("height")).toBe("1200");
   });
 
   it("disables unavailable sizes for Curiosity (full only)", async () => {
@@ -57,34 +59,118 @@ describe("Photo card", () => {
     expect(screen.getByText(/published in one size only/)).toBeTruthy();
   });
 
-  it("offers newer/older neighbours from the list the visitor came from", async () => {
+  it("steps through the sol with in_sol, passing the list's camera and sample type", async () => {
     const m = mockApi({
       "/api/v2/rovers": { items: [perseverance] },
-      "/api/v2/photos/2": detail(2),
-      "/api/v2/rovers/perseverance/photos": page([photo(3), photo(2), photo(1)], 3),
+      "/api/v2/photos/2": detail(2, {
+        in_sol: { position: 17, total: 52, newer_id: 3, older_id: 1 },
+      }),
+      "/api/v2/rovers/perseverance/photos": page([], 0),
     });
-    window.history.replaceState(
-      null,
-      "",
-      "/photos/2?from=" + encodeURIComponent("/rovers/perseverance?sol=2031&camera=SUPERCAM_RMI"),
-    );
+    const from = "/rovers/perseverance?sol=2031&camera=supercam_rmi&sample_type=full&page=3";
+    window.history.replaceState(null, "", "/photos/2?from=" + encodeURIComponent(from));
     render(<App />);
     const older = await screen.findByRole("link", { name: /Older/ });
     expect(older.getAttribute("href")).toContain("/photos/1?from=");
     expect(screen.getByRole("link", { name: /Newer/ }).getAttribute("href")).toContain(
       "/photos/3?from=",
     );
-    expect(screen.getByText("2 of 3 in this list")).toBeTruthy();
-    const neighbourCall = m.calls.find(
-      (c) => c.searchParams.get("camera") === "SUPERCAM_RMI" && c.searchParams.get("page") === "1",
-    );
-    expect(neighbourCall).toBeTruthy();
+    expect(screen.getByText("17 of 52 on sol 2031 · SUPERCAM_RMI · full")).toBeTruthy();
+    const call = m.last("/api/v2/photos/2");
+    expect(call?.searchParams.get("camera")).toBe("SUPERCAM_RMI");
+    expect(call?.searchParams.get("sample_type")).toBe("full");
+    // no page walking for a sol list
+    expect(
+      m.calls.some((c) => c.pathname.endsWith("/photos") && c.pathname.includes("rovers")),
+    ).toBe(false);
   });
 
-  it("ignores a foreign 'from' address", async () => {
+  it("disables the edge buttons when in_sol has no neighbour there", async () => {
     mockApi({
       "/api/v2/rovers": { items: [perseverance] },
-      "/api/v2/photos/2": detail(2),
+      "/api/v2/photos/2": detail(2, {
+        in_sol: { position: 1, total: 52, newer_id: null, older_id: 1 },
+      }),
+      "/api/v2/rovers/perseverance/photos": page([], 0),
+    });
+    window.history.replaceState(null, "", "/photos/2");
+    render(<App />);
+    expect(await screen.findByRole("link", { name: /Older/ })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /Newer/ })).toBeNull();
+    expect(screen.getByText("1 of 52 on sol 2031")).toBeTruthy();
+  });
+
+  it("falls back to an unfiltered card when the list's camera is rejected (422)", async () => {
+    let calls = 0;
+    mockApi({
+      "/api/v2/rovers": { items: [perseverance] },
+      "/api/v2/photos/2": (url) => {
+        calls += 1;
+        return url.searchParams.get("camera")
+          ? apiError(422, "validation_error", "bad", [{ field: "camera", message: "Unknown" }])
+          : detail(2, { in_sol: { position: 2, total: 5, newer_id: 3, older_id: 1 } });
+      },
+      "/api/v2/rovers/perseverance/photos": page([], 0),
+    });
+    window.history.replaceState(
+      null,
+      "",
+      "/photos/2?from=" + encodeURIComponent("/rovers/perseverance?sol=2031&camera=NOPE"),
+    );
+    render(<App />);
+    // exact text: the rejected filter is not shown, and the neighbour links do not carry it
+    expect(await screen.findByText("2 of 5 on sol 2031")).toBeTruthy();
+    expect(calls).toBe(2);
+    const href = screen.getByRole("link", { name: /Older/ }).getAttribute("href")!;
+    expect(href).toContain("/photos/1?from=");
+    expect(decodeURIComponent(href)).not.toContain("camera");
+  });
+
+  it("ignores a list of another rover (no filters, no from in the links)", async () => {
+    const m = mockApi({
+      "/api/v2/rovers": { items: [perseverance] },
+      "/api/v2/photos/2": detail(2, {
+        in_sol: { position: 3, total: 9, newer_id: 3, older_id: 1 },
+      }),
+      "/api/v2/rovers/perseverance/photos": page([], 0),
+    });
+    window.history.replaceState(
+      null,
+      "",
+      "/photos/2?from=" +
+        encodeURIComponent("/rovers/curiosity?sol=5&camera=NAVCAM_LEFT&sample_type=full"),
+    );
+    render(<App />);
+    expect(await screen.findByText("3 of 9 on sol 2031")).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Older/ }).getAttribute("href")).toBe("/photos/1");
+    expect(m.last("/api/v2/photos/2")?.searchParams.get("camera")).toBeNull();
+  });
+
+  it("walks list pages only for Earth-date lists", async () => {
+    const m = mockApi({
+      "/api/v2/rovers": { items: [perseverance] },
+      "/api/v2/photos/2": detail(2, {
+        in_sol: { position: 1, total: 9, newer_id: null, older_id: null },
+      }),
+      "/api/v2/rovers/perseverance/photos": page([photo(3), photo(2), photo(1)], 3),
+    });
+    window.history.replaceState(
+      null,
+      "",
+      "/photos/2?from=" + encodeURIComponent("/rovers/perseverance?earth_date=2026-11-06"),
+    );
+    render(<App />);
+    expect(await screen.findByText("2 of 3 in this list")).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Older/ }).getAttribute("href")).toContain("/photos/1");
+    expect(m.last("/api/v2/photos/2")?.searchParams.get("camera")).toBeNull();
+  });
+
+  it("ignores a foreign 'from' address (still steps through the sol by in_sol)", async () => {
+    const m = mockApi({
+      "/api/v2/rovers": { items: [perseverance] },
+      "/api/v2/photos/2": detail(2, {
+        in_sol: { position: 4, total: 6, newer_id: 3, older_id: 1 },
+      }),
       "/api/v2/rovers/perseverance/photos": page([photo(2)], 1),
     });
     window.history.replaceState(
@@ -93,10 +179,67 @@ describe("Photo card", () => {
       "/photos/2?from=" + encodeURIComponent("//evil.example/x"),
     );
     render(<App />);
-    await screen.findByRole("heading", { level: 1 });
-    expect(screen.getByText(/Open a photo from a list/)).toBeTruthy();
+    const older = await screen.findByRole("link", { name: /Older/ });
+    expect(older.getAttribute("href")).toBe("/photos/1");
+    expect(m.last("/api/v2/photos/2")?.searchParams.get("camera")).toBeNull();
   });
 
+  it("shows the local mars time, hidden when null", async () => {
+    mockApi({
+      "/api/v2/rovers": { items: [perseverance] },
+      "/api/v2/photos/2": detail(2, { local_time: { time: "11:25:43", kind: "lmst" } }),
+      "/api/v2/photos/3": detail(3, { local_time: { time: "09:01:02", kind: "ltst" } }),
+      "/api/v2/photos/4": detail(4),
+      "/api/v2/rovers/perseverance/photos": page([], 0),
+    });
+    window.history.replaceState(null, "", "/photos/2");
+    const { unmount } = render(<App />);
+    expect(await screen.findByText("Local time")).toBeTruthy();
+    expect(screen.getByText("LMST")).toBeTruthy();
+    expect(screen.getByText(/11:25:43/)).toBeTruthy();
+    unmount();
+    window.history.replaceState(null, "", "/photos/3");
+    const second = render(<App />);
+    expect(await screen.findByText("LTST")).toBeTruthy();
+    second.unmount();
+    window.history.replaceState(null, "", "/photos/4");
+    render(<App />);
+    await screen.findByRole("heading", { level: 1 });
+    expect(screen.queryByText("Local time")).toBeNull();
+  });
+});
+
+describe("Photo list context helpers", () => {
+  it("listContext reads sol lists, Earth-date lists and rejects foreign addresses", () => {
+    expect(listContext("/rovers/perseverance?sol=1&camera=navcam_left&sample_type=bogus")).toEqual({
+      from: "/rovers/perseverance?sol=1&camera=navcam_left&sample_type=bogus",
+      byDate: false,
+      filters: { camera: "NAVCAM_LEFT", sample_type: undefined },
+    });
+    expect(listContext("/rovers/perseverance?earth_date=2026-11-06").byDate).toBe(true);
+    expect(listContext("//evil.example")).toEqual({ from: null, byDate: false, filters: {} });
+    expect(listContext(null).from).toBeNull();
+  });
+
+  it("neighborsFromInSol maps newer/older and keeps a null position", () => {
+    const n = neighborsFromInSol(
+      { position: null, total: 4, newer_id: 9, older_id: null },
+      "/rovers/x?sol=1",
+    );
+    expect(n.newer).toEqual({ id: 9, from: "/rovers/x?sol=1" });
+    expect(n.older).toBeNull();
+    expect(positionText(n, 12, "CAM", "")).toBe("Sol 12 · outside the filter of this list");
+    expect(positionText(null, 12, "CAM", "")).toBe("Sol 12 · CAM");
+  });
+
+  it("dimensionOf needs both width and height", () => {
+    expect(dimensionOf({ width: 1648, height: 1200 })).toEqual({ w: 1648, h: 1200 });
+    expect(dimensionOf({ width: null, height: null })).toBeNull();
+    expect(dimensionOf({})).toBeNull();
+  });
+});
+
+describe("Photo card errors", () => {
   it("shows photo_not_found", async () => {
     mockApi({
       "/api/v2/rovers": { items: [] },

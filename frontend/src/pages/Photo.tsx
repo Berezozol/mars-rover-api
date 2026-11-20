@@ -2,7 +2,14 @@ import { Fragment } from "preact";
 import { useLayoutEffect, useState } from "preact/hooks";
 import { api, errorFromResponse, imageEndpoint, NETWORK_ERROR, ApiError } from "../api/client";
 import { describeError } from "../api/errors";
-import type { ImageSize, PhotoDetail, PhotoQuery } from "../api/types";
+import {
+  FILTER_SAMPLE_TYPES,
+  type ImageSize,
+  type InSol,
+  type PhotoDetail,
+  type PhotoQuery,
+} from "../api/types";
+import { LocationBlock } from "../components/LocationBlock";
 import { photoHref } from "../components/PhotoTile";
 import { PhotoTile } from "../components/PhotoTile";
 import { ErrorAlert, PageSkeleton } from "../components/States";
@@ -27,9 +34,13 @@ export function isConverted(photo: PhotoDetail): boolean {
   }
 }
 
-export function parseDimension(extra: Record<string, unknown>): { w: number; h: number } | null {
-  const m = /(\d+)\s*,\s*(\d+)/.exec(String(extra.dimension ?? ""));
-  return m ? { w: Number(m[1]), h: Number(m[2]) } : null;
+/** Pixel size of the full frame from `width`/`height` (both set or both null). */
+export function dimensionOf(photo: {
+  width?: number | null;
+  height?: number | null;
+}): { w: number; h: number } | null {
+  const { width, height } = photo;
+  return width && height && width > 0 && height > 0 ? { w: width, h: height } : null;
 }
 
 /** Only list pages of our own interface are accepted as a "from" context. */
@@ -64,14 +75,55 @@ function withPage(from: string, page: number): string {
 }
 
 interface Neighbors {
-  newer: { id: number; from: string } | null;
-  older: { id: number; from: string } | null;
-  position: number;
+  newer: { id: number; from: string | undefined } | null;
+  older: { id: number; from: string | undefined } | null;
+  /** null when the photo itself is outside the camera / sample-type filter of the list. */
+  position: number | null;
   total: number;
+  /** "sol" for sol lists (from in_sol), "list" for Earth-date lists. */
+  scope: "sol" | "list";
 }
 
-/** Newer/older neighbours inside the list page the visitor came from (edges fetch one more page). */
-async function loadNeighbors(photo: PhotoDetail, from: string): Promise<Neighbors | null> {
+/** What the list the visitor came from tells us (our own list addresses only). */
+export interface ListContext {
+  /** The validated list address, or null if there was none (or it was foreign). */
+  from: string | null;
+  /** Earth-date lists cannot use `in_sol`: they are walked page by page. */
+  byDate: boolean;
+  /** Filters sent to `GET /photos/{id}` so that `in_sol` follows the list's camera / sample type. */
+  filters: { camera?: string; sample_type?: string };
+}
+
+export function listContext(from: string | null): ListContext {
+  const ctx = parseFrom(from);
+  if (!from || !ctx) return { from: null, byDate: false, filters: {} };
+  if (ctx.query.earth_date !== undefined) return { from, byDate: true, filters: {} };
+  const camera = ctx.query.camera?.toUpperCase();
+  const st = ctx.query.sample_type;
+  return {
+    from,
+    byDate: false,
+    filters: {
+      camera: camera || undefined,
+      sample_type: st && (FILTER_SAMPLE_TYPES as readonly string[]).includes(st) ? st : undefined,
+    },
+  };
+}
+
+/** Newer/older neighbours from `in_sol` (the contract's order of the sol's list). */
+export function neighborsFromInSol(inSol: InSol, from: string | null): Neighbors {
+  const f = from ?? undefined;
+  return {
+    newer: inSol.newer_id !== null ? { id: inSol.newer_id, from: f } : null,
+    older: inSol.older_id !== null ? { id: inSol.older_id, from: f } : null,
+    position: inSol.position,
+    total: inSol.total,
+    scope: "sol",
+  };
+}
+
+/** Earth-date lists only: neighbours inside the list page the visitor came from (edges fetch one more page). */
+async function loadDateNeighbors(photo: PhotoDetail, from: string): Promise<Neighbors | null> {
   const ctx = parseFrom(from);
   if (!ctx || ctx.rover !== photo.rover) return null;
   const q = ctx.query;
@@ -92,15 +144,58 @@ async function loadNeighbors(photo: PhotoDetail, from: string): Promise<Neighbor
     const first = next.items[0];
     if (first) older = { id: first.id, from: withPage(from, page + 1) };
   }
-  return { newer, older, position: (page - 1) * perPage + idx + 1, total: data.total };
+  return {
+    newer,
+    older,
+    position: (page - 1) * perPage + idx + 1,
+    total: data.total,
+    scope: "list",
+  };
+}
+
+/** The list address without the camera / sample type of its filters. */
+export function withoutFilters(from: string): string {
+  const url = new URL(from, "http://local.invalid");
+  url.searchParams.delete("camera");
+  url.searchParams.delete("sample_type");
+  return `${url.pathname}${url.search}`;
 }
 
 export function PhotoPage({ id }: { id: string }) {
   const from = useQuery().get("from");
-  const [state, retry] = useAsync((signal) => api.photo(id, signal), [id]);
+  const [state, retry] = useAsync(
+    async (signal) => {
+      const ctx = listContext(from);
+      const filtered = !!(ctx.filters.camera || ctx.filters.sample_type);
+      let photo: PhotoDetail;
+      let usedFilters = filtered;
+      try {
+        photo = await api.photo(id, signal, ctx.filters);
+      } catch (e) {
+        // A stale or hand-made address with a camera this rover doesn't have: show the photo anyway.
+        if (e instanceof ApiError && e.status === 422 && filtered) {
+          usedFilters = false;
+          photo = await api.photo(id, signal);
+        } else throw e;
+      }
+      // A list of another rover says nothing about this photo.
+      const foreign = ctx.from !== null && parseFrom(ctx.from)?.rover !== photo.rover;
+      if (foreign && usedFilters) {
+        usedFilters = false;
+        photo = await api.photo(id, signal);
+      }
+      let final: ListContext = ctx;
+      if (foreign) final = { from: null, byDate: false, filters: {} };
+      else if (filtered && !usedFilters && ctx.from) {
+        final = { from: withoutFilters(ctx.from), byDate: false, filters: {} };
+      }
+      return { photo, ctx: final };
+    },
+    [id, from],
+  );
   useTitle(
     state.status === "ok"
-      ? `Photo ${state.data.id} — ${state.data.camera.code} — Sol Index`
+      ? `Photo ${state.data.photo.id} — ${state.data.photo.camera.code} — Sol Index`
       : "Photo — Sol Index",
   );
   if (state.status === "loading") return <PageSkeleton label="Loading photo…" />;
@@ -117,19 +212,24 @@ export function PhotoPage({ id }: { id: string }) {
       />
     );
   }
-  return <PhotoView photo={state.data} from={from} />;
+  return <PhotoView photo={state.data.photo} ctx={state.data.ctx} />;
 }
 
-function PhotoView({ photo, from }: { photo: PhotoDetail; from: string | null }) {
+function PhotoView({ photo, ctx }: { photo: PhotoDetail; ctx: ListContext }) {
   const roverName = photo.rover.charAt(0).toUpperCase() + photo.rover.slice(1);
   const solHref = `/rovers/${photo.rover}${qs({ sol: photo.sol })}`;
   const camHref = `/rovers/${photo.rover}${qs({ sol: photo.sol, camera: photo.camera.code })}`;
+  const from = ctx.from;
   const [nb] = useAsync(
-    () => (from ? loadNeighbors(photo, from).catch(() => null) : Promise.resolve(null)),
-    [photo.id, from],
+    () =>
+      ctx.byDate && from ? loadDateNeighbors(photo, from).catch(() => null) : Promise.resolve(null),
+    [photo.id, from, ctx.byDate],
   );
-  const neighbors = nb.status === "ok" ? nb.data : null;
-  const sameFrom = from && parseFrom(from) ? from : camHref;
+  let neighbors: Neighbors | null = null;
+  if (ctx.byDate) neighbors = nb.status === "ok" ? nb.data : null;
+  else if (photo.in_sol) neighbors = neighborsFromInSol(photo.in_sol, from);
+  const filterText = [ctx.filters.camera, ctx.filters.sample_type].filter(Boolean).join(" · ");
+  const sameFrom = from ?? camHref;
 
   return (
     <>
@@ -159,9 +259,7 @@ function PhotoView({ photo, from }: { photo: PhotoDetail; from: string | null })
               </span>
             )}
             <span class="pos">
-              {neighbors
-                ? `${neighbors.position.toLocaleString("en-US")} of ${neighbors.total.toLocaleString("en-US")} in this list`
-                : `Sol ${photo.sol} · ${photo.camera.code}`}
+              {positionText(neighbors, photo.sol, photo.camera.code, filterText)}
             </span>
             {neighbors?.older ? (
               <Link
@@ -177,11 +275,6 @@ function PhotoView({ photo, from }: { photo: PhotoDetail; from: string | null })
               </span>
             )}
           </nav>
-          {!(from && parseFrom(from)) && (
-            <p class="note" style={{ textAlign: "center" }}>
-              Open a photo from a list to step through newer and older frames.
-            </p>
-          )}
 
           <SameCamera photo={photo} from={sameFrom} />
         </div>
@@ -190,6 +283,20 @@ function PhotoView({ photo, from }: { photo: PhotoDetail; from: string | null })
       </div>
     </>
   );
+}
+
+/** "17 of 52 on sol 2031 · SUPERCAM_RMI" (or the date-list / no-data variants). */
+export function positionText(
+  n: Neighbors | null,
+  sol: number,
+  camera: string,
+  filterText: string,
+): string {
+  if (!n) return `Sol ${sol} · ${camera}`;
+  if (n.position === null) return `Sol ${sol} · outside the filter of this list`;
+  const counts = `${n.position.toLocaleString("en-US")} of ${n.total.toLocaleString("en-US")}`;
+  if (n.scope === "list") return `${counts} in this list`;
+  return `${counts} on sol ${sol}${filterText ? ` · ${filterText}` : ""}`;
 }
 
 function Viewer({ photo }: { photo: PhotoDetail }) {
@@ -203,7 +310,7 @@ function Viewer({ photo }: { photo: PhotoDetail }) {
       : "full";
   const [size, setSize] = useState<ImageSize>(defaultSize);
 
-  const dim = parseDimension(photo.extra);
+  const dim = dimensionOf(photo);
   const alt = `${photo.camera.name} frame from ${roverName(photo)}, sol ${photo.sol}, ${timeOf(photo.taken_at)} UTC`;
   const url = imageEndpoint(photo.id, size); // "Open image" and the converter
   // Ordinary sizes are shown straight from images.* (no extra request through our API).
@@ -222,6 +329,7 @@ function Viewer({ photo }: { photo: PhotoDetail }) {
             url={directUrl}
             alt={alt}
             dim={size === "full" ? dim : null}
+            ratio={size === "full" ? null : dim}
           />
         )}
       </div>
@@ -280,10 +388,14 @@ function DirectImage({
   url,
   alt,
   dim,
+  ratio,
 }: {
   url: string;
   alt: string;
+  /** Pixel size of the shown file (reserves its box). */
   dim: { w: number; h: number } | null;
+  /** Proportions only, for sizes whose pixel size is unknown. */
+  ratio: { w: number; h: number } | null;
 }) {
   const [phase, setPhase] = useState<"loading" | "ok" | "error">("loading");
   const [attempt, setAttempt] = useState(0);
@@ -314,7 +426,10 @@ function DirectImage({
         width={dim?.w}
         height={dim?.h}
         decoding="async"
-        style={phase === "ok" ? undefined : { display: "none" }}
+        style={{
+          ...(ratio ? { aspectRatio: `${ratio.w} / ${ratio.h}` } : {}),
+          ...(phase === "ok" ? {} : { display: "none" }),
+        }}
         onLoad={() => setPhase("ok")}
         onError={() => setPhase("error")}
       />
@@ -450,6 +565,23 @@ function Meta({
           <dd>
             <time dateTime={photo.taken_at}>{dateTimeUtc(photo.taken_at)}</time>
           </dd>
+          {photo.local_time && (
+            <>
+              <dt>Local time</dt>
+              <dd>
+                {photo.local_time.time}{" "}
+                <abbr
+                  title={
+                    photo.local_time.kind === "ltst"
+                      ? "Local true solar time on Mars"
+                      : "Local mean solar time on Mars"
+                  }
+                >
+                  {photo.local_time.kind.toUpperCase()}
+                </abbr>
+              </dd>
+            </>
+          )}
           <dt>Camera</dt>
           <dd>
             <span class="mono">{photo.camera.code}</span>
@@ -479,6 +611,8 @@ function Meta({
           )}
         </dl>
       </section>
+
+      {photo.location && <LocationBlock rover={photo.rover} roverName={rn} loc={photo.location} />}
 
       {photo.caption && (
         <section>

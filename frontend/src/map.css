@@ -1,0 +1,383 @@
+/* Route map (plain background, no imagery). Ported from design/mockups/map.html. */
+.mp-layout {
+  display: grid;
+  gap: var(--s4);
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+@media (min-width: 980px) {
+  .mp-layout {
+    grid-template-columns: minmax(0, 1fr) 340px;
+  }
+}
+.mp-layout > * {
+  min-width: 0;
+}
+.mp-summary {
+  display: grid;
+  gap: var(--s3);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: var(--s4);
+}
+@media (min-width: 800px) {
+  .mp-summary {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+.tile-stat .s {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+.mp-card {
+  overflow: hidden;
+}
+.mp-tools {
+  display: flex;
+  gap: var(--s2);
+  flex-wrap: wrap;
+  align-items: center;
+  padding: var(--s3);
+  border-bottom: 1px solid var(--border);
+}
+.mp-tools .btn {
+  min-width: 40px;
+}
+.mp-legend {
+  display: flex;
+  gap: var(--s4);
+  flex-wrap: wrap;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  margin-left: auto;
+  align-items: center;
+}
+.mp-legend i {
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+.lg-route {
+  width: 22px;
+  height: 3px;
+  background: var(--map-route);
+  border-radius: 2px;
+}
+.lg-range {
+  width: 22px;
+  height: 4px;
+  background: var(--map-route-hi);
+  border-radius: 2px;
+}
+.lg-stop {
+  width: 8px;
+  height: 8px;
+  background: var(--map-stop);
+  border-radius: 50%;
+}
+.lg-latest {
+  width: 10px;
+  height: 10px;
+  background: var(--map-latest);
+  transform: rotate(45deg);
+}
+.mp-wrap {
+  position: relative;
+  background: var(--map-bg);
+  height: 440px;
+  touch-action: pan-y pinch-zoom;
+}
+@media (max-width: 640px) {
+  .mp-wrap {
+    height: 340px;
+  }
+}
+.mp-wrap:focus-visible {
+  outline-offset: -3px;
+}
+.mp-wrap svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  user-select: none;
+}
+.mp-wrap svg.dragging {
+  cursor: grabbing;
+}
+.g-line {
+  stroke: var(--map-grid);
+  stroke-width: 1;
+}
+.g-label {
+  fill: var(--text-muted);
+  font: 11px var(--mono);
+}
+.route-base {
+  fill: none;
+  stroke: var(--map-route);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.route-hi {
+  fill: none;
+  stroke: var(--map-route-hi);
+  stroke-width: 4;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.stops-base,
+.stops-hi {
+  fill: none;
+  stroke-linecap: round;
+}
+.stops-base {
+  stroke: var(--map-stop);
+  stroke-width: 4;
+  opacity: 0.85;
+}
+.stops-hi {
+  stroke: var(--map-route-hi);
+  stroke-width: 7;
+}
+.halo {
+  fill: none;
+  stroke: var(--map-bg);
+  stroke-width: 3;
+}
+.hover-ring {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 1.5;
+}
+.sel-ring {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 2.5;
+}
+.latest-mark {
+  fill: var(--map-latest);
+  stroke: var(--map-bg);
+  stroke-width: 2;
+}
+.latest-label {
+  fill: var(--text);
+  font: 600 12px var(--font);
+  paint-order: stroke;
+  stroke: var(--map-bg);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+.scale-line {
+  stroke: var(--text);
+  stroke-width: 2;
+  fill: none;
+}
+.scale-text {
+  fill: var(--text);
+  font: 600 11px var(--mono);
+  paint-order: stroke;
+  stroke: var(--map-bg);
+  stroke-width: 3px;
+}
+.north {
+  fill: var(--text);
+  font: 700 11px var(--font);
+}
+.mp-tip {
+  position: absolute;
+  z-index: 5;
+  pointer-events: none;
+  background: var(--text);
+  color: var(--bg);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+  width: 210px;
+  box-shadow: var(--shadow);
+}
+.mp-tip strong {
+  font-size: var(--fs-sm);
+  display: block;
+}
+.mp-foot {
+  padding: var(--s2) var(--s3);
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  display: flex;
+  gap: var(--s3);
+  flex-wrap: wrap;
+}
+.mp-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--s5);
+  text-align: center;
+  background: color-mix(in srgb, var(--map-bg) 82%, transparent);
+}
+.mp-overlay.top {
+  background: transparent;
+  pointer-events: none;
+  place-items: start center;
+}
+.mp-overlay.top > div {
+  pointer-events: auto;
+}
+.mp-overlay > div {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--s4);
+  max-width: 380px;
+  box-shadow: var(--shadow);
+}
+.mp-overlay h2 {
+  font-size: var(--fs-md);
+}
+.mp-side > * + * {
+  margin-top: var(--s4);
+}
+.mp-side h2 {
+  font-size: var(--fs-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+.mp-range {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s3);
+}
+.mp-range .full {
+  grid-column: 1 / -1;
+}
+.mp-range input {
+  width: 100%;
+}
+.field-err {
+  color: var(--err);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+input[aria-invalid="true"] {
+  border-color: var(--err);
+  box-shadow: 0 0 0 1px var(--err);
+}
+.apx {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+.mp-table {
+  font-variant-numeric: tabular-nums;
+}
+.mp-table caption {
+  text-align: left;
+  padding: 0 0 var(--s2);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+.mp-table thead th {
+  position: static;
+  box-shadow: none;
+}
+.mp-table td:nth-child(2) {
+  white-space: normal;
+}
+.mp-table td button {
+  all: unset;
+  cursor: pointer;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font-weight: 600;
+}
+.mp-table td button:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.mp-table tr.sel td {
+  background: var(--accent-soft);
+}
+.mp-pager {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-top: var(--s3);
+  font-size: var(--fs-sm);
+}
+.mp-pager .spacer {
+  flex: 1;
+  text-align: center;
+  color: var(--text-muted);
+}
+.banner {
+  margin-bottom: var(--s4);
+  padding: var(--s3) var(--s4);
+  border-radius: var(--radius);
+  background: var(--warn-soft);
+  color: var(--text);
+  border: 1px solid var(--warn);
+  font-size: var(--fs-sm);
+}
+.banner strong {
+  color: var(--warn);
+}
+
+/* Location block on the photo card */
+.loc-map {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: var(--map-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.loc-map-ph {
+  width: 100%;
+  aspect-ratio: 300 / 190;
+}
+.loc-route {
+  fill: none;
+  stroke: var(--map-route);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.loc-pt {
+  fill: var(--map-latest);
+  stroke: var(--map-bg);
+  stroke-width: 2;
+}
+.loc-ring {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 1.6;
+}
+.loc-unc {
+  fill: var(--accent-soft);
+  fill-opacity: 0.55;
+  stroke: var(--accent);
+  stroke-width: 1.4;
+  stroke-dasharray: 4 3;
+}
+.loc-txt {
+  fill: var(--text-muted);
+  font: 10px var(--mono);
+}
+.loc-scale {
+  stroke: var(--text);
+  stroke-width: 2;
+  fill: none;
+}
+.loc-scale-t {
+  fill: var(--text);
+  font: 600 10px var(--mono);
+}
+.loc-note {
+  font-size: var(--fs-sm);
+  margin: var(--s3) 0 0;
+}

@@ -1,7 +1,7 @@
 import { Fragment } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { api, photosRequestLine } from "../api/client";
-import type { Camera, ManifestSol, PhotoQuery, Rover } from "../api/types";
+import type { Camera, NearestSols, Photo, PhotoQuery, Rover } from "../api/types";
 import { FILTER_SAMPLE_TYPES } from "../api/types";
 import { Pager } from "../components/Pager";
 import { PhotoTile } from "../components/PhotoTile";
@@ -12,8 +12,6 @@ import { useAsync, useRovers, useTitle } from "../lib/hooks";
 import { Link, navigate, qs, useQuery } from "../router";
 
 const PER_PAGE_CHOICES = [24, 48, 96];
-const SOL_WINDOW = 60;
-const MAX_SOL = 2_147_483_647;
 
 interface Filters {
   sol?: string;
@@ -130,30 +128,21 @@ function Browser({ rover, maxSol }: { rover: Rover; maxSol: number }) {
     [rover.id, rawSol, f.earth_date, f.camera, f.sample_type, page, perPage],
   );
 
-  const [cameras] = useAsync(() => api.cameras(rover.id).catch(() => [] as Camera[]), [rover.id]);
-
   const anchorSol =
     rawSol !== undefined && /^\d+$/.test(rawSol)
       ? Number(rawSol)
       : photos.status === "ok"
         ? photos.data.items[0]?.sol
         : undefined;
-  const [window_] = useAsync(
-    () =>
-      anchorSol === undefined
-        ? Promise.resolve(null)
-        : api
-            .manifest(rover.id, {
-              from_sol: Math.max(0, anchorSol - SOL_WINDOW),
-              to_sol: Math.min(MAX_SOL, anchorSol + SOL_WINDOW),
-            })
-            .catch(() => null),
-    [rover.id, anchorSol],
+  // Camera counts are for the sol being viewed (`/cameras?sol=`). An Earth-date search can span
+  // sols, so it shows the mission-wide counts.
+  const [cameras] = useAsync(
+    () => api.cameras(rover.id, byDate ? undefined : anchorSol).catch(() => [] as Camera[]),
+    [rover.id, byDate, anchorSol],
   );
-  const nearby: ManifestSol[] = window_.status === "ok" && window_.data ? window_.data.sols : [];
-  const here = nearby.find((s) => s.sol === anchorSol);
-  const prevSol = nearby.filter((s) => anchorSol !== undefined && s.sol < anchorSol)[0]; // sorted sol DESC
-  const nextSol = [...nearby].reverse().find((s) => anchorSol !== undefined && s.sol > anchorSol);
+  const prevSol = anchorSol !== undefined && anchorSol > 0 ? anchorSol - 1 : undefined;
+  const nextSol = anchorSol !== undefined && anchorSol < maxSol ? anchorSol + 1 : undefined;
+  const solDate = photos.status === "ok" ? photos.data.items[0]?.earth_date : undefined;
 
   const go = (next: Filters, opts?: { replace?: boolean }) =>
     navigate(photosUrl(rover.id, next), opts);
@@ -182,8 +171,8 @@ function Browser({ rover, maxSol }: { rover: Rover; maxSol: number }) {
         maxSol={maxSol}
         byDate={byDate}
         sol={rawSol ?? ""}
-        earthDate={f.earth_date ?? here?.earth_date ?? rover.max_date ?? ""}
-        hereEarthDate={here?.earth_date}
+        earthDate={f.earth_date ?? solDate ?? rover.max_date ?? ""}
+        perSol={!byDate && anchorSol !== undefined}
         anchorSol={anchorSol}
         camera={f.camera}
         sampleType={f.sample_type}
@@ -195,7 +184,7 @@ function Browser({ rover, maxSol }: { rover: Rover; maxSol: number }) {
             ? go({
                 ...f,
                 sol: undefined,
-                earth_date: here?.earth_date ?? rover.max_date ?? undefined,
+                earth_date: solDate ?? rover.max_date ?? undefined,
                 page: 1,
               })
             : go({ ...f, earth_date: undefined, sol: String(anchorSol ?? maxSol), page: 1 })
@@ -203,9 +192,8 @@ function Browser({ rover, maxSol }: { rover: Rover; maxSol: number }) {
         onLatest={() => go({ ...f, earth_date: undefined, sol: undefined, page: 1 })}
         onCamera={(c) => change({ camera: c })}
         onSample={(s) => change({ sample_type: s })}
-        here={here}
-        prevSol={prevSol?.sol}
-        nextSol={nextSol?.sol}
+        prevSol={prevSol}
+        nextSol={nextSol}
       />
 
       <section
@@ -218,7 +206,7 @@ function Browser({ rover, maxSol }: { rover: Rover; maxSol: number }) {
           <h2 id="result-title">{heading}</h2>
           <span class="muted small" id="result-sub" aria-live="polite">
             {photos.status === "loading" && "Loading…"}
-            {photos.status === "ok" && resultSummary(photos.data, here?.earth_date, byDate)}
+            {photos.status === "ok" && resultSummary(photos.data, solDate, byDate)}
           </span>
           <span class="spacer" />
           <div class="field inline-field">
@@ -262,9 +250,6 @@ function Browser({ rover, maxSol }: { rover: Rover; maxSol: number }) {
             sol={anchorSol}
             byDate={byDate}
             filtered={!!(f.camera || f.sample_type)}
-            here={here}
-            prevSol={prevSol?.sol}
-            nextSol={nextSol?.sol}
             fromUrl={fromUrl}
             hrefForPage={hrefForPage}
             onReset={() => change({ camera: undefined, sample_type: undefined })}
@@ -301,15 +286,18 @@ function resultSummary(
 }
 
 interface ResultsProps {
-  data: { items: import("../api/types").Photo[]; page: number; per_page: number; total: number };
+  data: {
+    items: Photo[];
+    page: number;
+    per_page: number;
+    total: number;
+    nearest_sols?: NearestSols | null;
+  };
   rover: Rover;
   heading: string;
   sol: number | undefined;
   byDate: boolean;
   filtered: boolean;
-  here: ManifestSol | undefined;
-  prevSol: number | undefined;
-  nextSol: number | undefined;
   fromUrl: string;
   hrefForPage: (p: number) => string;
   onReset: () => void;
@@ -328,26 +316,25 @@ function Results(p: ResultsProps) {
           </button>
         }
       >
-        {p.here ? `Sol ${p.here.sol} has ${fmt(p.here.total_photos)} photos in total. ` : ""}Try
-        another camera or sample type.
+        Try another camera or sample type.
       </EmptyState>
     );
   }
   if (data.total === 0) {
-    const sol = p.sol;
+    const near = data.nearest_sols;
     return (
       <EmptyState
         title={p.byDate ? `No photos on ${p.heading}` : `No photos on ${p.heading.toLowerCase()}`}
         actions={
           <>
-            {sol !== undefined && p.prevSol !== undefined && (
-              <Link class="btn btn-sm" href={`/rovers/${p.rover.id}?sol=${p.prevSol}`}>
-                ‹ Sol {p.prevSol}
+            {near?.before != null && (
+              <Link class="btn btn-sm" href={`/rovers/${p.rover.id}?sol=${near.before}`}>
+                ‹ Sol {near.before}
               </Link>
             )}
-            {sol !== undefined && p.nextSol !== undefined && (
-              <Link class="btn btn-sm" href={`/rovers/${p.rover.id}?sol=${p.nextSol}`}>
-                Sol {p.nextSol} ›
+            {near?.after != null && (
+              <Link class="btn btn-sm" href={`/rovers/${p.rover.id}?sol=${near.after}`}>
+                Sol {near.after} ›
               </Link>
             )}
             <Link class="btn btn-sm" href={`/rovers/${p.rover.id}/timeline`}>
@@ -358,6 +345,9 @@ function Results(p: ResultsProps) {
       >
         The rover may not have taken or sent images that day, or they haven’t reached the public
         feed yet.
+        {near && (near.before != null || near.after != null)
+          ? " The nearest sols with photos are linked below."
+          : ""}
       </EmptyState>
     );
   }
@@ -393,12 +383,12 @@ interface FormProps {
   byDate: boolean;
   sol: string;
   earthDate: string;
-  hereEarthDate: string | undefined;
+  /** Camera counts are for the viewed sol (true) or the whole mission (false). */
+  perSol: boolean;
   anchorSol: number | undefined;
   camera: string | undefined;
   sampleType: string | undefined;
   cameras: Camera[];
-  here: ManifestSol | undefined;
   prevSol: number | undefined;
   nextSol: number | undefined;
   onSol: (s: string) => void;
@@ -415,10 +405,9 @@ function FilterForm(p: FormProps) {
   useEffect(() => setSolText(p.sol), [p.sol]);
   useEffect(() => setDateText(p.earthDate), [p.earthDate]);
 
-  const onSolSet = new Set(p.here?.cameras ?? []);
-  const known = p.here !== undefined;
-  const active = p.cameras.filter((c) => !known || onSolSet.has(c.code));
-  const other = p.cameras.filter((c) => known && !onSolSet.has(c.code));
+  const active = p.cameras.filter((c) => !p.perSol || c.total_photos > 0);
+  const other = p.cameras.filter((c) => p.perSol && c.total_photos === 0);
+  const solTotal = p.cameras.reduce((n, c) => n + c.total_photos, 0);
   const cameraUnlisted = p.camera && !p.cameras.some((c) => c.code === p.camera);
 
   const chip = (c: Camera, dim: boolean) => (
@@ -427,7 +416,7 @@ function FilterForm(p: FormProps) {
       type="button"
       class={`chip${dim ? " dim" : ""}`}
       aria-pressed={p.camera === c.code}
-      title={`${c.name} — ${fmt(c.total_photos)} photos across all sols`}
+      title={`${c.name} — ${fmt(c.total_photos)} photos ${p.perSol ? "on this sol" : "across all sols"}`}
       onClick={() => p.onCamera(p.camera === c.code ? undefined : c.code)}
     >
       <span class="mono">{c.code}</span>
@@ -472,7 +461,7 @@ function FilterForm(p: FormProps) {
           <div class="sol-step">
             <Link
               class="btn btn-sm"
-              aria-label="Previous sol with photos"
+              aria-label="Previous sol"
               aria-disabled={p.byDate || p.prevSol === undefined}
               tabIndex={p.byDate || p.prevSol === undefined ? -1 : undefined}
               href={p.prevSol === undefined ? "#" : `/rovers/${p.rover.id}?sol=${p.prevSol}`}
@@ -493,7 +482,7 @@ function FilterForm(p: FormProps) {
             />
             <Link
               class="btn btn-sm"
-              aria-label="Next sol with photos"
+              aria-label="Next sol"
               aria-disabled={p.byDate || p.nextSol === undefined}
               tabIndex={p.byDate || p.nextSol === undefined ? -1 : undefined}
               href={p.nextSol === undefined ? "#" : `/rovers/${p.rover.id}?sol=${p.nextSol}`}
@@ -528,7 +517,7 @@ function FilterForm(p: FormProps) {
         <span class="label" id="cam-label">
           Camera{" "}
           <span class="muted" style={{ textTransform: "none", letterSpacing: 0, fontWeight: 400 }}>
-            · counts are across all sols
+            · counts are {p.perSol ? "for this sol" : "across all sols"}
           </span>
         </span>
         <div class="chips">
@@ -539,7 +528,9 @@ function FilterForm(p: FormProps) {
             onClick={() => p.onCamera(undefined)}
           >
             All cameras
-            {p.here && <span class="count">{fmt(p.here.total_photos)} on this sol</span>}
+            {p.perSol && p.cameras.length > 0 && (
+              <span class="count">{fmt(solTotal)} on this sol</span>
+            )}
           </button>
           {cameraUnlisted && (
             <button

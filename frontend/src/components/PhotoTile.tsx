@@ -20,6 +20,8 @@ export function PhotoTile({ photo: p, from }: Props) {
       <Link class="tile" href={photoHref(p.id, from)}>
         <Thumb
           sources={thumbSources(p.images)}
+          width={p.width}
+          height={p.height}
           alt={`${p.camera.name}, sol ${p.sol}, ${time} UTC`}
         />
         <div class="tile-meta">

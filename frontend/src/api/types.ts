@@ -6,12 +6,16 @@ export interface Rover {
   mission: string;
   launch_date: string;
   landing_date: string;
+  /** Official end of the mission; null for active rovers. */
+  end_date?: string | null;
   status: string;
   max_sol: number | null;
   max_date: string | null;
   total_photos: number;
   cameras_count: number;
   last_synced_at: string | null;
+  /** "sync" = regular feed, "archive" = one-off archive import. */
+  data_source?: "sync" | "archive" | string | null;
 }
 
 export interface Camera {
@@ -40,6 +44,36 @@ export interface Photo {
   images: Images;
   credit: string | null;
   source: { id: string; link: string | null };
+  /** Pixel size of the full frame; both null when the source does not say. */
+  width?: number | null;
+  height?: number | null;
+}
+
+export interface PhotoLocation {
+  sol: number;
+  site: number;
+  drive: number;
+  lat: number;
+  lon: number;
+  elev_geoid: number | null;
+  /** true: taken at this stop; false: taken later (the last stop before the photo). */
+  exact: boolean;
+}
+
+export interface LocalTime {
+  /** HH:MM:SS */
+  time: string;
+  /** lmst = mean, ltst = true solar time (Spirit, Opportunity). */
+  kind: "lmst" | "ltst" | string;
+}
+
+export interface InSol {
+  position: number | null;
+  total: number;
+  /** Previous in the list (taken later). */
+  newer_id: number | null;
+  /** Next in the list (taken earlier). */
+  older_id: number | null;
 }
 
 export interface PhotoDetail extends Photo {
@@ -48,6 +82,9 @@ export interface PhotoDetail extends Photo {
   site: number | null;
   drive: number | null;
   extra: Record<string, unknown>;
+  location?: PhotoLocation | null;
+  local_time?: LocalTime | null;
+  in_sol?: InSol | null;
 }
 
 export interface PhotoPage {
@@ -55,6 +92,13 @@ export interface PhotoPage {
   page: number;
   per_page: number;
   total: number;
+  /** Set only for an empty result of a sol / earth_date search. */
+  nearest_sols?: NearestSols | null;
+}
+
+export interface NearestSols {
+  before: number | null;
+  after: number | null;
 }
 
 export interface LatestPhotos extends PhotoPage {
@@ -86,3 +130,44 @@ export type ImageSize = "small" | "medium" | "large" | "full";
 
 /** Sample types accepted by the `sample_type` filter. */
 export const FILTER_SAMPLE_TYPES = ["full", "subframe", "downsampled"] as const;
+
+export interface Waypoint {
+  sol: number;
+  site: number;
+  drive: number;
+  lat: number;
+  lon: number;
+  elev_geoid: number | null;
+  easting: number | null;
+  northing: number | null;
+  roll: number | null;
+  pitch: number | null;
+  yaw: number | null;
+  tilt: number | null;
+  dist_m: number | null;
+  dist_total_m: number | null;
+}
+
+export interface LocationResponse {
+  rover: string;
+  available: boolean;
+  updated_at: string | null;
+  source_max_sol: number | null;
+  items: Waypoint[];
+}
+
+export interface TraverseFeature {
+  type: "Feature";
+  geometry: { type: "LineString"; coordinates: [number, number][] };
+  properties: { sol: number | null; length_m: number | null };
+}
+
+/** GeoJSON FeatureCollection with the extra top-level members of the v2 contract. */
+export interface Traverse {
+  type: "FeatureCollection";
+  rover: string;
+  available: boolean;
+  updated_at: string | null;
+  source_max_sol: number | null;
+  features: TraverseFeature[];
+}

@@ -3,6 +3,7 @@ import { Layout } from "./components/Layout";
 import { Home } from "./pages/Home";
 import { NotFound } from "./pages/NotFound";
 import { PhotoPage } from "./pages/Photo";
+import { RouteMapPage } from "./pages/RouteMap";
 import { Photos } from "./pages/Photos";
 import { Timeline } from "./pages/Timeline";
 import { matchRoute, useLocation } from "./router";
@@ -59,6 +60,9 @@ export function App() {
       break;
     case "timeline":
       page = <Timeline key={route.rover} roverId={route.rover} />;
+      break;
+    case "map":
+      page = <RouteMapPage key={route.rover} roverId={route.rover} />;
       break;
     case "photo":
       page = <PhotoPage key={route.id} id={route.id} />;

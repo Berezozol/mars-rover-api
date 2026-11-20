@@ -3,11 +3,13 @@ import type {
   Camera,
   ImageSize,
   LatestPhotos,
+  LocationResponse,
   Manifest,
   PhotoDetail,
   PhotoPage,
   PhotoQuery,
   Rover,
+  Traverse,
 } from "./types";
 
 export interface FieldIssue {
@@ -153,23 +155,34 @@ export const api = {
   rovers: () => cached("rovers", () => request<{ items: Rover[] }>("/rovers").then((r) => r.items)),
   rover: (rover: string, signal?: AbortSignal) =>
     request<Rover>(`/rovers/${slug(rover)}`, undefined, signal),
-  cameras: (rover: string) =>
-    cached(`cameras:${rover}`, () =>
-      request<{ items: Camera[] }>(`/rovers/${slug(rover)}/cameras`).then((r) => r.items),
+  /** Cameras of a rover; with `sol`, `total_photos` counts that sol only. */
+  cameras: (rover: string, sol?: number) =>
+    cached(`cameras:${rover}:${sol ?? ""}`, () =>
+      request<{ items: Camera[] }>(`/rovers/${slug(rover)}/cameras`, { sol }).then((r) => r.items),
     ),
   photos: (rover: string, q: PhotoQuery, signal?: AbortSignal) =>
     request<PhotoPage>(`/rovers/${slug(rover)}/photos`, { ...q }, signal),
   latest: (
     rover: string,
-    q: { camera?: string; page?: number; per_page?: number } = {},
+    q: { camera?: string; sample_type?: string; page?: number; per_page?: number } = {},
     signal?: AbortSignal,
   ) => request<LatestPhotos>(`/rovers/${slug(rover)}/photos/latest`, q, signal),
-  photo: (id: number | string, signal?: AbortSignal) =>
-    request<PhotoDetail>(`/photos/${encodeURIComponent(String(id))}`, undefined, signal),
+  /** `camera` / `sample_type` only shape `in_sol` (the position among the filtered photos of the sol). */
+  photo: (
+    id: number | string,
+    signal?: AbortSignal,
+    ctx: { camera?: string; sample_type?: string } = {},
+  ) => request<PhotoDetail>(`/photos/${encodeURIComponent(String(id))}`, { ...ctx }, signal),
   manifest: (rover: string, range?: { from_sol?: number; to_sol?: number }) =>
     cached(`manifest:${rover}:${range?.from_sol ?? ""}:${range?.to_sol ?? ""}`, () =>
       request<Manifest>(`/rovers/${slug(rover)}/manifest`, range),
     ),
+  /** Stops of a rover (whole list is fetched once per rover and cached). */
+  location: (rover: string) =>
+    cached(`location:${rover}`, () => request<LocationResponse>(`/rovers/${slug(rover)}/location`)),
+  /** The whole route as GeoJSON (large for Curiosity: fetched once per rover and cached). */
+  traverse: (rover: string) =>
+    cached(`traverse:${rover}`, () => request<Traverse>(`/rovers/${slug(rover)}/traverse`)),
 };
 
 /** Path (with API base) of the photo image endpoint, e.g. for "Open image". */

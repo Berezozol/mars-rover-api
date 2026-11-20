@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/preact";
 import { describe, expect, it } from "vitest";
 import { App } from "../src/App";
-import { apiError, curiosity, manifest, mockApi, page, perseverance, photo } from "./helpers";
+import { apiError, curiosity, mockApi, page, perseverance, photo } from "./helpers";
 
 const cameras = {
   items: [
@@ -10,21 +10,20 @@ const cameras = {
     { code: "SKYCAM", name: "Skycam", total_photos: 7820 },
   ],
 };
-const sols = [
-  {
-    sol: 2031,
-    earth_date: "2026-11-06",
-    total_photos: 52,
-    cameras: ["NAVCAM_LEFT", "SUPERCAM_RMI"],
-  },
-  { sol: 2030, earth_date: "2026-11-05", total_photos: 40, cameras: ["NAVCAM_LEFT"] },
-];
+// `/cameras?sol=N`: counts for that sol (SKYCAM did not shoot); without `sol`: the whole mission.
+const solCameras = {
+  items: [
+    { code: "NAVCAM_LEFT", name: "Left Navcam", total_photos: 30 },
+    { code: "SUPERCAM_RMI", name: "SuperCam RMI", total_photos: 22 },
+    { code: "SKYCAM", name: "Skycam", total_photos: 0 },
+  ],
+};
 
 function routes(photosHandler: Parameters<typeof mockApi>[0][string]) {
   return mockApi({
     "/api/v2/rovers": { items: [perseverance, curiosity] },
-    "/api/v2/rovers/perseverance/cameras": cameras,
-    "/api/v2/rovers/perseverance/manifest": manifest(perseverance, sols),
+    "/api/v2/rovers/perseverance/cameras": (url: URL) =>
+      url.searchParams.get("sol") ? solCameras : cameras,
     "/api/v2/rovers/perseverance/photos": photosHandler,
   });
 }
@@ -48,6 +47,19 @@ describe("Photos browser", () => {
     expect(screen.getByText(/GET \/api\/v2\/rovers\/perseverance\/photos\?sol=2031/)).toBeTruthy();
   });
 
+  it("reserves each tile's proportions from width/height (4:3 when unknown)", async () => {
+    routes(
+      page([photo(10, { width: 2000, height: 1000 }), photo(9, { width: null, height: null })], 2),
+    );
+    window.history.replaceState(null, "", "/rovers/perseverance");
+    render(<App />);
+    await screen.findAllByRole("img");
+    const boxes = Array.from(document.querySelectorAll<HTMLElement>(".thumb"));
+    expect(boxes[0]?.style.aspectRatio).toBe("2 / 1");
+    expect(boxes[1]?.style.aspectRatio).toBe(""); // CSS default 4 / 3
+    expect(boxes[0]?.querySelector("img")?.getAttribute("height")).toBe("160");
+  });
+
   it("falls back from small to medium to full when an image fails", async () => {
     routes(page([photo(10)], 1));
     window.history.replaceState(null, "", "/rovers/perseverance");
@@ -69,7 +81,6 @@ describe("Photos browser", () => {
     mockApi({
       "/api/v2/rovers": { items: [curiosity] },
       "/api/v2/rovers/curiosity/cameras": { items: [] },
-      "/api/v2/rovers/curiosity/manifest": manifest(curiosity, []),
       "/api/v2/rovers/curiosity/photos": page([
         photo(5, {
           rover: "curiosity",
@@ -106,14 +117,58 @@ describe("Photos browser", () => {
     expect(screen.getByText(/Other cameras \(1, no photos on this sol\)/)).toBeTruthy();
   });
 
-  it("explains an empty sol and offers neighbouring sols and the timeline", async () => {
-    routes(page([], 0));
+  it("shows camera counts for the viewed sol (/cameras?sol=), not the whole mission", async () => {
+    const m = routes(page([photo(10)], 52));
+    window.history.replaceState(null, "", "/rovers/perseverance?sol=2031");
+    render(<App />);
+    const chip = await screen.findByRole("button", { name: /SUPERCAM_RMI/ });
+    expect(chip.textContent).toContain("22");
+    expect(chip.getAttribute("title")).toContain("22 photos on this sol");
+    expect(screen.getByText(/counts are for this sol/)).toBeTruthy();
+    expect(screen.getByText("52 on this sol")).toBeTruthy();
+    expect(
+      m.calls.some((c) => c.pathname.endsWith("/cameras") && c.searchParams.get("sol") === "2031"),
+    ).toBe(true);
+    expect(m.calls.some((c) => c.pathname.endsWith("/manifest"))).toBe(false);
+  });
+
+  it("an Earth-date search shows mission-wide camera counts (no ?sol=)", async () => {
+    const m = routes(page([photo(10)], 1));
+    window.history.replaceState(null, "", "/rovers/perseverance?earth_date=2026-11-06");
+    render(<App />);
+    const chip = await screen.findByRole("button", { name: /SUPERCAM_RMI/ });
+    expect(chip.getAttribute("title")).toContain("across all sols");
+    expect(screen.getByText(/counts are across all sols/)).toBeTruthy();
+    const cams = m.calls.filter((c) => c.pathname.endsWith("/cameras"));
+    expect(cams.length).toBeGreaterThan(0);
+    for (const c of cams) expect(c.searchParams.get("sol")).toBeNull();
+  });
+
+  it("explains an empty sol and offers the nearest sols from nearest_sols and the timeline", async () => {
+    routes(page([], 0, 1, 24, { before: 2028, after: 2030 }));
     window.history.replaceState(null, "", "/rovers/perseverance?sol=2029");
     render(<App />);
     expect(await screen.findByRole("heading", { name: "No photos on sol 2029" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "‹ Sol 2028" }).getAttribute("href")).toBe(
+      "/rovers/perseverance?sol=2028",
+    );
+    expect(screen.getByRole("link", { name: "Sol 2030 ›" }).getAttribute("href")).toBe(
+      "/rovers/perseverance?sol=2030",
+    );
     expect(screen.getByRole("link", { name: "Open timeline" }).getAttribute("href")).toBe(
       "/rovers/perseverance/timeline",
     );
+  });
+
+  it("offers only the side that exists, also for an Earth-date search", async () => {
+    routes(page([], 0, 1, 24, { before: null, after: 15 }));
+    window.history.replaceState(null, "", "/rovers/perseverance?earth_date=2021-02-01");
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "No photos on 2021-02-01" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Sol 15 ›" }).getAttribute("href")).toBe(
+      "/rovers/perseverance?sol=15",
+    );
+    expect(screen.queryByRole("link", { name: /^‹ Sol/ })).toBeNull();
   });
 
   it("offers a filter reset when filters hide everything", async () => {

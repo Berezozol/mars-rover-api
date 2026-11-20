@@ -31,7 +31,6 @@ describe("thumbnails never trigger our own converter", () => {
     mockApi({
       "/api/v2/rovers": { items: [spirit] },
       "/api/v2/rovers/spirit/cameras": { items: [] },
-      "/api/v2/rovers/spirit/manifest": manifest(spirit, []),
       "/api/v2/rovers/spirit/photos": page([photo(9, { rover: "spirit", images: merImages })]),
     });
     window.history.replaceState(null, "", "/rovers/spirit?sol=100");

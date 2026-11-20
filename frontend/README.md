@@ -28,9 +28,12 @@ If `npm` is not on PATH in your shell, use `"C:\Program Files\nodejs\npm.cmd"` i
    (PowerShell: `$env:SYNC_ENABLED="false"; uv run uvicorn app.main:app`).
 2. In `frontend/`: `npm run dev`. The Vite dev server proxies `/api`, `/health`, `/docs`, `/openapi.json` and
    `/developers` to `http://127.0.0.1:8000`, so the interface uses relative `/api/v2/...` paths.
+   To preview against another backend (e.g. the public deployment) set `SOL_INDEX_BACKEND`, e.g.
+   `SOL_INDEX_BACKEND=https://example.ts.net npm run dev` (PowerShell: `$env:SOL_INDEX_BACKEND="https://..."`).
+   An `https://` target also gets `changeOrigin` and certificate checking.
 
 Or build (`npm run build`) and open http://127.0.0.1:8000/ : the backend serves `frontend/dist` and the
-interface routes (`/`, `/rovers/{rover}`, `/rovers/{rover}/timeline`, `/photos/{id}`).
+interface routes (`/`, `/rovers/{rover}`, `/rovers/{rover}/timeline`, `/rovers/{rover}/map`, `/photos/{id}`).
 
 ## Configuration
 
@@ -43,7 +46,8 @@ interface routes (`/`, `/rovers/{rover}`, `/rovers/{rover}/timeline`, `/photos/{
 | `/`                        | rovers, quick jump, latest photos                                                                                                 |
 | `/rovers/{rover}`          | photo browser; query `sol` or `earth_date`, `camera`, `sample_type`, `page`, `per_page`; without sol/date: latest sol (`max_sol`) |
 | `/rovers/{rover}/timeline` | mission timeline; query `from_sol`, `to_sol`                                                                                      |
-| `/photos/{id}`             | photo card; `?from=/rovers/...` carries the list for newer/older                                                                  |
+| `/rovers/{rover}/map`      | route map (SVG on a lat/lon grid, no basemap); query `from_sol`, `to_sol` (highlight), `sol`+`site`+`drive` (selected stop)       |
+| `/photos/{id}`             | photo card; `?from=/rovers/...` carries the list's camera/sample type (for `in_sol`) or an Earth-date list (page walking)         |
 | anything else              | "Page not found" inside the interface                                                                                             |
 
 `/developers` and `/docs` are server pages: plain links, not SPA routes.
@@ -51,5 +55,9 @@ interface routes (`/`, `/rovers/{rover}`, `/rovers/{rover}/timeline`, `/photos/{
 ## Layout
 
 - `src/api/` — the only API client (`client.ts`), v2 types, and error wording (`errors.ts`).
-- `src/pages/` — Home, Photos, Photo, Timeline, NotFound. `src/components/` — shared pieces.
+- `src/pages/` — Home, Photos, Photo, Timeline, RouteMap, NotFound. `src/lib/mapgeo.ts` — pure map geometry (projection, fit, compact paths). `src/components/` — shared pieces.
 - `tests/` — unit tests (client, error parsing, routing) and screen tests with a mocked `fetch`.
+
+## Test fixtures
+
+`tests/fixtures/*.json` are small, decimated real responses (route, stops, rovers; about 120 KB in total, minified, listed in `.prettierignore`). Regenerate them from a live API with `node scripts/make-fixtures.mjs https://your-deployment.example`.

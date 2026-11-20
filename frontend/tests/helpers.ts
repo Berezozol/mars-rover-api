@@ -49,12 +49,14 @@ export const perseverance: Rover = {
   mission: "mars2020",
   launch_date: "2020-07-30",
   landing_date: "2021-02-18",
+  end_date: null,
   status: "active",
   max_sol: 2031,
   max_date: "2026-11-06",
   total_photos: 579518,
   cameras_count: 23,
   last_synced_at: "2026-11-17T06:00:12Z",
+  data_source: "sync",
 };
 export const curiosity: Rover = {
   ...perseverance,
@@ -74,6 +76,8 @@ export const spirit: Rover = {
   mission: "mer",
   landing_date: "2004-01-04",
   status: "complete",
+  end_date: "2011-05-25",
+  data_source: "archive",
   max_sol: 2208,
   max_date: "2010-03-21",
   total_photos: 124550,
@@ -106,6 +110,8 @@ export function photo(id: number, over: Partial<Photo> = {}): Photo {
     },
     credit: "NASA/JPL-Caltech/LANL/CNES/IRAP",
     source: { id: `SRC_${id}`, link: `https://source.example/${id}` },
+    width: 1648,
+    height: 1200,
     ...over,
   };
 }
@@ -117,13 +123,22 @@ export function detail(id: number, over: Partial<PhotoDetail> = {}): PhotoDetail
     received_at: "2026-11-07T03:41:09Z",
     site: 112,
     drive: 1874,
-    extra: { dimension: "(2048,2048)" },
+    extra: {},
+    location: null,
+    local_time: null,
+    in_sol: null,
     ...over,
   };
 }
 
-export function page(items: Photo[], total = items.length, p = 1, per = 24) {
-  return { items, page: p, per_page: per, total };
+export function page(
+  items: Photo[],
+  total = items.length,
+  p = 1,
+  per = 24,
+  nearest_sols: { before: number | null; after: number | null } | null = null,
+) {
+  return { items, page: p, per_page: per, total, nearest_sols };
 }
 
 export function manifest(rover: Rover, sols: Manifest["sols"]): Manifest {
