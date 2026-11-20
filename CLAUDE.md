@@ -47,19 +47,22 @@ Python 3.13+, FastAPI, SQLAlchemy 2.0 (async) + asyncpg, Alembic, httpx + tenaci
 
 ## Команда ролей
 - `/stage <N>` — провести этап из `docs/PLAN.md`: план → моё «ок» → `backend-dev` и `qa-engineer` параллельно → прогон → `reviewer` → итог.
-- Роли по отдельности: `@agent-architect` (план этапа, модель данных, черновик контракта, ADR — до разработки), `@agent-backend-dev`, `@agent-qa-engineer`, `@agent-data-engineer` (проверка источников, загрузки, сверка, производительность на полном объёме), `@agent-reviewer`, `@agent-designer` (наброски фронтенда), `@agent-devops` (CI, образ, развёртывание), `@agent-frontend-dev` (фронтенд).
+- Роли по отдельности: `@agent-architect` (план этапа, модель данных, черновик контракта, ADR — до разработки), `@agent-backend-dev`, `@agent-qa-engineer`, `@agent-data-engineer` (проверка источников, загрузки, сверка, производительность на полном объёме), `@agent-reviewer`, `@agent-security-reviewer` (безопасность публичного API — перед публичными этапами и после правок ручек, admin, лимитов, развёртывания), `@agent-designer` (наброски фронтенда), `@agent-devops` (CI, образ, развёртывание, дежурство по живому серверу), `@agent-frontend-dev` (фронтенд), `@agent-frontend-qa` (тесты фронтенда и сквозные браузерные тесты), `@agent-tech-writer` (документация для пользователей API на английском).
+- Скиллы: `/release` (выкладка на ноутбук и smoke-тест), `/sync-check <rover>` (пробная синхронизация и сверка на базе разработки), `/contract-change` (правка `API.md`/`LEGACY-API.md` → реализация → `openapi.json` → документация), `/record-fixtures <part>` (фикстуры источников), `/budget before|after` (журнал расхода architect и data-engineer), `/commit-msg` (сообщение коммита в принятом формате).
 
 Владение файлами, чтобы параллельная работа не конфликтовала:
 - `backend-dev` — `app/`, `migrations/`, `pyproject.toml`, `uv.lock`, `docker-compose.yml`, `.env.example`, `alembic.ini`;
 - `qa-engineer` — `tests/`, `scripts/record_fixtures.py`;
 - агенты не запускают команды в фоне (`run_in_background`): каждое промежуточное уведомление будит основную сессию и стоит токенов;
-- тимлид (основная сессия) — `docs/` (кроме перечисленного ниже), `README.md`, `CLAUDE.md`;
+- тимлид (основная сессия) — `docs/` (кроме перечисленного ниже), `CLAUDE.md`, `.claude/`;
+- `tech-writer` — `README.md`, `examples/` (тексты, живущие в коде — `/developers`, `/llms.txt`, — готовит в отчёте, вставляет `backend-dev`);
 - `architect` — `docs/ARCHITECTURE.md`, `docs/proposals/`;
 - `data-engineer` — `docs/DATA-SOURCES.md`, `docs/reports/`, `scripts/` (кроме `record_fixtures.py`);
 - `designer` — `design/` (HTML-макеты будущего фронтенда на данных v2);
 - `devops` — `Dockerfile`, `.dockerignore`, `.github/`, `deploy/` (образ, CI, продакшен-развёртывание, бэкапы, мониторинг);
-- `frontend-dev` — `frontend/` (веб-интерфейс Sol Index на API v2 по макетам из `design/`);
-- `reviewer` — ничего не меняет.
+- `frontend-dev` — `frontend/`, кроме тестов (веб-интерфейс Sol Index на API v2 по макетам из `design/`);
+- `frontend-qa` — `frontend/tests/`, `frontend/e2e/`;
+- `reviewer` и `security-reviewer` — ничего не меняют.
 
 ## Автономия architect и data-engineer
 - Тимлид запускает `architect` и `data-engineer` сам, без моего «ок» на запуск. Мои «ок» на контракты, запросы к внешним сайтам, коммиты и удаление данных остаются в силе.
