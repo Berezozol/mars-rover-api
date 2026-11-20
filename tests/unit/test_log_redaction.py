@@ -8,6 +8,7 @@ not matter whether the filter sits on a logger or on a handler.
 
 import io
 import logging
+import sys
 from collections.abc import Iterator
 
 import pytest
@@ -122,3 +123,115 @@ def test_configure_logging_twice_does_not_stack_filters(captured: io.StringIO) -
 
     assert buffer.getvalue().count("<redacted>") == 1
     assert SECRET not in buffer.getvalue()
+
+
+# --- through uvicorn's own formatter (it unpacks `record.args` as a 5-tuple) -----------------
+
+
+@pytest.fixture
+def uvicorn_output(captured: io.StringIO) -> Iterator[tuple[io.StringIO, list[BaseException]]]:
+    """Configured handlers with uvicorn's AccessFormatter; handler errors are collected."""
+    from uvicorn.logging import AccessFormatter
+
+    errors: list[BaseException] = []
+    saved_raise = logging.raiseExceptions
+    logging.raiseExceptions = True
+    handlers = [h for h in logging.getLogger().handlers if isinstance(h, logging.StreamHandler)]
+    originals = {}
+    for handler in handlers:
+        handler.setFormatter(
+            AccessFormatter(
+                '%(client_addr)s - "%(request_line)s" %(status_code)s', use_colors=False
+            )
+        )
+        originals[handler] = handler.handleError
+
+        def record_error(record: logging.LogRecord, _h: logging.Handler = handler) -> None:
+            exc = sys.exc_info()[1]
+            if exc is not None:
+                errors.append(exc)
+
+        handler.handleError = record_error  # type: ignore[method-assign]
+    try:
+        yield captured, errors
+    finally:
+        logging.raiseExceptions = saved_raise
+        for handler, original in originals.items():
+            handler.handleError = original  # type: ignore[method-assign]
+
+
+@pytest.mark.parametrize(("query", "expected"), QUERIES[:7])
+def test_access_record_formats_through_uvicorn_formatter_without_errors(
+    uvicorn_output: tuple[io.StringIO, list[BaseException]], query: str, expected: str
+) -> None:
+    buffer, errors = uvicorn_output
+
+    logging.getLogger("uvicorn.access").info(
+        '%s - "%s %s HTTP/%s" %d',
+        "203.0.113.5:50000",
+        "GET",
+        f"/api/v1/rovers/curiosity/photos?{query}",
+        "1.1",
+        200,
+    )
+
+    output = buffer.getvalue()
+    assert errors == [], f"logging error: {errors!r}"
+    assert "Logging error" not in output
+    assert SECRET not in output
+    assert expected in output
+    assert "200" in output
+    assert "203.0.113.5:50000" in output
+
+
+def test_access_record_stays_a_five_tuple_after_filtering(
+    uvicorn_output: tuple[io.StringIO, list[BaseException]],
+) -> None:
+    """Whatever the filter does, the record reaching handlers keeps the uvicorn shape."""
+    seen: list[logging.LogRecord] = []
+
+    class Spy(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            seen.append(record)
+
+    logging.getLogger().addHandler(Spy())
+    try:
+        logging.getLogger("uvicorn.access").info(
+            '%s - "%s %s HTTP/%s" %d',
+            "203.0.113.5:50000",
+            "GET",
+            "/api/v2/rovers?api_key=" + SECRET,
+            "1.1",
+            200,
+        )
+    finally:
+        logging.getLogger().handlers = [
+            h for h in logging.getLogger().handlers if not isinstance(h, Spy)
+        ]
+
+    assert seen
+    assert isinstance(seen[0].args, tuple) and len(seen[0].args) == 5
+    assert seen[0].args[4] == 200
+    assert SECRET not in str(seen[0].args)
+
+
+def test_dict_args_record_is_redacted_without_errors(
+    uvicorn_output: tuple[io.StringIO, list[BaseException]],
+) -> None:
+    from app.core.logging import configure_logging  # noqa: F401  (filters already installed)
+
+    buffer, errors = uvicorn_output
+    for handler in logging.getLogger().handlers:
+        handler.setFormatter(logging.Formatter("%(message)s"))
+
+    logging.getLogger("app.some.module").warning(
+        "fetch url=%(url)s status=%(status)d",
+        {"url": "/api/v2/rovers?sol=1&api_key=" + SECRET, "status": 502},
+    )
+
+    output = buffer.getvalue()
+    assert errors == []
+    assert "Logging error" not in output
+    assert SECRET not in output
+    assert "api_key=<redacted>" in output
+    assert "status=502" in output
