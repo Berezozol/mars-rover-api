@@ -6,6 +6,7 @@ import { FILTER_SAMPLE_TYPES } from "../api/types";
 import { Pager } from "../components/Pager";
 import { PhotoTile } from "../components/PhotoTile";
 import { RoverTabs } from "../components/RoverTabs";
+import { Subscribe } from "../components/Subscribe";
 import { EmptyState, ErrorAlert, GridSkeleton, PageSkeleton } from "../components/States";
 import { fmt, short, statusLabel } from "../lib/format";
 import { stopLabel, type StopFilter } from "../lib/maplinks";
@@ -95,6 +96,7 @@ export function Photos({ roverId }: { roverId: string }) {
 }
 
 function PageHead({ rover }: { rover: Rover }) {
+  const q = useQuery();
   return (
     <div class="page-head">
       <h1>{rover.name} photos</h1>
@@ -110,6 +112,13 @@ function PageHead({ rover }: { rover: Rover }) {
         <Link class="btn btn-sm" href={`/rovers/${rover.id}/flights`}>
           Flights
         </Link>
+      )}
+      {rover.max_sol !== null && (
+        <Subscribe
+          rover={rover}
+          camera={q.get("camera")?.toUpperCase() || undefined}
+          sampleType={q.get("sample_type") || undefined}
+        />
       )}
     </div>
   );

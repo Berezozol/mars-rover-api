@@ -40,6 +40,8 @@ export function mockApi(overrides: Record<string, Handler>) {
   // The route map asks for the sample list of Perseverance; most tests do not care, so it is empty unless a test says otherwise.
   const routes: Record<string, Handler> = {
     "/api/v2/rovers/perseverance/samples": samplesResponse([]),
+    // The photo card asks for the rover list to know whether the rover has a feed.
+    "/api/v2/rovers": { items: [perseverance, curiosity, spirit, ingenuity] },
     ...overrides,
   };
   const calls: URL[] = [];

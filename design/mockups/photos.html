@@ -47,6 +47,28 @@
   .empty .row { justify-content: center; margin-top: var(--s4); }
   pre.raw { margin: var(--s2) 0 0; padding: var(--s3); background: var(--surface-2); border-radius: var(--radius-sm); overflow-x: auto; overflow-y: hidden; font: var(--fs-xs)/1.5 var(--mono); }
   .api-line { font-size: var(--fs-xs); color: var(--text-muted); margin-top: var(--s4); word-break: break-all; }
+
+  /* Subscribe (RSS), stage 16 */
+  .sub-wrap { position: relative; margin-left: auto; }
+  .sub-wrap[hidden] { display: none; }
+  .sub-panel {
+    position: absolute; right: 0; top: calc(100% + 8px); z-index: 20; width: min(420px, calc(100vw - 32px));
+    padding: var(--s4); display: grid; gap: var(--s3); box-shadow: 0 8px 28px rgba(0,0,0,.22);
+  }
+  .sub-panel[hidden] { display: none; }
+  .sub-panel h2 { margin: 0; font-size: var(--fs-md); }
+  .sub-panel p { margin: 0; }
+  .sub-panel .segmented { max-width: 100%; }
+  .sub-panel .segmented label { white-space: normal; text-align: center; }
+  .sub-url { display: flex; gap: var(--s2); }
+  .sub-url input { flex: 1; min-width: 0; font-family: var(--mono); font-size: var(--fs-xs); }
+  .sub-for { font-family: var(--mono); font-size: var(--fs-xs); background: var(--surface-2); padding: 4px 8px; border-radius: var(--radius-sm); overflow-wrap: anywhere; }
+  .sub-status { min-height: 1.2em; font-size: var(--fs-xs); color: var(--text-muted); }
+  @media (max-width: 640px) {
+    .sub-wrap { margin-left: 0; width: 100%; }
+    .sub-wrap > .btn { width: 100%; justify-content: center; }
+    .sub-panel { position: static; width: auto; margin-top: var(--s2); box-shadow: none; }
+  }
 </style>
 </head>
 <body>
@@ -79,6 +101,7 @@
       <button class="btn btn-sm" data-state="loading">Loading</button>
       <button class="btn btn-sm" data-state="empty">Empty sol</button>
       <button class="btn btn-sm" data-state="error">422 error</button>
+      <button class="btn btn-sm" type="button" id="mock-archive" aria-pressed="false">Archive rover (no RSS)</button>
       <span>· sample data: Perseverance sol 2031 (= latest); Curiosity uses sol 1000 photos in place of its latest sol 5066</span>
     </div>
 
@@ -91,6 +114,36 @@
       <h1 id="title">Perseverance photos</h1>
       <span class="badge badge-active" id="status">Active</span>
       <span class="small muted" id="range">Sols 0 – 2031</span>
+
+      <!-- Only for rovers with regular sync (curiosity, perseverance). Archive rovers: control is not rendered. -->
+      <div class="sub-wrap" id="sub">
+        <button class="btn btn-sm" type="button" id="sub-btn" aria-expanded="false" aria-controls="sub-panel">
+          <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" style="margin-right:6px"><circle cx="3" cy="13" r="1.8" fill="currentColor"/><path d="M1.5 7.2a7.3 7.3 0 0 1 7.3 7.3M1.5 2.2a12.3 12.3 0 0 1 12.3 12.3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          Subscribe (RSS)
+        </button>
+        <div class="card sub-panel" id="sub-panel" role="group" aria-labelledby="sub-h" hidden>
+          <h2 id="sub-h">Subscribe to new photos</h2>
+          <p class="small muted">RSS lets a feed reader app tell you when new photos arrive, so you don’t have to check the site. Paste the link below into your reader.</p>
+          <p class="small">Feed for <span class="sub-for" id="sub-for"></span></p>
+          <div class="field">
+            <span class="label" id="grp-label">Entries</span>
+            <div class="segmented" role="radiogroup" aria-labelledby="grp-label">
+              <input type="radio" name="grp" id="grp-sol" value="sol" checked><label for="grp-sol">One per sol</label>
+              <input type="radio" name="grp" id="grp-photo" value="photo"><label for="grp-photo">One per photo</label>
+            </div>
+            <span class="hint" id="grp-hint"></span>
+          </div>
+          <div class="field">
+            <label for="feed-url">Feed link</label>
+            <div class="sub-url">
+              <input id="feed-url" type="text" readonly aria-describedby="sub-status">
+              <button class="btn btn-primary btn-sm" type="button" id="copy">Copy</button>
+            </div>
+            <span class="sub-status" id="sub-status" role="status" aria-live="polite"></span>
+          </div>
+          <p class="xsmall muted">Follows the camera and sample type chosen above; sol and date are not part of a feed. Photos are listed as they reach us. Credit is included in every entry.</p>
+        </div>
+      </div>
     </div>
 
     <!-- Filters -->
@@ -434,6 +487,52 @@ $('.theme-toggle').onclick = () => {
   const r = document.documentElement;
   const dark = r.dataset.theme ? r.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
   r.dataset.theme = dark ? 'light' : 'dark';
+};
+
+/* ===== Subscribe (RSS) — mockup of the idea; URL mirrors GET /api/v2/rovers/{rover}/feed.xml ===== */
+const ORIGIN = location.protocol.startsWith('http') ? location.origin : 'https://sol-index.example.ts.net';
+function feedUrl() {
+  const p = new URLSearchParams();
+  if (state.camera) p.set('camera', state.camera);           // codes upper-case, as the API normalises them
+  if (state.sample_type) p.set('sample_type', state.sample_type);
+  const g = document.querySelector('input[name=grp]:checked').value;
+  if (g === 'photo') p.set('group', 'photo');                 // default (sol) is omitted
+  const q = p.toString();
+  return `${ORIGIN}/api/v2/rovers/${roverKey}/feed.xml${q ? '?' + q : ''}`;
+}
+function renderSub() {
+  const parts = [D.rover.name, state.camera || 'all cameras'];
+  if (state.sample_type) parts.push(state.sample_type);
+  $('#sub-for').textContent = 'RSS: ' + parts.join(' · ');
+  const photo = $('#grp-photo').checked;
+  $('#grp-hint').textContent = photo
+    ? 'Every new photo is its own entry (up to 50). Busy: hundreds of photos on some sols.'
+    : 'One entry per sol with a thumbnail strip (up to 20). Quiet and easy to skim.';
+  $('#feed-url').value = feedUrl(); $('#sub-status').textContent = '';
+}
+const subBtn = $('#sub-btn'), subPanel = $('#sub-panel');
+function toggleSub(open) {
+  subPanel.hidden = !open; subBtn.setAttribute('aria-expanded', String(open));
+  if (open) { renderSub(); $('#feed-url').focus(); } else subBtn.focus();
+}
+subBtn.onclick = () => toggleSub(subPanel.hidden);
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !subPanel.hidden) toggleSub(false); });
+document.addEventListener('click', e => { if (!subPanel.hidden && !$('#sub').contains(e.target)) { subPanel.hidden = true; subBtn.setAttribute('aria-expanded', 'false'); } });
+document.querySelectorAll('input[name=grp]').forEach(r => r.onchange = renderSub);
+$('#feed-url').onfocus = e => e.target.select();
+$('#copy').onclick = async () => {
+  const f = $('#feed-url');
+  try { await navigator.clipboard.writeText(f.value); $('#sub-status').textContent = 'Copied. Now paste it into your RSS reader.'; }
+  catch (_) { f.select(); $('#sub-status').textContent = 'Press Ctrl+C (or ⌘C) to copy the selected link.'; }
+};
+// keep the panel in sync when filters change while it is open
+const _render = render;
+render = function () { _render(); if (!subPanel.hidden) renderSub(); };
+// mockup only: archive rovers (Spirit, Opportunity, Ingenuity) have no feed → no control at all
+$('#mock-archive').onclick = e => {
+  const on = e.currentTarget.getAttribute('aria-pressed') !== 'true';
+  e.currentTarget.setAttribute('aria-pressed', String(on));
+  $('#sub').hidden = on; if (on) toggleSub(false);
 };
 
 renderChips(); render();

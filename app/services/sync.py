@@ -397,7 +397,15 @@ class SyncService:
                     recorded = (from_sol, to_sol)
                 if from_sol is None or to_sol is None:
                     raise RuntimeError("Sync range is unknown after range resolution")
-                await self._sync_range(session, adapter, rover_id, from_sol, to_sol, progress)
+                await self._sync_range(
+                    session,
+                    adapter,
+                    rover_id,
+                    from_sol,
+                    to_sol,
+                    progress,
+                    mark_new=mode == "incremental",
+                )
                 return await _finish(session, rover_id, run_id, mode, from_sol, to_sol, progress)
             except BaseException as exc:
                 with suppress(Exception):
@@ -431,9 +439,13 @@ class SyncService:
         from_sol: int,
         to_sol: int,
         progress: _Progress,
+        *,
+        mark_new: bool,
     ) -> None:
         for chunk_from, chunk_to in chunk_ranges(from_sol, to_sol, self._settings.sync_chunk_sols):
-            await _sync_chunk(session, adapter, rover_id, chunk_from, chunk_to, progress)
+            await _sync_chunk(
+                session, adapter, rover_id, chunk_from, chunk_to, progress, mark_new=mark_new
+            )
 
     async def _mark_crashed(
         self,
@@ -517,6 +529,8 @@ async def _sync_chunk(
     chunk_from: int,
     chunk_to: int,
     progress: _Progress,
+    *,
+    mark_new: bool,
 ) -> None:
     """Store every yielded sol; on an upstream failure the not yet yielded sols fail."""
     pending = set(range(chunk_from, chunk_to + 1))
@@ -528,7 +542,7 @@ async def _sync_chunk(
             # not reported: that needs the failing sol in the adapter exception.
             pending.discard(sol)
             counts = _sol_counts(stats, sol, records)
-            await _store_sol(session, rover_id, sol, records, counts, progress)
+            await _store_sol(session, rover_id, sol, records, counts, progress, mark_new=mark_new)
     except UpstreamError as exc:
         # A failed refetch also names sols that were yielded (and stored) before it.
         incomplete = exc.sols if isinstance(exc, SolsFetchFailed) else frozenset()
@@ -618,12 +632,16 @@ async def _store_sol(
     records: list[PhotoRecord],
     counts: SourceCountRow,
     progress: _Progress,
+    *,
+    mark_new: bool = False,
 ) -> None:
-    """Upsert one sol, its summaries and its source counts in its own transaction."""
+    """Upsert one sol, its summaries and its source counts in its own transaction.
+
+    ``mark_new`` (incremental runs) stamps the inserted photos for the RSS feed."""
     try:
         # Photos the source moved to this sol leave their old sols: recompute those too.
         moved_from = await photos_repo.moved_from_sols(session, rover_id, records)
-        count = await photos_repo.upsert_photos(session, rover_id, records)
+        count = await photos_repo.upsert_photos(session, rover_id, records, mark_new=mark_new)
         await photos_repo.recompute_sol_summaries(session, rover_id, [sol, *moved_from])
         await counts_repo.upsert_sol_source_counts(session, rover_id, {sol: counts})
         await session.commit()

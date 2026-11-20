@@ -16,7 +16,8 @@ import { photoHref } from "../components/PhotoTile";
 import { PhotoTile } from "../components/PhotoTile";
 import { ErrorAlert, PageSkeleton } from "../components/States";
 import { dateTimeUtc, hoursBetween, safeHref, timeOf } from "../lib/format";
-import { useAsync, useTitle } from "../lib/hooks";
+import { feedPath, hasFeed } from "../lib/feed";
+import { useAsync, useRovers, useTitle } from "../lib/hooks";
 import { Link, qs, safeDecode, useQuery } from "../router";
 
 const SIZES: { value: ImageSize; label: string }[] = [
@@ -550,6 +551,9 @@ function Meta({
   roverName: string;
   solHref: string;
 }) {
+  const [rovers] = useRovers();
+  const feed =
+    rovers.status === "ok" && hasFeed(rovers.data.find((r) => r.id === photo.rover) ?? {});
   const link = safeHref(photo.source.link);
   const isData = !!link && /\.img$/i.test(link);
   return (
@@ -598,6 +602,28 @@ function Meta({
             <span class="mono">{photo.camera.code}</span>
             <br />
             <span class="muted">{photo.camera.name}</span>
+            {feed && (
+              <>
+                <br />
+                <a
+                  class="rss-link"
+                  href={feedPath(photo.rover, { camera: photo.camera.code })}
+                  title="New photos from this camera, in an RSS reader"
+                >
+                  <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">
+                    <circle cx="3" cy="13" r="1.8" fill="currentColor" />
+                    <path
+                      d="M1.5 7.2a7.3 7.3 0 0 1 7.3 7.3M1.5 2.2a12.3 12.3 0 0 1 12.3 12.3"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                    />
+                  </svg>{" "}
+                  Subscribe to this camera
+                </a>
+              </>
+            )}
           </dd>
           <dt>Sample type</dt>
           <dd>{photo.sample_type}</dd>

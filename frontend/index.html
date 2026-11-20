@@ -10,6 +10,21 @@
     <meta name="color-scheme" content="light dark" />
     <title>Sol Index — Mars rover raw images</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <!-- Feed discovery: relative hrefs are resolved against the page address by readers. -->
+    <link
+      rel="alternate"
+      data-static-feed="perseverance"
+      type="application/rss+xml"
+      title="Perseverance — new raw images (Sol Index)"
+      href="/api/v2/rovers/perseverance/feed.xml"
+    />
+    <link
+      rel="alternate"
+      data-static-feed="curiosity"
+      type="application/rss+xml"
+      title="Curiosity — new raw images (Sol Index)"
+      href="/api/v2/rovers/curiosity/feed.xml"
+    />
     <script>
       // Apply the saved theme before first paint (avoids a flash). Storage may be unavailable.
       try {

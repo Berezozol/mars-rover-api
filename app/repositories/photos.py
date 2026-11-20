@@ -35,7 +35,7 @@ FULL_SAMPLE_TYPE = "full"
 # asyncpg allows at most 32767 bind parameters per statement (~20 per photo row).
 _UPSERT_CHUNK = 1000
 
-# Columns overwritten when a photo is upserted again; created_at is never touched.
+# Columns overwritten when a photo is upserted again; created_at and feed_at are never touched.
 _DATA_COLUMNS = (
     "camera_id",
     "sol",
@@ -74,14 +74,25 @@ class PhotoFilter:
 
 
 async def upsert_photos(
-    session: AsyncSession, rover_id: str, records: Sequence[PhotoRecord]
+    session: AsyncSession,
+    rover_id: str,
+    records: Sequence[PhotoRecord],
+    *,
+    mark_new: bool = False,
 ) -> int:
-    """Insert or update photos by (rover_id, source_id); returns the number of unique records."""
+    """Insert or update photos by (rover_id, source_id); returns the number of unique records.
+
+    ``mark_new`` (incremental sync) stamps ``feed_at = now()`` on inserted rows; ``feed_at`` is
+    never part of the conflict update, so an existing photo keeps its value (or NULL).
+    """
     unique = list({record.source_id: record for record in records}.values())
     if not unique:
         return 0
     cameras = await get_or_create_cameras(session, rover_id, (r.camera_code for r in unique))
     rows = [_photo_row(rover_id, cameras[r.camera_code.upper()].id, r) for r in unique]
+    if mark_new:
+        for row in rows:
+            row["feed_at"] = func.now()
     for start in range(0, len(rows), _UPSERT_CHUNK):
         await session.execute(_upsert_statement(rows[start : start + _UPSERT_CHUNK]))
     return len(unique)

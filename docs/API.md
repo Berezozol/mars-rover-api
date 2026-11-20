@@ -11,7 +11,7 @@
 
 ## Общие правила v2
 
-- Базовый путь `/api/v2`, JSON, UTF-8. Даты — `YYYY-MM-DD`, время — ISO 8601 в UTC с `Z`.
+- Базовый путь `/api/v2`, JSON (кроме `feed.xml` — RSS, XML; этап 16), UTF-8. Даты — `YYYY-MM-DD`, время — ISO 8601 в UTC с `Z`.
 - `{rover}` — slug: `curiosity`, `perseverance`, `opportunity`, `spirit`, `ingenuity` (этап 12). Регистр не важен.
 - Пагинация: `page` (с 1, по умолчанию 1), `per_page` (по умолчанию 25, от 1 до 100). Ответ-список:
   ```json
@@ -285,6 +285,47 @@
 ### `GET /api/v2/rovers/{rover}/samples/{number}`
 `number` — целое ≥ 1; нечисловое → `422`; нет такого образца (в т.ч. `0`, отрицательные и больше 32 767) → `404 sample_not_found`. `200 Sample` · `404 rover_not_found` / `not_found` (как у списка). `Cache-Control: public, max-age=3600`.
 
+### `GET /api/v2/rovers/{rover}/feed.xml` (этап 16)
+RSS 2.0-лента новых снимков марсохода — для RSS-читалок. Только марсоходы с регулярной синхронизацией: `curiosity`, `perseverance`.
+Параметры (все необязательные):
+- `camera` — код камеры без учёта регистра; неизвестный для марсохода → `422` (как у `/photos`);
+- `sample_type` — `full`, `subframe`, `downsampled`; иное → `422`;
+- `group` — `sol` (по умолчанию) или `photo`; иное → `422`;
+- `limit` — число записей, от 1 до 100, по умолчанию 20 при `group=sol` и 50 при `group=photo`; вне границ → `422`.
+Неизвестные параметры игнорируются.
+
+**Что считается новым.** Снимок попадает в ленту, если его впервые сохранила регулярная синхронизация (по расписанию или `POST /admin/sync` без `from_sol`/`to_sol`; с диапазоном это загрузка истории); время появления — момент сохранения у нас (`pubDate`). Загрузка истории (`backfill`), импорт архивов и повторная загрузка уже известных снимков в ленту не попадают. В ленте только снимки, появившиеся за последние 30 дней. Снимок старого сола, дошедший с запозданием, — тоже новый.
+
+**Ответ** `200 application/rss+xml; charset=utf-8`:
+```xml
+<?xml version='1.0' encoding='utf-8'?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/">
+ <channel>
+  <title>Perseverance — new raw images (NAVCAM_LEFT) — Sol Index</title>
+  <link>https://example.ts.net/rovers/perseverance?camera=NAVCAM_LEFT</link>
+  <atom:link rel="self" type="application/rss+xml" href="https://example.ts.net/api/v2/rovers/perseverance/feed.xml?camera=NAVCAM_LEFT"/>
+  <description>Unofficial feed. Images: NASA/JPL-Caltech and partners.</description>
+  <language>en</language><ttl>60</ttl>
+  <lastBuildDate>Sat, 21 Nov 2026 06:00:12 GMT</lastBuildDate>
+  <item>
+   <title>Perseverance Sol 2032: 52 new images, 5 cameras</title>
+   <link>https://example.ts.net/rovers/perseverance?sol=2032&amp;camera=NAVCAM_LEFT</link>
+   <guid isPermaLink="false">sol-index:perseverance:sol-2032:1795240812000123:camera-NAVCAM_LEFT</guid>
+   <pubDate>Sat, 21 Nov 2026 06:00:12 GMT</pubDate>
+   <description>&lt;p&gt;…&lt;/p&gt;</description>
+   <media:thumbnail url="https://mars.nasa.gov/…_320.jpg"/>
+  </item>
+ </channel>
+</rss>
+```
+- Все ссылки абсолютные, хост — от текущего запроса (как `origin` у Photo). `link` канала — страница марсохода в интерфейсе с теми же фильтрами; `atom:link self` — адрес ленты с нормализованными параметрами (`camera` в верхнем регистре, параметры по умолчанию опущены).
+- `group=sol`: запись — снимки одного сола, сохранённые одной загрузкой (сол может дать несколько записей, если снимки дошли в разные синхронизации). `title` — `{Rover} Sol {sol}: {n} new image(s), {k} camera(s)`; `link` — страница сола в интерфейсе; `description` (HTML) — камеры с числом снимков, до 6 миниатюр со ссылками на карточки `/photos/{id}`, ссылка на сол, строка `Credit:` со всеми авторствами пачки; `media:thumbnail` — первая миниатюра.
+- `group=photo`: запись — один снимок. `title` — `title` снимка или `{Rover} Sol {sol}: {camera name}`; `link` — карточка `/photos/{id}` в интерфейсе; `guid` — тот же адрес (`isPermaLink="true"`); `description` — превью, `caption`, сол, камера, время съёмки UTC, ссылки «Full image (NASA)» (`images.full`) и «Raw image page» (`source.link`), `Credit: {credit}`; `media:content` (`images.full`, `medium="image"`, `width`/`height`, если известны), `media:thumbnail`, `media:credit`.
+- Авторство (`credit`) есть в каждой записи; если источник его не дал — `NASA/JPL-Caltech`.
+- Порядок — по времени появления (`pubDate`) от новых, внутри пачки — `sol DESC, taken_at DESC, id DESC`. `guid` записи постоянен; содержимое может обновиться, если источник исправит данные снимка (подпись, авторство, ссылки, сол).
+- `pubDate` и `lastBuildDate` — RFC 822 в GMT; `lastBuildDate` — время последней записи (нет записей — элемента нет, канал пустой).
+- `200` · `404 rover_not_found` · `404 not_found` — архивный марсоход (`spirit`, `opportunity`, `ingenuity`) · `422 validation_error`. Ошибки — JSON v2.
+
 ## Admin
 
 Заголовок `X-Admin-Token`. Если `ADMIN_TOKEN` не задан в настройках, этих ручек нет (`404`).
@@ -317,7 +358,7 @@
 
 - `HEAD` поддерживается на всех `GET`-ручках v1 и v2: те же заголовки, без тела.
 - Успешные `GET` (`200`) отдают `ETag`; повторный запрос с совпадающим `If-None-Match` получает `304` без тела.
-- `Cache-Control`: списки, марсоходы, камеры и манифест — `public, max-age=300`; карточка снимка (`/photos/{id}`) — `public, max-age=3600`; редирект на изображение — `public, max-age=86400`; `/rovers/{rover}/location`, `/rovers/{rover}/traverse`, `/rovers/{rover}/samples` и `/samples/{number}` — `public, max-age=3600` (данные меняются не чаще раза в сутки); ошибки и admin-ручки — `no-store`.
+- `Cache-Control`: списки, марсоходы, камеры и манифест — `public, max-age=300`; карточка снимка (`/photos/{id}`) — `public, max-age=3600`; редирект на изображение — `public, max-age=86400`; `/rovers/{rover}/location`, `/rovers/{rover}/traverse`, `/rovers/{rover}/samples` и `/samples/{number}` — `public, max-age=3600` (данные меняются не чаще раза в сутки); `/rovers/{rover}/feed.xml` — `public, max-age=900`, `Last-Modified` — время последней записи ленты (нет записей — без заголовка), повтор с `If-Modified-Since` не раньше него → `304` (если в запросе есть `If-None-Match`, решает он); ошибки и admin-ручки — `no-store`.
 - CORS — любые источники, только `GET`; заголовок `ETag` виден клиенту.
 - Сжатие: при `Accept-Encoding: gzip` ответы от 1 КБ сжимаются; во всех ответах API — `Vary: Accept-Encoding`. `ETag` слабый и считается по несжатому телу, поэтому один и тот же для сжатого и несжатого ответа; `304` работает при любом кодировании.
 

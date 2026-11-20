@@ -389,6 +389,11 @@ def _sample_type(value: str | None) -> str | None:
     return lowered
 
 
+# Shared with the RSS feed service, which validates the same filters.
+resolve_camera_codes = _camera_codes
+normalize_sample_type = _sample_type
+
+
 async def _total(session: AsyncSession, rover: Rover, flt: PhotoFilter) -> int:
     """Total for the filter, read from sol_summaries when they answer it exactly.
 

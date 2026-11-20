@@ -60,10 +60,18 @@ async def test_openapi_lists_v1_paths_once(schema: dict) -> None:
 
 async def test_openapi_v2_operations_have_response_models(schema: dict) -> None:
     for path, item in schema["paths"].items():
-        if not path.startswith("/api/v2/") or "/admin" in path or path.endswith("/image"):
+        skipped = path.endswith(("/image", "/feed.xml"))  # binary / XML: no JSON model
+        if not path.startswith("/api/v2/") or "/admin" in path or skipped:
             continue
         ok = item["get"]["responses"]["200"]
         assert ok["content"]["application/json"]["schema"], path
+
+
+async def test_openapi_feed_declares_an_rss_response_and_error_codes(schema: dict) -> None:
+    operation = schema["paths"]["/api/v2/rovers/{rover}/feed.xml"]["get"]
+
+    assert "application/rss+xml" in operation["responses"]["200"]["content"]
+    assert {"404", "422"} <= set(operation["responses"])
 
 
 async def test_openapi_traverse_declares_a_geojson_response(schema: dict) -> None:

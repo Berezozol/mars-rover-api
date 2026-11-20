@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     sync_interval_minutes: int = 360
     sync_overlap_sols: int = 7
     sync_chunk_sols: int = Field(default=10, ge=1)
+    # RSS feed (stage 16): only photos stored by the regular sync within this many days.
+    feed_window_days: int = Field(default=30, ge=1)
     # Sols per backfill batch; each batch is one sync run (CLI `backfill`).
     backfill_batch_sols: int = Field(default=100, ge=1)
     # When the rover is locked by another sync: retry every N seconds, give up after M.

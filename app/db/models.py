@@ -117,6 +117,15 @@ class Photo(Base):
         ),
         # Filter by camera (v2).
         Index("ix_photos_rover_id_camera_id_sol", "rover_id", "camera_id", "sol"),
+        # RSS feed (stage 16): photos stored by the regular sync, newest first.
+        Index(
+            "ix_photos_feed",
+            "rover_id",
+            text("feed_at DESC"),
+            text("id DESC"),
+            postgresql_include=["camera_id", "sample_type", "sol", "taken_at"],
+            postgresql_where=text("feed_at IS NOT NULL"),
+        ),
         # v1 serves full-frame photos only, ordered by camera then id.
         Index(
             "ix_photos_full_rover_id_sol_camera_id_id",
@@ -152,6 +161,9 @@ class Photo(Base):
     updated_at: Mapped[datetime] = mapped_column(
         _TIMESTAMPTZ, server_default=func.now(), onupdate=func.now()
     )
+    # Set (= created_at) only when the regular (incremental) sync inserts the photo; the upsert
+    # never changes it. NULL for backfill and imports. Feeds the RSS feed (stage 16).
+    feed_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ)
 
     # Always load explicitly (selectinload/joinedload); lazy loads do not work in async.
     camera: Mapped[Camera] = relationship(lazy="raise")

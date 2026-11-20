@@ -30,7 +30,7 @@ EXPECTED_COLUMNS = {
         "id", "rover_id", "camera_id", "source_id", "sol", "earth_date", "taken_at",
         "received_at", "sample_type", "img_full", "img_small", "img_medium", "img_large",
         "title", "caption", "credit", "source_link", "site", "drive", "extra",
-        "created_at", "updated_at",
+        "created_at", "updated_at", "feed_at",
     },
     "sol_summaries": {
         "rover_id", "sol", "earth_date", "total_photos", "cameras", "full_photos", "full_cameras",
@@ -103,6 +103,7 @@ async def test_schema_table_has_contract_columns(db_session: AsyncSession, table
         ("photos", "taken_at", "timestamp with time zone"),
         ("photos", "received_at", "timestamp with time zone"),
         ("photos", "created_at", "timestamp with time zone"),
+        ("photos", "feed_at", "timestamp with time zone"),
         ("photos", "updated_at", "timestamp with time zone"),
         ("photos", "extra", "jsonb"),
         ("sol_summaries", "earth_date", "date"),

@@ -1243,3 +1243,79 @@ table.samples {
   max-width: 52ch;
   margin: 0 auto var(--s3);
 }
+
+/* Subscribe (RSS), stage 16 */
+.sub-wrap {
+  position: relative;
+  margin-left: auto;
+}
+.sub-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 20;
+  width: min(420px, calc(100vw - 32px));
+  padding: var(--s4);
+  display: grid;
+  gap: var(--s3);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
+}
+.sub-panel h2 {
+  margin: 0;
+  font-size: var(--fs-md);
+}
+.sub-panel p {
+  margin: 0;
+}
+.sub-panel .segmented {
+  max-width: 100%;
+}
+.sub-panel .segmented label {
+  white-space: normal;
+  text-align: center;
+}
+.sub-url {
+  display: flex;
+  gap: var(--s2);
+}
+.sub-url input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+}
+.sub-for {
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  background: var(--surface-2);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  overflow-wrap: anywhere;
+}
+.sub-status {
+  min-height: 1.2em;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+.rss-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-sm);
+}
+@media (max-width: 640px) {
+  .sub-wrap {
+    margin-left: 0;
+    width: 100%;
+  }
+  .sub-wrap > .btn {
+    width: 100%;
+    justify-content: center;
+  }
+  .sub-panel {
+    position: static;
+    width: auto;
+    margin-top: var(--s2);
+    box-shadow: none;
+  }
+}

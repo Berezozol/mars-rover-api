@@ -3,7 +3,9 @@
 Pure ASGI middleware. For GET/HEAD under the API prefixes:
 - HEAD is answered by the GET route with the same headers and no body;
 - 200: ``ETag`` (weak, a hash of the body) and ``Cache-Control`` by route; a matching
-  ``If-None-Match`` turns the response into a 304 without a body;
+  ``If-None-Match`` turns the response into a 304 without a body; when the route sets
+  ``Last-Modified`` and the request has no ``If-None-Match``, an ``If-Modified-Since`` not
+  earlier than it does the same (an unparsable date is ignored);
 - 3xx: left as the route set it (the image redirect sends its own Cache-Control);
 - 4xx/5xx: ``Cache-Control: no-store``.
 Admin responses (any method) always get ``no-store`` and no ETag. Other paths (/health, /docs) are
@@ -19,6 +21,8 @@ representations are semantically equal). ``If-None-Match`` matches either way an
 
 import hashlib
 from collections.abc import Iterable
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 
 from starlette.datastructures import Headers, MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -31,6 +35,8 @@ DETAIL_CACHE_CONTROL = "public, max-age=3600"
 IMAGE_CACHE_CONTROL = "public, max-age=86400"
 # Rover positions change at most once a day (stage 11); same lifetime as a detail.
 LOCATION_CACHE_CONTROL = "public, max-age=3600"
+# RSS feed of new photos (stage 16): the sync runs every few hours, a sol is committed on its own.
+FEED_CACHE_CONTROL = "public, max-age=900"
 NO_STORE = "no-store"
 
 _LOCATION_SEGMENTS = frozenset({"location", "traverse"})
@@ -63,7 +69,31 @@ def cache_control_for(path: str) -> str:
     # "/rovers/{rover}/samples" and "/rovers/{rover}/samples/{number}" (stage 13)
     if len(parts) in (4, 5) and parts[1] == "rovers" and parts[2] and parts[3] == "samples":
         return LOCATION_CACHE_CONTROL
+    # "/rovers/{rover}/feed.xml" (stage 16)
+    if len(parts) == 4 and parts[1] == "rovers" and parts[2] and parts[3] == "feed.xml":
+        return FEED_CACHE_CONTROL
     return LIST_CACHE_CONTROL
+
+
+def _http_date(value: str | None) -> datetime | None:
+    """Parse an HTTP-date (UTC); None when absent or unparsable."""
+    if not value:
+        return None
+    try:
+        moment = parsedate_to_datetime(value)
+    except (TypeError, ValueError, IndexError):
+        return None
+    return moment.replace(tzinfo=UTC) if moment.tzinfo is None else moment.astimezone(UTC)
+
+
+def not_modified_since(if_modified_since: str | None, last_modified: str | None) -> bool:
+    """True when ``If-Modified-Since`` is not earlier than ``Last-Modified`` (to the second).
+
+    HTTP dates have second granularity, so entries stored within the same second as the client's
+    date can be missed; ``If-None-Match`` (ETag of the body) is the exact path.
+    """
+    since, modified = _http_date(if_modified_since), _http_date(last_modified)
+    return since is not None and modified is not None and since >= modified
 
 
 def make_etag(body: bytes) -> str:
@@ -150,6 +180,14 @@ def _no_store_sender(send: Send) -> Send:
     return sender
 
 
+def _is_not_modified(request_headers: Headers, etag: str, last_modified: str | None) -> bool:
+    """If-None-Match decides when present; otherwise If-Modified-Since (RFC 9110, 13.1.3)."""
+    none_match = request_headers.getlist("if-none-match")
+    if none_match:
+        return if_none_match_matches(none_match, etag)
+    return not_modified_since(request_headers.get("if-modified-since"), last_modified)
+
+
 class _CachedResponse:
     """Buffers a 200 to hash it; other statuses stream through with their headers fixed.
 
@@ -200,7 +238,7 @@ class _CachedResponse:
         headers["ETag"] = etag
         headers["Cache-Control"] = cache_control_for(self._scope["path"])
         request_headers = Headers(scope=self._scope)
-        if if_none_match_matches(request_headers.getlist("if-none-match"), etag):
+        if _is_not_modified(request_headers, etag, headers.get("last-modified")):
             for name in _BODY_HEADERS:
                 del headers[name]
             self._start["status"] = 304
