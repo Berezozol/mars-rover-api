@@ -11,6 +11,7 @@ capped (least recently used keys are dropped first). Not thread-safe: meant for 
 loop, where the methods run without awaiting.
 """
 
+import math
 import time
 from collections import OrderedDict, deque
 from collections.abc import Callable
@@ -31,6 +32,19 @@ class _Window:
     granularity: float
 
 
+@dataclass(frozen=True)
+class RateState:
+    """Result of one hit: ``wait`` is None if allowed, else seconds until a hit fits.
+
+    ``limit``/``remaining``/``reset`` describe the tighter window after this request.
+    """
+
+    wait: float | None
+    limit: int
+    remaining: int
+    reset: int
+
+
 @dataclass
 class _Counter:
     """Buckets of one key in one window, oldest first; ``total`` is their sum."""
@@ -48,6 +62,12 @@ class _Counter:
         else:
             self.buckets.append([now, 1])
         self.total += 1
+
+    def reset_in(self, now: float, window: _Window) -> int:
+        """Whole seconds (rounded up) until the oldest hit leaves the window; 0 if empty."""
+        if not self.buckets:
+            return 0
+        return max(0, math.ceil(self.buckets[0][0] + window.length - now))
 
     def wait_time(self, now: float, window: _Window) -> float | None:
         """Seconds until one more hit fits, None if it fits now (buckets already expired)."""
@@ -81,13 +101,17 @@ class RateLimiter:
         self._keys: OrderedDict[str, list[_Counter]] = OrderedDict()
         self._next_sweep: float | None = None
 
-    def hit(self, key: str) -> float | None:
-        """Count a hit; None if allowed, else seconds to wait (the hit is not counted)."""
+    def acquire(self, key: str) -> RateState:
+        """Count a hit if allowed (a rejected one is not counted); return the window state."""
         now = self.clock()
         wait = self._wait_time(key, now)
         if wait is None:
             self._add(key, now)
-        return wait
+        return self._state(key, now, wait)
+
+    def hit(self, key: str) -> float | None:
+        """Count a hit; None if allowed, else seconds to wait (the hit is not counted)."""
+        return self.acquire(key).wait
 
     def check(self, key: str) -> float | None:
         """Like ``hit`` without counting: None if a hit would be allowed now."""
@@ -116,6 +140,27 @@ class RateLimiter:
             if (wait := _expired(counter, now, window).wait_time(now, window)) is not None
         ]
         return max(waits) if waits else None
+
+    def _state(self, key: str, now: float, wait: float | None) -> RateState:
+        """The tighter window after this request: fewest remaining, then the later reset.
+
+        On a full tie the first (shortest) window wins.
+        """
+        # Defensive: the key is normally tracked by now (a rejected hit implies existing
+        # counters); an untracked key just reports empty windows.
+        counters = self._keys.get(key) or [_Counter() for _ in self._windows]
+        states: list[RateState] = []
+        for counter, window in zip(counters, self._windows, strict=True):
+            _expired(counter, now, window)
+            remaining = max(0, window.limit - counter.total)
+            states.append(RateState(wait, window.limit, remaining, counter.reset_in(now, window)))
+        best = states[0]  # __init__ guarantees at least one window
+        for state in states[1:]:
+            if state.remaining < best.remaining or (
+                state.remaining == best.remaining and state.reset > best.reset
+            ):
+                best = state
+        return best
 
     def _add(self, key: str, now: float) -> None:
         counters = self._keys.get(key)

@@ -14,10 +14,11 @@ came from a trusted proxy.
 import logging
 
 from fastapi.responses import JSONResponse
-from starlette.types import ASGIApp, Receive, Scope, Send
+from starlette.datastructures import MutableHeaders
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.api.caching import API_PREFIXES
-from app.core.errors import rate_limited_content, rate_limited_headers
+from app.core.errors import rate_limit_headers, rate_limited_content, rate_limited_headers
 from app.core.ratelimit import RateLimiter
 
 logger = logging.getLogger(__name__)
@@ -44,13 +45,27 @@ class RateLimitMiddleware:
             await self.app(scope, receive, send)
             return
         key = client_key(scope)
-        wait = limiter.hit(key)
-        if wait is None:
-            await self.app(scope, receive, send)
+        state = limiter.acquire(key)
+        extra = rate_limit_headers(state.limit, state.remaining, state.reset)
+        if state.wait is None:
+            await self.app(scope, receive, _with_headers(send, extra))
             return
         logger.debug("Rate limited client=%s path=%s", key, scope["path"])
-        response = _too_many_requests(scope, wait)
+        response = _too_many_requests(scope, state.wait, extra)
         await response(scope, receive, send)
+
+
+def _with_headers(send: Send, extra: dict[str, str]) -> Send:
+    """Wrap ``send`` so the response start carries ``extra`` (added on the way out)."""
+
+    async def wrapped(message: Message) -> None:
+        if message["type"] == "http.response.start":
+            headers = MutableHeaders(scope=message)
+            for name, value in extra.items():
+                headers[name] = value
+        await send(message)
+
+    return wrapped
 
 
 def _limiter(scope: Scope) -> RateLimiter | None:
@@ -59,11 +74,11 @@ def _limiter(scope: Scope) -> RateLimiter | None:
     return getattr(scope["app"].state, "rate_limiter", None)
 
 
-def _too_many_requests(scope: Scope, wait: float) -> JSONResponse:
+def _too_many_requests(scope: Scope, wait: float, extra: dict[str, str]) -> JSONResponse:
     response = JSONResponse(
         rate_limited_content(scope["path"]),
         status_code=429,
-        headers=rate_limited_headers(wait),
+        headers={**rate_limited_headers(wait), **extra},
     )
     if scope["method"] == "HEAD":
         # Same headers as GET (Content-Length included), no body.

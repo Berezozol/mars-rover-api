@@ -176,6 +176,15 @@ def rate_limited_headers(seconds: float) -> dict[str, str]:
     return {"Retry-After": retry_after_value(seconds), "Cache-Control": NO_STORE}
 
 
+def rate_limit_headers(limit: int, remaining: int, reset: int) -> dict[str, str]:
+    """``X-RateLimit-*`` headers of the tighter window (``reset``: whole seconds)."""
+    return {
+        "X-RateLimit-Limit": str(limit),
+        "X-RateLimit-Remaining": str(max(0, remaining)),
+        "X-RateLimit-Reset": str(max(0, reset)),
+    }
+
+
 def rate_limited_content(path: str) -> dict[str, Any]:
     """The 429 body in the format of the path's API version."""
     if is_legacy_path(path):

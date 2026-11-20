@@ -133,7 +133,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_origins=settings.cors_origins,
         allow_methods=["GET"],
         allow_headers=["*"],
-        expose_headers=["ETag", "Retry-After"],
+        expose_headers=[
+            "ETag",
+            "Retry-After",
+            "X-RateLimit-Limit",
+            "X-RateLimit-Remaining",
+            "X-RateLimit-Reset",
+        ],
     )
     # Outside the caching middleware: the ETag is computed on the uncompressed body, so it
     # does not depend on the encoding (see app.api.caching).
