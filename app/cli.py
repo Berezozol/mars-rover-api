@@ -25,6 +25,9 @@
 - ``samples [--force]``: load the Perseverance sample table from the NASA samples page now,
   ignoring the once-a-day rule; ``--force`` drops the conditional request, the no-op and the
   "no stored sample may disappear" check. Exit codes: 0 changed or unchanged, 1 rejected or failed.
+- ``openapi [--output PATH]``: write the OpenAPI schema (admin routes excluded) as JSON, to
+  stdout by default. Exit codes: 0 written, 2 the file cannot be written.
+- ``openapi-ts [--output PATH]``: the same schemas as TypeScript declarations; same exit codes.
 """
 
 import argparse
@@ -168,6 +171,20 @@ def _build_parser() -> argparse.ArgumentParser:
         help="no conditional request or no-op, accept a page where a stored sample is missing",
     )
 
+    openapi = commands.add_parser(
+        "openapi", help="write the OpenAPI schema of the application as JSON (no database needed)"
+    )
+    openapi.add_argument(
+        "--output", type=Path, default=None, help="file to write (default: print to stdout)"
+    )
+
+    openapi_ts = commands.add_parser(
+        "openapi-ts", help="write TypeScript declarations of the OpenAPI schemas"
+    )
+    openapi_ts.add_argument(
+        "--output", type=Path, default=None, help="file to write (default: print to stdout)"
+    )
+
     rec = commands.add_parser("reconcile", help="compare stored photos with the source")
     rec.add_argument("--rover", required=True, type=str.lower, help="rover slug")
     rec.add_argument(
@@ -201,6 +218,10 @@ def main(argv: list[str] | None = None) -> int:
         return _main_locations(args)
     if args.command == "samples":
         return _main_samples(args)
+    if args.command == "openapi":
+        return _main_openapi(args)
+    if args.command == "openapi-ts":
+        return _main_openapi(args, typescript=True)
     parser.print_help(sys.stderr)
     return EXIT_FAILED
 
@@ -253,6 +274,34 @@ def _main_samples(args: argparse.Namespace) -> int:
     settings = get_settings()
     configure_logging(settings.log_level)
     return asyncio.run(run_samples_command(args.force, settings))
+
+
+def _main_openapi(args: argparse.Namespace, *, typescript: bool = False) -> int:
+    """Dump ``app.openapi()`` (or its TypeScript declarations); the schema does not depend on
+    the database or the environment beyond the admin routes, which are left out so the file
+    is stable."""
+    from app.main import create_app
+    from app.openapi_ts import generate
+
+    settings = get_settings().model_copy(update={"admin_token": None})
+    schema = create_app(settings).openapi()
+    if typescript:
+        text = generate(schema)
+    else:
+        text = json.dumps(schema, indent=2, ensure_ascii=False) + "\n"
+    if args.output is None:
+        sys.stdout.buffer.write(text.encode("utf-8"))
+        sys.stdout.flush()
+        return EXIT_SUCCESS
+    try:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        # Fixed newline: the same bytes on every OS.
+        with args.output.open("w", encoding="utf-8", newline="\n") as file:
+            file.write(text)
+    except OSError as exc:
+        print(f"error: {args.output}: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+    return EXIT_SUCCESS
 
 
 def _main_reconcile(args: argparse.Namespace) -> int:

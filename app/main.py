@@ -16,6 +16,7 @@ from app.api.health import router as health_router
 from app.api.home import root_router as root_home_router
 from app.api.home import router as home_router
 from app.api.legacy import router as legacy_router
+from app.api.llms import router as llms_router
 from app.api.ratelimit import RateLimitMiddleware
 from app.api.v2 import router as v2_router
 from app.api.v2.admin import admin_auth_limiter
@@ -146,6 +147,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     register_exception_handlers(app)
 
     app.include_router(home_router)
+    app.include_router(llms_router)
     if not mount_frontend(app, settings.frontend_dist_dir):
         app.include_router(root_home_router)
     app.include_router(health_router)

@@ -1,0 +1,3778 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Mars Rover API",
+    "description": "Unofficial replacement for the archived Mars Rover Photos API. Not affiliated with or endorsed by NASA or JPL. Images courtesy of NASA/JPL-Caltech and instrument partners.",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/sync": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Health Sync",
+        "description": "Freshness of the synced rovers: 200 if fresh, 503 if stale or the database is down.",
+        "operationId": "health_sync_health_sync_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/rovers": {
+      "get": {
+        "tags": [
+          "v1 (legacy compatible)"
+        ],
+        "summary": "List Rovers",
+        "operationId": "list_rovers_api_v1_rovers_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/app__api__legacy__schemas__RoversResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/rovers/{rover}": {
+      "get": {
+        "tags": [
+          "v1 (legacy compatible)"
+        ],
+        "summary": "Get Rover",
+        "operationId": "get_rover_api_v1_rovers__rover__get",
+        "parameters": [
+          {
+            "name": "rover",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rover"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoverResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/rovers/{rover}/photos": {
+      "get": {
+        "tags": [
+          "v1 (legacy compatible)"
+        ],
+        "summary": "List Photos",
+        "operationId": "list_photos_api_v1_rovers__rover__photos_get",
+        "parameters": [
+          {
+            "name": "rover",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rover"
+            }
+          },
+          {
+            "name": "sol",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sol"
+            }
+          },
+          {
+            "name": "earth_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Earth Date"
+            }
+          },
+          {
+            "name": "camera",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Camera"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Page"
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Per Page"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/app__api__legacy__schemas__PhotosResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/rovers/{rover}/latest_photos": {
+      "get": {
+        "tags": [
+          "v1 (legacy compatible)"
+        ],
+        "summary": "Latest Photos",
+        "operationId": "latest_photos_api_v1_rovers__rover__latest_photos_get",
+        "parameters": [
+          {
+            "name": "rover",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rover"
+            }
+          },
+          {
+            "name": "camera",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Camera"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Page"
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Per Page"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/app__api__legacy__schemas__LatestPhotosResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/photos/{id}": {
+      "get": {
+        "tags": [
+          "v1 (legacy compatible)"
+        ],
+        "summary": "Get Photo",
+        "operationId": "get_photo_api_v1_photos__id__get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhotoResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/manifests/{rover}": {
+      "get": {
+        "tags": [
+          "v1 (legacy compatible)"
+        ],
+        "summary": "Get Manifest",
+        "operationId": "get_manifest_api_v1_manifests__rover__get",
+        "parameters": [
+          {
+            "name": "rover",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rover"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/app__api__legacy__schemas__ManifestResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/rovers": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "summary": "List Rovers",
+        "operationId": "list_rovers_api_v2_rovers_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/app__api__v2__schemas__RoversResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "db_unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/rovers/{rover}": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "summary": "Get Rover",
+        "operationId": "get_rover_api_v2_rovers__rover__get",
+        "parameters": [
+          {
+            "name": "rover",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rover"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/app__api__v2__schemas__RoverOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "rover_not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "db_unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/rovers/{rover}/cameras": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "summary": "List Cameras",
+        "operationId": "list_cameras_api_v2_rovers__rover__cameras_get",
+        "parameters": [
+          {
+            "name": "rover",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rover"
+            }
+          },
+          {
+            "name": "sol",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2147483647,
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sol"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CamerasResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "rover_not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "db_unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/rovers/{rover}/photos": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "summary": "List Photos",
+        "operationId": "list_photos_api_v2_rovers__rover__photos_get",
+        "parameters": [
+          {
+            "name": "rover",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rover"
+            }
+          },
+          {
+            "name": "sol",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2147483647,
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sol"
+            }
+          },
+          {
+            "name": "earth_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Real capture date (UTC), YYYY-MM-DD; not combinable with sol.",
+              "title": "Earth Date"
+            },
+            "description": "Real capture date (UTC), YYYY-MM-DD; not combinable with sol."
+          },
+          {
+            "name": "camera",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Exact camera code, case-insensitive (see /cameras).",
+              "title": "Camera"
+            },
+            "description": "Exact camera code, case-insensitive (see /cameras)."
+          },
+          {
+            "name": "sample_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "One of full, subframe, downsampled (case-insensitive); default: all.",
+              "title": "Sample Type"
+            },
+            "description": "One of full, subframe, downsampled (case-insensitive); default: all."
+          },
+          {
+            "name": "site",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2147483647,
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Stop number.",
+              "title": "Site"
+            },
+            "description": "Stop number."
+          },
+          {
+            "name": "drive_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2147483647,
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Drive From"
+            }
+          },
+          {
+            "name": "drive_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2147483647,
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Drive To"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000000,
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Per Page"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/app__api__v2__schemas__PhotosResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "rover_not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "db_unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/rovers/{rover}/photos/latest": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "summary": "Latest Photos",
+        "operationId": "latest_photos_api_v2_rovers__rover__photos_latest_get",
+        "parameters": [
+          {
+            "name": "rover",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rover"
+            }
+          },
+          {
+            "name": "camera",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Exact camera code, case-insensitive (see /cameras).",
+              "title": "Camera"
+            },
+            "description": "Exact camera code, case-insensitive (see /cameras)."
+          },
+          {
+            "name": "sample_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "One of full, subframe, downsampled (case-insensitive); default: all.",
+              "title": "Sample Type"
+            },
+            "description": "One of full, subframe, downsampled (case-insensitive); default: all."
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000000,
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Per Page"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/app__api__v2__schemas__LatestPhotosResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "rover_not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "db_unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/rovers/{rover}/manifest": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "summary": "Get Manifest",
+        "operationId": "get_manifest_api_v2_rovers__rover__manifest_get",
+        "parameters": [
+          {
+            "name": "rover",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rover"
+            }
+          },
+          {
+            "name": "from_sol",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2147483647,
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From Sol"
+            }
+          },
+          {
+            "name": "to_sol",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2147483647,
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To Sol"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/app__api__v2__schemas__ManifestResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "rover_not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "db_unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/rovers/{rover}/flights": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "summary": "List Flights",
+        "operationId": "list_flights_api_v2_rovers__rover__flights_get",
+        "parameters": [
+          {
+            "name": "rover",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rover"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlightsResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "rover_not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "db_unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/rovers/{rover}/flights/{n}": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "summary": "Get Flight",
+        "operationId": "get_flight_api_v2_rovers__rover__flights__n__get",
+        "parameters": [
+          {
+            "name": "rover",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rover"
+            }
+          },
+          {
+            "name": "n",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "description": "Flight number, from 1.",
+              "title": "N"
+            },
+            "description": "Flight number, from 1."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlightOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "rover_not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "db_unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/rovers/{rover}/samples": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "summary": "List Samples",
+        "operationId": "list_samples_api_v2_rovers__rover__samples_get",
+        "parameters": [
+          {
+            "name": "rover",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rover"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SamplesResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "rover_not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "db_unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/rovers/{rover}/samples/{number}": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "summary": "Get Sample",
+        "operationId": "get_sample_api_v2_rovers__rover__samples__number__get",
+        "parameters": [
+          {
+            "name": "rover",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rover"
+            }
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "description": "Sample number, from 1.",
+              "title": "Number"
+            },
+            "description": "Sample number, from 1."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SampleOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "rover_not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "db_unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/rovers/{rover}/location": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "summary": "Get Location",
+        "operationId": "get_location_api_v2_rovers__rover__location_get",
+        "parameters": [
+          {
+            "name": "rover",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rover"
+            }
+          },
+          {
+            "name": "sol",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2147483647,
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sol"
+            }
+          },
+          {
+            "name": "from_sol",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2147483647,
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From Sol"
+            }
+          },
+          {
+            "name": "to_sol",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2147483647,
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To Sol"
+            }
+          },
+          {
+            "name": "latest",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "true: only the last stop; not combinable with sol, from_sol, to_sol.",
+              "default": false,
+              "title": "Latest"
+            },
+            "description": "true: only the last stop; not combinable with sol, from_sol, to_sol."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "rover_not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "db_unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/rovers/{rover}/traverse": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "summary": "Get Traverse",
+        "operationId": "get_traverse_api_v2_rovers__rover__traverse_get",
+        "parameters": [
+          {
+            "name": "rover",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rover"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "GeoJSON FeatureCollection (RFC 7946)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraverseResponse"
+                }
+              },
+              "application/geo+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraverseResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "rover_not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "db_unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/rovers/{rover}/feed.xml": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "summary": "RSS feed of new photos",
+        "operationId": "get_feed_api_v2_rovers__rover__feed_xml_get",
+        "parameters": [
+          {
+            "name": "rover",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rover"
+            }
+          },
+          {
+            "name": "camera",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Exact camera code, case-insensitive (see /cameras).",
+              "title": "Camera"
+            },
+            "description": "Exact camera code, case-insensitive (see /cameras)."
+          },
+          {
+            "name": "sample_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "One of full, subframe, downsampled (case-insensitive); default: all.",
+              "title": "Sample Type"
+            },
+            "description": "One of full, subframe, downsampled (case-insensitive); default: all."
+          },
+          {
+            "name": "group",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "sol",
+                "photo"
+              ],
+              "type": "string",
+              "description": "sol (default) or photo.",
+              "default": "sol",
+              "title": "Group"
+            },
+            "description": "sol (default) or photo."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 100,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Entries: default 20 (sol) or 50 (photo).",
+              "title": "Limit"
+            },
+            "description": "Entries: default 20 (sol) or 50 (photo)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "RSS 2.0 feed",
+            "content": {
+              "application/rss+xml": {}
+            }
+          },
+          "404": {
+            "description": "rover_not_found / not_found (archive rover)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "db_unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/photos/{id}": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "summary": "Get Photo",
+        "operationId": "get_photo_api_v2_photos__id__get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Id"
+            }
+          },
+          {
+            "name": "camera",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Exact camera code, case-insensitive (see /cameras).",
+              "title": "Camera"
+            },
+            "description": "Exact camera code, case-insensitive (see /cameras)."
+          },
+          {
+            "name": "sample_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "One of full, subframe, downsampled (case-insensitive); default: all.",
+              "title": "Sample Type"
+            },
+            "description": "One of full, subframe, downsampled (case-insensitive); default: all."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhotoDetailOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "photo_not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "db_unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/photos/{id}/image": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "summary": "Get Photo Image",
+        "operationId": "get_photo_image_api_v2_photos__id__image_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Id"
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "One of full, large, medium, small (case-insensitive); a size the photo lacks falls back to full.",
+              "default": "full",
+              "title": "Size"
+            },
+            "description": "One of full, large, medium, small (case-insensitive); a size the photo lacks falls back to full."
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Redirect to the stored image URL (Location header)"
+          },
+          "200": {
+            "description": "Spirit/Opportunity full frame converted to JPEG",
+            "content": {
+              "image/jpeg": {}
+            }
+          },
+          "404": {
+            "description": "photo_not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "upstream_error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "db_unavailable / converter_busy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "upstream_timeout",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CameraOut": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "total_photos": {
+            "type": "integer",
+            "title": "Total Photos"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "name",
+          "total_photos"
+        ],
+        "title": "CameraOut"
+      },
+      "CamerasResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CameraOut"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "CamerasResponse"
+      },
+      "ErrorBody": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Details"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ErrorBody"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorBody"
+          }
+        },
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "title": "ErrorResponse"
+      },
+      "FlightOut": {
+        "properties": {
+          "flight": {
+            "type": "integer",
+            "title": "Flight"
+          },
+          "sol": {
+            "type": "integer",
+            "title": "Sol"
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "title": "Date"
+          },
+          "distance_m": {
+            "type": "integer",
+            "title": "Distance M"
+          },
+          "max_altitude_m": {
+            "type": "integer",
+            "title": "Max Altitude M"
+          },
+          "max_groundspeed_mps": {
+            "type": "number",
+            "title": "Max Groundspeed Mps"
+          },
+          "duration_s": {
+            "type": "number",
+            "title": "Duration S"
+          },
+          "from": {
+            "type": "string",
+            "title": "From"
+          },
+          "to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To"
+          },
+          "total_photos": {
+            "type": "integer",
+            "title": "Total Photos"
+          }
+        },
+        "type": "object",
+        "required": [
+          "flight",
+          "sol",
+          "date",
+          "distance_m",
+          "max_altitude_m",
+          "max_groundspeed_mps",
+          "duration_s",
+          "from",
+          "to",
+          "total_photos"
+        ],
+        "title": "FlightOut",
+        "description": "An Ingenuity flight; ``from``/``to`` are Python keywords, hence the aliases."
+      },
+      "FlightsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FlightOut"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "FlightsResponse"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "ImagesOut": {
+        "properties": {
+          "small": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Small"
+          },
+          "medium": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Medium"
+          },
+          "large": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Large"
+          },
+          "full": {
+            "type": "string",
+            "title": "Full"
+          }
+        },
+        "type": "object",
+        "required": [
+          "small",
+          "medium",
+          "large",
+          "full"
+        ],
+        "title": "ImagesOut"
+      },
+      "InSolOut": {
+        "properties": {
+          "position": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "newer_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Newer Id"
+          },
+          "older_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Older Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "position",
+          "total",
+          "newer_id",
+          "older_id"
+        ],
+        "title": "InSolOut"
+      },
+      "LineStringOut": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "LineString",
+            "title": "Type",
+            "default": "LineString"
+          },
+          "coordinates": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Coordinates"
+          }
+        },
+        "type": "object",
+        "required": [
+          "coordinates"
+        ],
+        "title": "LineStringOut"
+      },
+      "LocalTimeOut": {
+        "properties": {
+          "time": {
+            "type": "string",
+            "title": "Time"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "lmst",
+              "ltst"
+            ],
+            "title": "Kind"
+          }
+        },
+        "type": "object",
+        "required": [
+          "time",
+          "kind"
+        ],
+        "title": "LocalTimeOut"
+      },
+      "LocationResponse": {
+        "properties": {
+          "rover": {
+            "type": "string",
+            "title": "Rover"
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "source_max_sol": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Max Sol"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WaypointOut"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rover",
+          "available",
+          "updated_at",
+          "source_max_sol",
+          "items"
+        ],
+        "title": "LocationResponse"
+      },
+      "ManifestOut": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "landing_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Landing Date"
+          },
+          "launch_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Launch Date"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "max_sol": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Sol"
+          },
+          "max_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Date"
+          },
+          "total_photos": {
+            "type": "integer",
+            "title": "Total Photos"
+          },
+          "photos": {
+            "items": {
+              "$ref": "#/components/schemas/ManifestSolOut"
+            },
+            "type": "array",
+            "title": "Photos"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "landing_date",
+          "launch_date",
+          "status",
+          "max_sol",
+          "max_date",
+          "total_photos",
+          "photos"
+        ],
+        "title": "ManifestOut"
+      },
+      "ManifestSolOut": {
+        "properties": {
+          "sol": {
+            "type": "integer",
+            "title": "Sol"
+          },
+          "earth_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Earth Date"
+          },
+          "total_photos": {
+            "type": "integer",
+            "title": "Total Photos"
+          },
+          "cameras": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Cameras"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sol",
+          "earth_date",
+          "total_photos",
+          "cameras"
+        ],
+        "title": "ManifestSolOut"
+      },
+      "NearestSolsOut": {
+        "properties": {
+          "before": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before"
+          },
+          "after": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After"
+          }
+        },
+        "type": "object",
+        "required": [
+          "before",
+          "after"
+        ],
+        "title": "NearestSolsOut"
+      },
+      "PhotoDetailOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "rover": {
+            "type": "string",
+            "title": "Rover"
+          },
+          "sol": {
+            "type": "integer",
+            "title": "Sol"
+          },
+          "earth_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Earth Date"
+          },
+          "taken_at": {
+            "type": "string",
+            "title": "Taken At"
+          },
+          "camera": {
+            "$ref": "#/components/schemas/app__api__v2__schemas__PhotoCameraOut"
+          },
+          "sample_type": {
+            "type": "string",
+            "title": "Sample Type"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "img_src": {
+            "type": "string",
+            "title": "Img Src"
+          },
+          "images": {
+            "$ref": "#/components/schemas/ImagesOut"
+          },
+          "credit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credit"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SourceOut"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "caption": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caption"
+          },
+          "received_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Received At"
+          },
+          "site": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Site"
+          },
+          "drive": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drive"
+          },
+          "extra": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Extra"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PhotoLocationOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "local_time": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LocalTimeOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "in_sol": {
+            "$ref": "#/components/schemas/InSolOut"
+          },
+          "flight": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flight"
+          },
+          "samples": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Samples"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "rover",
+          "sol",
+          "earth_date",
+          "taken_at",
+          "camera",
+          "sample_type",
+          "title",
+          "img_src",
+          "images",
+          "credit",
+          "source",
+          "width",
+          "height",
+          "caption",
+          "received_at",
+          "site",
+          "drive",
+          "extra",
+          "location",
+          "local_time",
+          "in_sol",
+          "flight",
+          "samples"
+        ],
+        "title": "PhotoDetailOut"
+      },
+      "PhotoLocationOut": {
+        "properties": {
+          "sol": {
+            "type": "integer",
+            "title": "Sol"
+          },
+          "site": {
+            "type": "integer",
+            "title": "Site"
+          },
+          "drive": {
+            "type": "integer",
+            "title": "Drive"
+          },
+          "lat": {
+            "type": "number",
+            "title": "Lat"
+          },
+          "lon": {
+            "type": "number",
+            "title": "Lon"
+          },
+          "elev_geoid": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Elev Geoid"
+          },
+          "exact": {
+            "type": "boolean",
+            "title": "Exact"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sol",
+          "site",
+          "drive",
+          "lat",
+          "lon",
+          "elev_geoid",
+          "exact"
+        ],
+        "title": "PhotoLocationOut"
+      },
+      "PhotoResponse": {
+        "properties": {
+          "photo": {
+            "$ref": "#/components/schemas/app__api__legacy__schemas__PhotoOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "photo"
+        ],
+        "title": "PhotoResponse"
+      },
+      "RoverCameraOut": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "full_name": {
+            "type": "string",
+            "title": "Full Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "full_name"
+        ],
+        "title": "RoverCameraOut"
+      },
+      "RoverResponse": {
+        "properties": {
+          "rover": {
+            "$ref": "#/components/schemas/app__api__legacy__schemas__RoverOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rover"
+        ],
+        "title": "RoverResponse"
+      },
+      "SampleLocationOut": {
+        "properties": {
+          "sol": {
+            "type": "integer",
+            "title": "Sol"
+          },
+          "site": {
+            "type": "integer",
+            "title": "Site"
+          },
+          "drive": {
+            "type": "integer",
+            "title": "Drive"
+          },
+          "lat": {
+            "type": "number",
+            "title": "Lat"
+          },
+          "lon": {
+            "type": "number",
+            "title": "Lon"
+          },
+          "elev_geoid": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Elev Geoid"
+          },
+          "match": {
+            "type": "string",
+            "enum": [
+              "exact",
+              "nearest_before",
+              "by_sol"
+            ],
+            "title": "Match"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sol",
+          "site",
+          "drive",
+          "lat",
+          "lon",
+          "elev_geoid",
+          "match"
+        ],
+        "title": "SampleLocationOut"
+      },
+      "SampleOut": {
+        "properties": {
+          "number": {
+            "type": "integer",
+            "title": "Number"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "feature_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feature Name"
+          },
+          "sampling_location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sampling Location"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "on_rover",
+                  "depot"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "current_location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Location"
+          },
+          "sample_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "rock_core",
+                  "regolith",
+                  "atmospheric"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sample Type"
+          },
+          "sample_type_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sample Type Label"
+          },
+          "rock_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rock Type"
+          },
+          "sealed_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sealed On"
+          },
+          "sol": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sol"
+          },
+          "height_cm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height Cm"
+          },
+          "height_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height Note"
+          },
+          "dossier_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dossier Url"
+          },
+          "total_photos": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Photos"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SampleLocationOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "number",
+          "name",
+          "feature_name",
+          "sampling_location",
+          "status",
+          "current_location",
+          "sample_type",
+          "sample_type_label",
+          "rock_type",
+          "sealed_on",
+          "sol",
+          "height_cm",
+          "height_note",
+          "dossier_url",
+          "total_photos",
+          "location"
+        ],
+        "title": "SampleOut"
+      },
+      "SamplesResponse": {
+        "properties": {
+          "rover": {
+            "type": "string",
+            "title": "Rover"
+          },
+          "source_url": {
+            "type": "string",
+            "title": "Source Url"
+          },
+          "source_updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Updated At"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SampleOut"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rover",
+          "source_url",
+          "source_updated_at",
+          "updated_at",
+          "items"
+        ],
+        "title": "SamplesResponse"
+      },
+      "SourceOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "link"
+        ],
+        "title": "SourceOut"
+      },
+      "TraverseFeatureOut": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "Feature",
+            "title": "Type",
+            "default": "Feature"
+          },
+          "geometry": {
+            "$ref": "#/components/schemas/LineStringOut"
+          },
+          "properties": {
+            "$ref": "#/components/schemas/TraverseProperties"
+          }
+        },
+        "type": "object",
+        "required": [
+          "geometry",
+          "properties"
+        ],
+        "title": "TraverseFeatureOut"
+      },
+      "TraverseProperties": {
+        "properties": {
+          "sol": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sol"
+          },
+          "length_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Length M"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sol",
+          "length_m"
+        ],
+        "title": "TraverseProperties"
+      },
+      "TraverseResponse": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "FeatureCollection",
+            "title": "Type",
+            "default": "FeatureCollection"
+          },
+          "rover": {
+            "type": "string",
+            "title": "Rover"
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "source_max_sol": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Max Sol"
+          },
+          "features": {
+            "items": {
+              "$ref": "#/components/schemas/TraverseFeatureOut"
+            },
+            "type": "array",
+            "title": "Features"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rover",
+          "available",
+          "updated_at",
+          "source_max_sol",
+          "features"
+        ],
+        "title": "TraverseResponse",
+        "description": "GeoJSON FeatureCollection (RFC 7946) with extra top-level members."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "WaypointOut": {
+        "properties": {
+          "sol": {
+            "type": "integer",
+            "title": "Sol"
+          },
+          "site": {
+            "type": "integer",
+            "title": "Site"
+          },
+          "drive": {
+            "type": "integer",
+            "title": "Drive"
+          },
+          "lat": {
+            "type": "number",
+            "title": "Lat"
+          },
+          "lon": {
+            "type": "number",
+            "title": "Lon"
+          },
+          "elev_geoid": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Elev Geoid"
+          },
+          "easting": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Easting"
+          },
+          "northing": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Northing"
+          },
+          "roll": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roll"
+          },
+          "pitch": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pitch"
+          },
+          "yaw": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Yaw"
+          },
+          "tilt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tilt"
+          },
+          "dist_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dist M"
+          },
+          "dist_total_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dist Total M"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sol",
+          "site",
+          "drive",
+          "lat",
+          "lon",
+          "elev_geoid",
+          "easting",
+          "northing",
+          "roll",
+          "pitch",
+          "yaw",
+          "tilt",
+          "dist_m",
+          "dist_total_m"
+        ],
+        "title": "WaypointOut"
+      },
+      "app__api__legacy__schemas__LatestPhotosResponse": {
+        "properties": {
+          "latest_photos": {
+            "items": {
+              "$ref": "#/components/schemas/app__api__legacy__schemas__PhotoOut"
+            },
+            "type": "array",
+            "title": "Latest Photos"
+          }
+        },
+        "type": "object",
+        "required": [
+          "latest_photos"
+        ],
+        "title": "LatestPhotosResponse"
+      },
+      "app__api__legacy__schemas__ManifestResponse": {
+        "properties": {
+          "photo_manifest": {
+            "$ref": "#/components/schemas/ManifestOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "photo_manifest"
+        ],
+        "title": "ManifestResponse"
+      },
+      "app__api__legacy__schemas__PhotoCameraOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "rover_id": {
+            "type": "integer",
+            "title": "Rover Id"
+          },
+          "full_name": {
+            "type": "string",
+            "title": "Full Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "rover_id",
+          "full_name"
+        ],
+        "title": "PhotoCameraOut"
+      },
+      "app__api__legacy__schemas__PhotoOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "sol": {
+            "type": "integer",
+            "title": "Sol"
+          },
+          "camera": {
+            "$ref": "#/components/schemas/app__api__legacy__schemas__PhotoCameraOut"
+          },
+          "img_src": {
+            "type": "string",
+            "title": "Img Src"
+          },
+          "earth_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Earth Date"
+          },
+          "rover": {
+            "$ref": "#/components/schemas/app__api__legacy__schemas__RoverOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "sol",
+          "camera",
+          "img_src",
+          "earth_date",
+          "rover"
+        ],
+        "title": "PhotoOut"
+      },
+      "app__api__legacy__schemas__PhotosResponse": {
+        "properties": {
+          "photos": {
+            "items": {
+              "$ref": "#/components/schemas/app__api__legacy__schemas__PhotoOut"
+            },
+            "type": "array",
+            "title": "Photos"
+          }
+        },
+        "type": "object",
+        "required": [
+          "photos"
+        ],
+        "title": "PhotosResponse"
+      },
+      "app__api__legacy__schemas__RoverOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "landing_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Landing Date"
+          },
+          "launch_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Launch Date"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "max_sol": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Sol"
+          },
+          "max_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Date"
+          },
+          "total_photos": {
+            "type": "integer",
+            "title": "Total Photos"
+          },
+          "cameras": {
+            "items": {
+              "$ref": "#/components/schemas/RoverCameraOut"
+            },
+            "type": "array",
+            "title": "Cameras"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "landing_date",
+          "launch_date",
+          "status",
+          "max_sol",
+          "max_date",
+          "total_photos",
+          "cameras"
+        ],
+        "title": "RoverOut"
+      },
+      "app__api__legacy__schemas__RoversResponse": {
+        "properties": {
+          "rovers": {
+            "items": {
+              "$ref": "#/components/schemas/app__api__legacy__schemas__RoverOut"
+            },
+            "type": "array",
+            "title": "Rovers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rovers"
+        ],
+        "title": "RoversResponse"
+      },
+      "app__api__v2__schemas__LatestPhotosResponse": {
+        "properties": {
+          "sol": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sol"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/app__api__v2__schemas__PhotoOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "per_page": {
+            "type": "integer",
+            "title": "Per Page"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sol",
+          "items",
+          "page",
+          "per_page",
+          "total"
+        ],
+        "title": "LatestPhotosResponse"
+      },
+      "app__api__v2__schemas__ManifestResponse": {
+        "properties": {
+          "rover": {
+            "$ref": "#/components/schemas/app__api__v2__schemas__RoverOut"
+          },
+          "sols": {
+            "items": {
+              "$ref": "#/components/schemas/ManifestSolOut"
+            },
+            "type": "array",
+            "title": "Sols"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rover",
+          "sols"
+        ],
+        "title": "ManifestResponse"
+      },
+      "app__api__v2__schemas__PhotoCameraOut": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "name"
+        ],
+        "title": "PhotoCameraOut"
+      },
+      "app__api__v2__schemas__PhotoOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "rover": {
+            "type": "string",
+            "title": "Rover"
+          },
+          "sol": {
+            "type": "integer",
+            "title": "Sol"
+          },
+          "earth_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Earth Date"
+          },
+          "taken_at": {
+            "type": "string",
+            "title": "Taken At"
+          },
+          "camera": {
+            "$ref": "#/components/schemas/app__api__v2__schemas__PhotoCameraOut"
+          },
+          "sample_type": {
+            "type": "string",
+            "title": "Sample Type"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "img_src": {
+            "type": "string",
+            "title": "Img Src"
+          },
+          "images": {
+            "$ref": "#/components/schemas/ImagesOut"
+          },
+          "credit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credit"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SourceOut"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "rover",
+          "sol",
+          "earth_date",
+          "taken_at",
+          "camera",
+          "sample_type",
+          "title",
+          "img_src",
+          "images",
+          "credit",
+          "source",
+          "width",
+          "height"
+        ],
+        "title": "PhotoOut"
+      },
+      "app__api__v2__schemas__PhotosResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/app__api__v2__schemas__PhotoOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "per_page": {
+            "type": "integer",
+            "title": "Per Page"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "nearest_sols": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NearestSolsOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "page",
+          "per_page",
+          "total",
+          "nearest_sols"
+        ],
+        "title": "PhotosResponse"
+      },
+      "app__api__v2__schemas__RoverOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "mission": {
+            "type": "string",
+            "title": "Mission"
+          },
+          "launch_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Launch Date"
+          },
+          "landing_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Landing Date"
+          },
+          "end_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Date"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "max_sol": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Sol"
+          },
+          "max_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Date"
+          },
+          "total_photos": {
+            "type": "integer",
+            "title": "Total Photos"
+          },
+          "cameras_count": {
+            "type": "integer",
+            "title": "Cameras Count"
+          },
+          "last_synced_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Synced At"
+          },
+          "data_source": {
+            "type": "string",
+            "enum": [
+              "sync",
+              "archive"
+            ],
+            "title": "Data Source"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "mission",
+          "launch_date",
+          "landing_date",
+          "end_date",
+          "status",
+          "max_sol",
+          "max_date",
+          "total_photos",
+          "cameras_count",
+          "last_synced_at",
+          "data_source"
+        ],
+        "title": "RoverOut"
+      },
+      "app__api__v2__schemas__RoversResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/app__api__v2__schemas__RoverOut"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "RoversResponse"
+      }
+    }
+  }
+}

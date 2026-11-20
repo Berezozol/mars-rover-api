@@ -102,6 +102,10 @@ class Settings(BaseSettings):
     # A relative path is resolved against the project root.
     frontend_dist_dir: Path = Path("frontend/dist")
 
+    # Origin (scheme://host[:port]) of absolute links and of /developers and /llms.txt; when set
+    # the Host header is ignored. Empty: a valid Host is used, else http://localhost.
+    public_base_url: str | None = None
+
     admin_token: SecretStr | None = None
     cors_origins: list[str] = ["*"]
 

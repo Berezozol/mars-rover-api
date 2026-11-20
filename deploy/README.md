@@ -108,7 +108,7 @@ Files (templates in `deploy/laptop/`, live copy outside the repository in
 | File | What |
 |---|---|
 | `compose.yml` | project `mars`: `db` (Postgres 16, volume, no published ports), `app` (`mars-rover-api:local`, `127.0.0.1:8000`), restart `unless-stopped`, log rotation 5 x 10 MB |
-| `.env` | from `.env.example`: `POSTGRES_PASSWORD`, `ADMIN_TOKEN`, Telegram, optional tuning. Never committed |
+| `.env` | from `.env.example`: `POSTGRES_PASSWORD`, `PUBLIC_BASE_URL`, `ADMIN_TOKEN`, Telegram, optional tuning. Never committed |
 | `backup.ps1` | `pg_dump -Fc` in the db container, `pg_restore --list` check, keeps 7 copies in `backups\`, log `backups\backup.log` |
 | `update.ps1` | pull, build, backup, migrate, restart, `/health` check |
 
@@ -231,6 +231,18 @@ every Tailscale update**):
    The access line of this request must show the real public IP, never `203.0.113.7`. If it
    shows `203.0.113.7`, any client can pick its own rate-limit key: report it and set
    `RATE_LIMIT_ENABLED=false` until it is solved.
+
+**Public base URL (production checklist).** Set `PUBLIC_BASE_URL=https://<funnel-host>` in `.env`
+(no trailing slash, the exact Funnel URL), then `docker compose up -d app`. Without it the app
+trusts the `Host` header for links in `/developers`, `/llms.txt`, v2 image links and RSS (cache
+poisoning, container address leaks). Verify from outside the tailnet:
+
+```
+curl -H "Host: evil.example" https://<funnel-host>/llms.txt
+```
+
+The links in the output must show `<funnel-host>`, never `evil.example`. The smoke test also
+checks that `/llms.txt` contains the base URL it was called with.
 
 ### 4. Autostart and keeping the laptop up
 
@@ -464,10 +476,10 @@ From any machine with the repository and uv (outside the laptop is best: it also
 uv run python deploy/smoke.py https://mars-api.sungrazing-menkent.ts.net
 ```
 
-16 requests (12 count against the per-IP limit of 60/min), redirects are not followed. Checks:
+17 requests (13 count against the per-IP limit of 60/min), redirects are not followed. Checks:
 `/health` 200; `/` 200 HTML containing `id="app"` (the Sol Index interface, not the old
 developers page) and one `/assets/*.js` from it with `Cache-Control: immutable`; `/developers`
-200 HTML without `id="app"`; `/health/sync` 200 or 503 (body printed, 503 is a warning, not a
+200 HTML without `id="app"`; `/llms.txt` 200 containing the base URL (`PUBLIC_BASE_URL` is set); `/health/sync` 200 or 503 (body printed, 503 is a warning, not a
 failure); v1 photos Curiosity sol 1000 FHAZ = 2 photos dated 2015-05-30; v1 rovers = 4; v1
 Perseverance manifest; v2 rovers = 4; v2 photo `per_page=1` and its `/image` redirect `302`;
 `/api/v1/rovers/curiosity/` -> `307` with an `https://` `Location` (proves `X-Forwarded-Proto`

@@ -42,6 +42,7 @@ RESERVED_PREFIXES: tuple[str, ...] = (
     "/redoc",
     "/openapi.json",
     "/developers",
+    "/llms.txt",
 )
 
 # Do not depend on the OS registry (Windows may map .js to text/plain).

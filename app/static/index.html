@@ -14,6 +14,9 @@
   pre { background: #24211f; color: #f3efe9; padding: 0.8rem 1rem; border-radius: 6px; overflow-x: auto; }
   .note { background: #f6efe4; border-left: 4px solid #c1652f; padding: 0.6rem 0.9rem; }
   a { color: #a24a1c; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+  th, td { text-align: left; vertical-align: top; padding: 0.4rem 0.5rem; border-bottom: 1px solid #e3ddd5; }
+  th { background: #efebe6; }
   footer { margin-top: 2.5rem; font-size: 0.9rem; color: #5a5550; }
 </style>
 </head>
@@ -25,21 +28,53 @@
 endorsed by or operated by NASA or JPL</strong>. Photos and metadata come from the public raw
 image feeds and archives published by NASA/JPL.</p>
 
-<h2>Moving from the old API</h2>
-<p>Replace the host and keep the rest of the URL. No API key is needed; an
-<code>api_key</code> parameter is accepted and ignored.</p>
-<pre>https://api.nasa.gov/mars-photos/...  →  $origin/mars-photos/...</pre>
-<p>The same API is also served under <code>$origin/api/v1/...</code>.</p>
+<h2 id="migrating">Migrating</h2>
+<p>Moving from the old Mars Rover Photos API takes three steps:</p>
+<ol>
+  <li><strong>Change the host</strong> and keep the rest of the URL.
+    <pre>https://api.nasa.gov/mars-photos/...  →  $origin/mars-photos/...</pre></li>
+  <li><strong>No key needed.</strong> An <code>api_key</code> parameter is accepted and ignored,
+    so existing clients keep working unchanged.</li>
+  <li><strong>Both paths work:</strong> <code>$origin/api/v1/...</code> and
+    <code>$origin/mars-photos/api/v1/...</code> serve the same API.</li>
+</ol>
 
 <h2>Differences from the old API</h2>
-<ul>
-  <li>Rate limit per client IP, no key: 60 requests per minute and 2000 per hour.
-    Over the limit you get <code>429</code> with a <code>Retry-After</code> header.</li>
-  <li>Spirit and Opportunity: <code>img_src</code> points to reduced-resolution JPEG
-    previews from the NASA PDS archive (the old MER gallery is gone).</li>
-  <li>Curiosity up to sol 4102: only full frames are served (no thumbnails or subframes).</li>
-  <li>Photo ids are new; ids from the old API do not carry over.</li>
-</ul>
+<table>
+  <thead><tr><th>Situation</th><th>Old API</th><th>Here</th></tr></thead>
+  <tbody>
+    <tr><td>Malformed <code>earth_date</code></td><td><code>500</code></td>
+      <td><code>400 {"errors": "Invalid earth_date"}</code></td></tr>
+    <tr><td><code>sol</code> is not a number</td><td>treated as sol 0</td>
+      <td><code>400 {"errors": "Invalid sol"}</code></td></tr>
+    <tr><td>Photo id not found</td><td>Rails <code>404</code></td>
+      <td><code>404 {"errors": "Photo not found"}</code></td></tr>
+    <tr><td><code>per_page</code></td><td>unlimited</td><td>capped at 200, no error</td></tr>
+    <tr><td><code>page</code> or <code>per_page</code> not a number</td>
+      <td>default value used silently</td>
+      <td><code>400 {"errors": "Invalid page"}</code> / <code>"Invalid per_page"</code></td></tr>
+    <tr><td><code>page &lt; 1</code>, <code>per_page &lt; 1</code></td><td>unspecified</td>
+      <td>page 1, 25 per page</td></tr>
+    <tr><td>Empty parameter (<code>sol=</code>)</td><td>varied</td>
+      <td><code>400</code> for the parameter; empty <code>camera=</code> gives an empty list</td></tr>
+    <tr><td>Rover name that is not Latin letters</td><td><code>400</code> or <code>500</code></td>
+      <td><code>400 {"errors": "Invalid Rover Name"}</code></td></tr>
+    <tr><td>Database unavailable</td><td><code>500</code></td>
+      <td><code>503 {"errors": "Database unavailable"}</code></td></tr>
+    <tr><td>Rate limit</td><td>per key at the gateway (<code>OVER_RATE_LIMIT</code>)</td>
+      <td>per client IP, no key: 60 per minute, 2000 per hour;
+        <code>429</code> with <code>Retry-After</code></td></tr>
+    <tr><td>Photo ids</td><td>old database</td><td>new; old ids do not carry over</td></tr>
+    <tr><td>Spirit and Opportunity images</td><td>old MER gallery (now offline)</td>
+      <td><code>img_src</code> is a reduced-resolution JPEG from the NASA PDS archive;
+        all frames counted, one photo per frame</td></tr>
+    <tr><td>Camera <code>MINITES</code></td><td>had photos</td>
+      <td>no photos in the archive; <code>camera=minites</code> gives an empty list</td></tr>
+    <tr><td>Camera <code>MI</code> (Spirit, Opportunity)</td><td>none</td><td>available</td></tr>
+    <tr><td>Curiosity up to sol 4102</td><td>included thumbnails and subframes</td>
+      <td>full frames only (counts match from sol 4103)</td></tr>
+  </tbody>
+</table>
 
 <h2>Examples</h2>
 <p>v1, compatible with the old API:</p>
@@ -49,7 +84,9 @@ curl "$origin/mars-photos/api/v1/manifests/opportunity"</pre>
 <p>v2, the new API:</p>
 <pre>curl "$origin/api/v2/rovers"
 curl "$origin/api/v2/rovers/perseverance/photos?sol=100&amp;per_page=50"</pre>
-<p>Interactive documentation of every endpoint: <a href="/docs">/docs</a>.</p>
+<p>Interactive documentation of every endpoint: <a href="/docs">/docs</a>.
+Machine-readable: <a href="/openapi.json">/openapi.json</a>, and a short reference for
+LLM assistants: <a href="/llms.txt">/llms.txt</a>.</p>
 <p>Prefer a web interface? Browse the photos at <a href="/">the Sol Index</a>.</p>
 
 <footer>

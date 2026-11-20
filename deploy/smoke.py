@@ -125,6 +125,16 @@ class Smoke:
         _expect('id="app"' not in r.text, "/developers serves the interface, not the dev page")
         return f"{len(r.content)} bytes"
 
+    def llms_txt(self) -> str:
+        r = self.get("/llms.txt")
+        _status(r, 200)
+        _expect(
+            self.base_url in r.text,
+            f"/llms.txt does not contain {self.base_url}: PUBLIC_BASE_URL unset or wrong "
+            "(when smoke-testing a local address against a production .env this is expected)",
+        )
+        return ""
+
     def health_sync(self) -> str:
         r = self.get("/health/sync")
         # 503 means stale data: worth a look, but the deployment itself answers correctly.
@@ -259,6 +269,7 @@ def main(argv: list[str] | None = None) -> int:
         ("GET /health -> 200", smoke.health),
         ("GET / -> 200 text/html", smoke.home_page),
         ("GET /developers -> 200 text/html", smoke.developers_page),
+        ("GET /llms.txt contains the base URL", smoke.llms_txt),
         ("GET /health/sync -> 200 or 503", smoke.health_sync),
         ("v1 photos curiosity sol=1000 camera=fhaz", smoke.v1_photos),
         ("v1 rovers", smoke.v1_rovers),
