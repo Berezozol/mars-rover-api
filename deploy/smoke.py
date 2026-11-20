@@ -30,6 +30,8 @@ V2_ROVERS = "/api/v2/rovers"
 V2_PHOTOS = "/api/v2/rovers/curiosity/photos?per_page=1"
 V2_MER_PHOTOS = "/api/v2/rovers/opportunity/photos?sol=1&per_page=1"
 EXPECTED_ROVERS = {"curiosity", "opportunity", "perseverance", "spirit"}
+# v2 also lists the Ingenuity helicopter (stage 12); v1 keeps the original four.
+EXPECTED_V2_ROVERS = EXPECTED_ROVERS | {"ingenuity"}
 
 
 class CheckFailed(Exception):
@@ -166,8 +168,8 @@ class Smoke:
         items = _json(r).get("items")
         _expect(isinstance(items, list), "no 'items' list")
         ids = {x.get("id") for x in items}
-        _expect(ids == EXPECTED_ROVERS, f"rovers {sorted(map(str, ids))}")
-        return "4 rovers"
+        _expect(ids == EXPECTED_V2_ROVERS, f"rovers {sorted(map(str, ids))}")
+        return f"{len(EXPECTED_V2_ROVERS)} rovers"
 
     def v2_photos(self) -> str:
         r = self.get(V2_PHOTOS)
