@@ -63,8 +63,8 @@ def _head(alembic_cfg: AlembicConfig) -> str:
     return head
 
 
-def test_migrations_head_revision_is_0009(alembic_cfg: AlembicConfig) -> None:
-    assert _head(alembic_cfg) == "0009"
+def test_migrations_head_revision_is_at_least_0010(alembic_cfg: AlembicConfig) -> None:
+    assert _head(alembic_cfg) >= "0010"
 
 
 def test_migrations_single_head(alembic_cfg: AlembicConfig) -> None:

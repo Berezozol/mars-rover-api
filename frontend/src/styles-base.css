@@ -47,6 +47,7 @@
   --map-route-hi: #a83c17;
   --map-stop: #6b6157;
   --map-latest: #1f5fbf;
+  --map-sample: #6a3da8;
 
   --focus: #1f5fbf;
   --skeleton: #e6e0d8;
@@ -112,6 +113,7 @@
     --map-route-hi: #f08f62;
     --map-stop: #b3aaa0;
     --map-latest: #7fb2ff;
+    --map-sample: #c8aaff;
     --focus: #7fb2ff;
     --skeleton: #2a2621;
     --skeleton-hi: #36312b;
@@ -152,6 +154,7 @@
   --map-route-hi: #f08f62;
   --map-stop: #b3aaa0;
   --map-latest: #7fb2ff;
+  --map-sample: #c8aaff;
   --focus: #7fb2ff;
   --skeleton: #2a2621;
   --skeleton-hi: #36312b;

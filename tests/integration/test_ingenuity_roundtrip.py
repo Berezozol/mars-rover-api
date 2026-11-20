@@ -11,7 +11,7 @@ import pytest
 from alembic import command
 from alembic.config import Config as AlembicConfig
 
-from tests.integration.test_migrations_roundtrip import _db_state, _execute, _fetch
+from tests.integration.test_migrations_roundtrip import _db_state, _execute, _fetch, _head
 
 pytestmark = [pytest.mark.integration, pytest.mark.migrations_roundtrip]
 
@@ -108,7 +108,7 @@ def test_migration_0008_downgrade_removes_ingenuity_everywhere_and_keeps_other_r
 
     # Upgrading again re-seeds the rover, the cameras and the flight log; no photos come back.
     state = asyncio.run(_db_state(migrated_db))
-    assert state["versions"] == ["0009"]
+    assert state["versions"] == [_head(alembic_cfg)]
     assert state["counts"] == {"rovers": 5, "cameras": SEED_CAMERAS_BEFORE + 2}
     flights = asyncio.run(_fetch(migrated_db, "SELECT count(*) AS n FROM ingenuity_flights"))
     assert flights == [{"n": 72}]

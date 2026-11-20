@@ -308,7 +308,7 @@ async def test_ingenuity_photo_card_flight_follows_the_sol(
     assert response.status_code == 200
     body = response.json()
     assert list(body) == PHOTO_DETAIL_KEYS
-    assert list(body)[-1] == "flight"
+    assert list(body)[-2:] == ["flight", "samples"]  # `samples` (stage 13) is last
     assert body["flight"] == flight
     assert body["rover"] == "ingenuity"
     assert (body["site"], body["drive"], body["location"]) == (None, None, None)

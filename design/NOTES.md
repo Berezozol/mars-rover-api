@@ -92,6 +92,42 @@
 - `PhotoDetail.flight` отдаёт только номер: для блока «Flight» нужен второй запрос `/flights/{n}` (дёшево, кешируется). Альтернатива — вложенный объект `flight_info`; не настаиваю.
 - В `Flight` нет `max_altitude` в футах и т. п. — и не надо; но нет «Total air time» для сравнения с миссией: считаем сами.
 
+## Образцы Perseverance (этап 13)
+
+Данные: `Sample`, `GET /rovers/perseverance/samples`, `PhotoDetail.samples` (черновик `docs/proposals/stage-13-samples.md`, раздел 3). Значения в макетах настоящие — разобраны из сохранённой страницы NASA `data/samples/rock-samples.html` (30 строк: на борту 21, в депо 9; rock core 27, regolith 2, atmospheric 1; солы 164-1441, № 29-30 с `TBD`). Выдуманы: `total_photos` (140-559, в странице их нет) и `location.match` (у № 25 и 8 `exact`, у № 2 `nearest_before`, у остальных `by_sol` — чтобы показать все три ветки). `location` посчитан в макете как последняя стоянка со `sol` не больше сола образца из встроенных стоянок `map.html`.
+
+- `samples.html` — «Perseverance rock samples». Плашка источника «Source: NASA, Mars Rock Samples page» со ссылкой, датой правки страницы (`source_updated_at`) и датой проверки (`updated_at`) + пометка «may lag the mission». Жёлтая полоса, если последний сол в таблице сильно отстаёт от `max_sol` (сейчас 1441 против 2031) и если есть `TBD`. Плитки: всего (диапазон солов), на борту, в депо, по типам. Фильтры-чипы «Status» и «Type» (aria-pressed, счётчики, всё на клиенте, 30 строк). Таблица: №, имя + feature, место, тип/порода, дата + сол, высота, статус-бейдж, ссылки (Dossier PDF, «Photos of sol N (total_photos)», «Photos of the tube» = `photos?sol=N&camera=CACHECAM`). До 760 px таблица превращается в карточки. Якоря `#sample-N` (из карточки снимка и карты; если строка отфильтрована, фильтры сбрасываются). Состояния: данные, загрузка, пусто («not loaded yet», `items: []`), ошибка 503 `db_unavailable`, «нет совпадений с фильтрами».
+- `map.html` — маркеры образцов только у Perseverance: треугольник цвета `--map-sample` (новый токен; ромб уже занят «latest», круг — стоянкой, форма отличает без цвета), с числом, если на стоянке несколько образцов. Переключатель «Samples» над картой, пункт легенды «Sample sealed here», подсказка и список стоянок отмечают стоянки с образцами. В «Selected stop» блок «Sample sealed here» / «N samples sealed here»: карточка на образец (номер, имя, статус, тип, порода, сол и дата, `feature_name`, пояснение по `match`, «Photos of the tube», «Photos of sol N»). Кнопка в «Mockup» выбирает стоянку sol 180 с двумя образцами. Образцы без `location` (№ 29, 30) не рисуются, под картой строка «28 samples shown at 21 stops; 2 not placed yet».
+- `photo.html` — блок «Sample» (если `samples: [25]`): «Sample 25 — Sapphire Canyon» (ссылка на `samples.html#sample-25`), бейджи статус/тип/порода, «sealed on this sol», оговорка «linked by sol only», ссылки «Photos of the tube (CACHECAM)» и «All samples». При `samples: []` блока нет вовсе (без заголовка). Переключатель «Mockup · samples» заодно переносит кадр на сол 1215; у Ingenuity блок скрыт.
+- Навигация: пункт «Samples» в шапке всех экранов; вкладка «Samples» у Perseverance (на `samples.html` и `map.html`, на карте скрыта для Curiosity); кнопка «Samples» в карточке Perseverance на главной.
+
+### Решения (образцы)
+
+- Одна страница, а не вкладка с картой: карта и таблица связаны ссылками (`#sample-N` и `map.html?from_sol=&to_sol=`), панель на карте показывает те же поля.
+- Фильтры и итоги считаются на клиенте: по контракту фильтров нет, 30 строк приходят одним ответом.
+- `status: null` / `sample_type: null` (незнакомое значение страницы) показываются текстом страницы (`current_location`, `sample_type_label`) без цветного бейджа; в чипы такие строки не попадают.
+- Имена не разбираются: `Ha'ahóni (aka "Hahonih")`, `Ch’ał outcrop` — как на странице.
+- Высота: число + «cm» или `height_note` как есть (№ 29), иначе тире. Дюймы не показываем (API их не отдаёт).
+- Дата без часового пояса: в таблице как есть, сол — надёжный ключ (сноска под таблицей).
+- `dossier_url: null` (№ 26-30): «No dossier yet» вместо пустой ячейки.
+- «Photos of the tube» всегда ведёт на `camera=CACHECAM` того же сола. У сола 377 (№ 9) CACHECAM нет (по отчёту архитектора) — получится пустой сол с обычным пояснением «за этот сол снимков нет».
+- Связь с картой честная: `by_sol` пишет «nearest published stop; the rover may have moved since»; `exact` — «Sealed at this stop».
+- Авторство: подпись «Source: NASA» — текстовая ссылка, без логотипов; в подвале прежняя оговорка про неофициальность.
+
+### Вопросы (образцы)
+
+1. Несколько образцов на одной стоянке — норма (в макете 28 образцов на 21 стоянке: №№ 2 и 3, 4 и 5 и т. д. по `by_sol`), потому что стоянки публикуются по концу проезда, а образцы берут в солы без проезда. Нужно ли в API выдавать `location` с `match: by_sol` как «стоянка по солу» или показывать такие образцы на карте только пунктирным маркером (приблизительно)? Сейчас маркер один и тот же, различие только в тексте панели. Решение зависит от доли `exact` на проде (задача `data-engineer`).
+2. Показывать ли «Photos of the tube», если в соле нет CACHECAM? Для этого фронтенду нужен манифест (`manifest.sols[].cameras`) или поле в Sample; предлагаю `has_tube_photos: bool` либо просто полагаться на пустое состояние.
+3. `total_photos` на строке — снимки всего сола (сотни), а не снимки пробирки; подпись «Photos of sol N (…)» это оговаривает. Нужен ли отдельный счётчик CACHECAM (`tube_photos`)? Предложение к API, не обязательное.
+4. Источник отстаёт на месяцы (последний образец — сол 1441, сейчас ~2031). Полоса «may be behind» появляется при разрыве > 100 солов (порог условный, считается на клиенте из `max_sol`); подходит ли порог?
+5. Показывать ли образец на карточке снимка и для соседних солов (± 1)? Сейчас строго `samples` того же сола, как в контракте.
+
+### Чего не хватает в API (образцы)
+
+- Нет поля «есть ли снимки CACHECAM в этот сол» (см. вопрос 2).
+- Нет `max_sol` в ответе `/samples`: полоса «page may be behind» берёт его из `/rovers/perseverance` (лишний, но кешируемый запрос; на главной он и так есть).
+- `PhotoDetail.samples` отдаёт только номера: блок на `photo.html` берёт имя/статус/тип из списка `/samples` (кеш час) или из `/samples/{n}`. Альтернатива — вложенный объект; не настаиваю.
+
 ## Чего не хватает в API v2 (предложения)
 
 1. **Соседи снимка внутри сола.** Для «новее/старее» и «N из 52» на `photo.html` фронтенду сейчас нужно выгружать весь сол. Предложение: в PhotoDetail поля `prev_id`, `next_id` (в порядке сортировки списка) и `position`/`sol_total`; опционально — с учётом фильтра `camera`.
@@ -129,4 +165,4 @@
 
 ## Как смотреть
 
-Открыть `design/mockups/index.html` двойным щелчком или `http://127.0.0.1:8811/index.html` (сервер раздаёт `design/mockups`); остальные экраны — по ссылкам в шапке. Варианты: `flights.html` (переключатель состояний «Mockup»; ширина < 760 px — карточки), `photo.html` (переключатель «Mockup · rover»: Ingenuity), `photos.html?rover=curiosity`, `manifest.html?rover=curiosity`, `map.html?rover=curiosity`, `map.html?rover=perseverance&from_sol=1900&to_sol=2022` (диапазон), `map.html?rover=spirit` (нет данных). Блок «Location» в `photo.html` переключается кнопками «Mockup · location». Переключатели с пометкой «Mockup» — только для показа состояний, в продукт не входят.
+Открыть `design/mockups/index.html` двойным щелчком или `http://127.0.0.1:8811/index.html` (сервер раздаёт `design/mockups`); остальные экраны — по ссылкам в шапке. Варианты: `samples.html` (переключатель состояний «Mockup», фильтры; < 760 px — карточки), `map.html` (кнопка «Select a stop with 2 samples»), `photo.html` (переключатель «Mockup · samples»), `flights.html` (переключатель состояний «Mockup»; ширина < 760 px — карточки), `photo.html` (переключатель «Mockup · rover»: Ingenuity), `photos.html?rover=curiosity`, `manifest.html?rover=curiosity`, `map.html?rover=curiosity`, `map.html?rover=perseverance&from_sol=1900&to_sol=2022` (диапазон), `map.html?rover=spirit` (нет данных). Блок «Location» в `photo.html` переключается кнопками «Mockup · location». Переключатели с пометкой «Mockup» — только для показа состояний, в продукт не входят.

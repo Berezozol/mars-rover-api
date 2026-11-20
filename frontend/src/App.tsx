@@ -6,6 +6,7 @@ import { NotFound } from "./pages/NotFound";
 import { PhotoPage } from "./pages/Photo";
 import { RouteMapPage } from "./pages/RouteMap";
 import { Photos } from "./pages/Photos";
+import { Samples } from "./pages/Samples";
 import { Timeline } from "./pages/Timeline";
 import { matchRoute, useLocation } from "./router";
 
@@ -67,6 +68,9 @@ export function App() {
       break;
     case "flights":
       page = <Flights key={route.rover} roverId={route.rover} />;
+      break;
+    case "samples":
+      page = <Samples key={route.rover} roverId={route.rover} />;
       break;
     case "photo":
       page = <PhotoPage key={route.id} id={route.id} />;

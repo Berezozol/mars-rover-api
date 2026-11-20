@@ -270,6 +270,8 @@ _OPTIONAL_TABLES = (
     "rover_waypoints",  # stage 11 (migration 0006)
     "rover_traverse_segments",
     "location_datasets",
+    "rover_samples",  # stage 13 (migration 0010)
+    "sample_datasets",
 )
 
 

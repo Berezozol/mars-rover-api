@@ -43,6 +43,7 @@
   --map-route-hi: #a83c17;    /* selected sol range */
   --map-stop: #6b6157;        /* stop dots */
   --map-latest: #1f5fbf;      /* latest position */
+  --map-sample: #6a3da8;      /* sample marker (triangle), 6.2:1 on --map-bg */
 
   --focus: #1f5fbf;
   --skeleton: #e6e0d8;
@@ -93,7 +94,7 @@
     --seq-3: #d9764a;
     --seq-4: #f7b08c;
     --map-bg: #1a1714; --map-grid: #2e2924; --map-route: #8f857a; --map-route-hi: #f08f62;
-    --map-stop: #b3aaa0; --map-latest: #7fb2ff;
+    --map-stop: #b3aaa0; --map-latest: #7fb2ff; --map-sample: #c8aaff;
     --focus: #7fb2ff;
     --skeleton: #2a2621;
     --skeleton-hi: #36312b;
@@ -111,7 +112,7 @@
   --warn: #f0c062; --warn-soft: #3a2d10; --err: #ff8f86; --err-soft: #3d1715;
   --seq-0: #2b2621; --seq-1: #5a3424; --seq-2: #9a4e2c; --seq-3: #d9764a; --seq-4: #f7b08c;
   --map-bg: #1a1714; --map-grid: #2e2924; --map-route: #8f857a; --map-route-hi: #f08f62;
-  --map-stop: #b3aaa0; --map-latest: #7fb2ff;
+  --map-stop: #b3aaa0; --map-latest: #7fb2ff; --map-sample: #c8aaff;
   --focus: #7fb2ff; --skeleton: #2a2621; --skeleton-hi: #36312b;
   --shadow: 0 1px 2px rgb(0 0 0 / .4);
 }

@@ -99,6 +99,11 @@ function RoverCard({ rover, index }: { rover: Rover; index: number }) {
               Route map
             </Link>
           )}
+          {rover.id === "perseverance" && (
+            <Link class="btn btn-sm" href={`/rovers/${rover.id}/samples`}>
+              Samples
+            </Link>
+          )}
         </div>
       </article>
     </li>

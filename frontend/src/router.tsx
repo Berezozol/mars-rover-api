@@ -34,6 +34,24 @@ export function useLocation(): Loc {
   return loc;
 }
 
+/**
+ * The `#fragment` of the address, plus a counter that grows on every navigation or `hashchange` (also to the
+ * same fragment), so that a page can react to a link it is already on.
+ */
+export function useHash(): { hash: string; visit: number } {
+  const [state, setState] = useState(() => ({ hash: window.location.hash, visit: 0 }));
+  useEffect(() => {
+    const sync = () => setState((s) => ({ hash: window.location.hash, visit: s.visit + 1 }));
+    window.addEventListener("hashchange", sync);
+    window.addEventListener(EVENT, sync);
+    return () => {
+      window.removeEventListener("hashchange", sync);
+      window.removeEventListener(EVENT, sync);
+    };
+  }, []);
+  return state;
+}
+
 /** Query string helpers over the current location. */
 export function useQuery(): URLSearchParams {
   const { search } = useLocation();
@@ -83,6 +101,7 @@ export type RouteMatch =
   | { name: "timeline"; rover: string }
   | { name: "map"; rover: string }
   | { name: "flights"; rover: string }
+  | { name: "samples"; rover: string }
   | { name: "photo"; id: string }
   | { name: "notfound" };
 
@@ -99,6 +118,9 @@ export function matchRoute(pathname: string): RouteMatch {
   }
   if (a === "rovers" && b && c === "flights" && parts.length === 3) {
     return { name: "flights", rover: b.toLowerCase() };
+  }
+  if (a === "rovers" && b && c === "samples" && parts.length === 3) {
+    return { name: "samples", rover: b.toLowerCase() };
   }
   if (a === "photos" && b && parts.length === 2) return { name: "photo", id: b };
   return { name: "notfound" };

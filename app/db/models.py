@@ -36,8 +36,10 @@ __all__ = [
     "LocationDataset",
     "Photo",
     "Rover",
+    "RoverSample",
     "RoverTraverseSegment",
     "RoverWaypoint",
+    "SampleDataset",
     "SolSourceCount",
     "SolSummary",
     "SyncRun",
@@ -302,3 +304,57 @@ class LocationDataset(Base):
     last_error: Mapped[str | None] = mapped_column(Text)
     # Alerts count a file that never succeeded from this moment.
     created_at: Mapped[datetime] = mapped_column(_TIMESTAMPTZ, server_default=func.now())
+
+
+class RoverSample(Base):
+    """A sample row of the NASA "Mars Rock Samples" table; replaced as a whole per rover."""
+
+    __tablename__ = "rover_samples"
+    __table_args__ = (
+        CheckConstraint("number > 0", name="number_positive"),
+        CheckConstraint("status IN ('on_rover', 'depot')", name="status"),
+        CheckConstraint(
+            "sample_type IN ('rock_core', 'regolith', 'atmospheric')", name="sample_type"
+        ),
+        CheckConstraint("sol >= 0", name="sol_non_negative"),
+    )
+
+    rover_id: Mapped[str] = mapped_column(ForeignKey("rovers.id"), primary_key=True)
+    # Order number on the page, not a tube serial number.
+    number: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
+    name: Mapped[str] = mapped_column(Text)
+    feature_name: Mapped[str | None] = mapped_column(Text)
+    sampling_location: Mapped[str | None] = mapped_column(Text)
+    current_location: Mapped[str | None] = mapped_column(Text)
+    # Parsed from current_location; NULL for an unknown value.
+    status: Mapped[str | None] = mapped_column(Text)
+    sample_type: Mapped[str | None] = mapped_column(Text)
+    sample_type_label: Mapped[str | None] = mapped_column(Text)
+    rock_type: Mapped[str | None] = mapped_column(Text)
+    sealed_on: Mapped[date | None] = mapped_column(Date)
+    sol: Mapped[int | None] = mapped_column(Integer)
+    height_cm: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
+    height_note: Mapped[str | None] = mapped_column(Text)
+    dossier_url: Mapped[str | None] = mapped_column(Text)
+
+
+class SampleDataset(Base):
+    """State of the samples page (one row per rover): last checks, content hash, count."""
+
+    __tablename__ = "sample_datasets"
+
+    rover_id: Mapped[str] = mapped_column(ForeignKey("rovers.id"), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(_TIMESTAMPTZ, server_default=func.now())
+    # Last attempt / last successful check (304, same content, or an accepted new page).
+    checked_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ)
+    succeeded_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ)
+    # When the rows last changed (``updated_at`` in the API).
+    changed_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ)
+    # ``article:modified_time`` of the page.
+    source_modified_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ)
+    etag: Mapped[str | None] = mapped_column(Text)
+    last_modified: Mapped[str | None] = mapped_column(Text)
+    # sha256 of the canonical JSON of the parsed rows (the page body is not stable).
+    content_sha256: Mapped[str | None] = mapped_column(Text)
+    items: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    last_error: Mapped[str | None] = mapped_column(Text)

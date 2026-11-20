@@ -30,6 +30,7 @@ from app.services.alerts import AlertMonitor, TelegramNotifier
 from app.services.health import FreshnessCache
 from app.services.location_sync import LocationSyncService
 from app.services.mer_images import MerImageService
+from app.services.sample_sync import SampleSyncService
 from app.services.scheduler import AlertScheduler, SyncScheduler
 from app.services.sync import SyncService
 from app.sources.base import SourceAdapter
@@ -104,6 +105,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.scheduler = None
     # Set when the scheduler starts (SYNC_ENABLED): the rover position loader.
     app.state.location_sync_service = None
+    # Set at the same time: the samples page loader.
+    app.state.sample_sync_service = None
     # One service for the scheduler and the admin endpoints.
     app.state.sync_service = SyncService(app.state.session_factory, settings)
     app.state.adapter_factory = _default_adapter_factory(app, settings)
@@ -197,8 +200,10 @@ def _start_scheduler(app: FastAPI, settings: Settings) -> None:
     """Start the periodic sync on the shared client and service."""
     locations = LocationSyncService(app.state.engine, app.state.upstream_client, settings)
     app.state.location_sync_service = locations
+    samples = SampleSyncService(app.state.engine, app.state.upstream_client, settings)
+    app.state.sample_sync_service = samples
     app.state.scheduler = SyncScheduler(
-        app.state.sync_service, app.state.upstream_client, settings, locations
+        app.state.sync_service, app.state.upstream_client, settings, locations, samples
     )
     app.state.scheduler.start()
 

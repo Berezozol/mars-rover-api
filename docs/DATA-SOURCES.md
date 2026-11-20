@@ -314,3 +314,23 @@
 ## Старый API
 
 Формат и поведение старого API, которые воспроизводит наш v1, — в `LEGACY-API.md`.
+
+## Образцы Perseverance (этап 13, проверка источника)
+
+Проверено 2026-11-20, **2 GET** (разрешение владельца: не больше двух, без ретраев и переходов по ссылкам, общий User-Agent). Ответы — `data/samples/` (в `.gitignore`). Отчёт: `docs/reports/stage-13-samples.md`.
+
+- **Слой MMGIS с образцами — нет.** В `DATA-SOURCES.md` и отчёте этапа 11 слоя образцов не упоминалось. Проба `https://mars.nasa.gov/mmgis-maps/M20/Layers/json/M20_samples.json` (имя угадано по схеме `M20_waypoints`): **403**, 5 546 Б, `text/html` — стандартная страница «Page not found» от S3/CloudFront, то есть файла нет. Других имён слоя не пробовали (лимит запросов); существование слоя под другим именем [не проверено].
+- **Страница «Mars Rock Samples» — работает.** `https://science.nasa.gov/mission/mars-2020-perseverance/mars-rock-samples/`: **200**, 494 867 Б, `text/html; charset=UTF-8`, без редиректа, `cache-control: max-age=300`. Машиночитаемого JSON/CSV на странице нет (ссылок на `.json`/`.csv` в HTML нет); данные — одна HTML-таблица `<figure class="wp-block-table"><table>` (в той же странице те же образцы повторены карточками для карусели). `article:modified_time` = 2026-06-20.
+- **Колонки таблицы (11):** `Sample No.`, `Date Sealed`, `Sol Sealed`, `Sample Name`, `Feature Name`, `Sampling Location`, `Current Location`, `Science Notes` (ссылка PDF на досье в PDS: `pds-geosciences.wustl.edu/m2020/urn-nasa-pds-mars2020_sample_dossier/initial_reports/initial_reports_volumeN.pdf#page=K`; у образцов 26–30 пусто), `Sample Type`, `Sample Height` (см и дюймы одной строкой через `&nbsp;`), `Rock Type`.
+- **Объём:** 30 строк, `Sample No.` 1…30 без пропусков. Сол запечатывания 164…1441 у 28 образцов; у № 29 и 30 `Date Sealed` и `Sol Sealed` = `TBD`. Актуальность отстаёт: сегодня сол ~2030, а последняя дата — 10.03.2025 (сол 1441); подпись к фото образца № 30 — 1 июля 2025 (сол 1551).
+- **Статус «на борту / в депо» есть:** `Current Location` = `Perseverance Rover` (21) или `Sample Depot` (9: №№ 1, 2, 5, 7, 9, 11, 13, 15, 18). Других значений нет.
+- **Тип материала:** `Sample Type` — `Rock Core` 27, `Regolith` 2 (№ 17, 18), `Atmospheric` 1 (№ 1). `Rock Type` — свободный текст: Sedimentary 13, Igneous 8, Igneous/impactite 3, `Likely mixed sedimentary and igneous grains` 2, `n/a` 1, `Silica-cemented Carbonate`, `Serpentinite`, `Igneous or sedimentary`.
+- **Серийных номеров пробирок нет** — только порядковый `Sample No.` (это не номер трубки). Witness-трубки в таблице не перечислены (описаны текстом).
+- **Координат и site/drive нет.** Место — только текст: `Feature Name` («Cheyava Falls») и `Sampling Location` («Neretva Vallis»), по-разному написанные (`Ch’ał`, `Séítah` с диакритикой и типографским апострофом).
+- **Причуды:** даты в формате AP-style («Aug. 6, 2021», «Sept. 6, 2021», «March 7, 2022»); `Sol Sealed` — число строкой или `TBD`; высота — «6.14 2.42» (см, дюймы через `&nbsp;`), у № 1 — `n/a n/a`, у № 29 — `Est. 5-7 cm (2-2.8 in)`, у № 30 — `1.91 cm (0.75 inches)`; в имени бывает псевдоним: `Ha'ahóni (aka "Hahonih")`; в `Sample Name` и `Feature Name` у № 1 одно и то же слово. Один `<table>` на странице, разметка WordPress-блока — может измениться при редизайне.
+- **Лицензия и авторство:** материалы NASA, подпись изображений — `NASA/JPL-Caltech`; фото образцов на странице не копируем. Условия использования текста страницы [не проверены].
+
+### Образцы Perseverance: дополнительная проверка (2026-11-20, ещё 2 GET)
+
+- **PDS Geosciences, корень набора досье:** `https://pds-geosciences.wustl.edu/m2020/urn-nasa-pds-mars2020_sample_dossier/` — **200**, 973 Б, `text/html` (листинг IIS). Содержимое: `bundle_sample_dossier.lblx` (27.09.2023, 4 383 Б), папка `document` (11.09.2023), папка `initial_reports` (**изменена 13.02.2026**), `readme.txt` (11.09.2023), `urn-nasa-pds-mars2020_sample_dossier.md5` (13.02.2026, 1 382 Б). Машиночитаемой таблицы образцов (CSV/TAB) в корне нет: данные — PDF-тома `initial_reports/initial_reports_volumeN.pdf` (это те же PDF, что в колонке «Science Notes» страницы NASA). Внутрь папок не заходили (лимит). Свежесть: папка обновлена 13.02.2026, но какие образцы и солы в ней — не видно (число образцов в томах [не проверено]); координат в виде таблицы нет.
+- **Конфигурация слоёв MMGIS:** проба `https://mars.nasa.gov/mmgis-maps/M20/config.json` (имя угадано) — **403**, 5 546 Б, `text/html`, «Page not found». Список слоёв не получен, слой образцов (если есть) и его URL **неизвестны**. Статический путь к конфигурации на этом хосте мы не знаем; динамический API MMGIS (`/API/configure/...`) на `/mmgis-maps/` не пробовали [не проверено].

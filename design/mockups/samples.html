@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Perseverance rock samples — Sol Index</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  .view-tabs { display: flex; gap: var(--s1); border-bottom: 1px solid var(--border); margin-bottom: var(--s4); overflow-x: auto; overflow-y: hidden; }
+  .view-tabs a { padding: var(--s2) var(--s4); text-decoration: none; color: var(--text-muted); font-weight: 500; font-size: var(--fs-sm); white-space: nowrap; border-bottom: 3px solid transparent; margin-bottom: -1px; }
+  .view-tabs a:hover { color: var(--text); }
+  .view-tabs a[aria-current="page"] { color: var(--text); border-bottom-color: var(--accent); }
+
+  .tiles { display: grid; gap: var(--s3); grid-template-columns: repeat(2, minmax(0, 1fr)); margin: var(--s4) 0; }
+  @media (min-width: 800px) { .tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+  .tile { padding: var(--s4); }
+  .tile .k { font-size: var(--fs-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+  .tile .v { font-size: var(--fs-xl); font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; }
+  .tile .s { font-size: var(--fs-xs); color: var(--text-muted); }
+  .tile ul { margin: 2px 0 0; padding: 0; list-style: none; font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+  .tile li { display: flex; justify-content: space-between; gap: var(--s2); }
+
+  .source { display: flex; gap: var(--s2) var(--s4); flex-wrap: wrap; align-items: center; padding: var(--s3) var(--s4); margin: var(--s3) 0; border-left: 4px solid var(--border-strong); font-size: var(--fs-sm); }
+  .source .spacer { flex: 1; }
+  .banner { margin-bottom: var(--s3); padding: var(--s3) var(--s4); border-radius: var(--radius); background: var(--warn-soft); color: var(--text); border: 1px solid var(--warn); font-size: var(--fs-sm); }
+  .banner strong { color: var(--warn); }
+
+  .filters { display: grid; gap: var(--s3); margin-bottom: var(--s3); }
+  .fgroup { display: flex; gap: var(--s2) var(--s3); flex-wrap: wrap; align-items: center; }
+  .fgroup .label { font-size: var(--fs-xs); font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; min-width: 56px; }
+  .count-line { font-size: var(--fs-sm); color: var(--text-muted); margin: 0 0 var(--s2); }
+
+  table.samples { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+  .samples th, .samples td { padding: 10px var(--s3); text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .samples thead th { background: var(--surface); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); }
+  .samples .num { text-align: right; white-space: nowrap; }
+  .samples tbody tr { scroll-margin-top: 72px; }
+  .samples tbody tr:target th, .samples tbody tr:target td { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .samples tbody tr:hover { background: var(--surface-2); }
+  .samples tbody th { font-weight: 700; white-space: nowrap; }
+  .samples .nm { font-weight: 600; }
+  .samples .sub { display: block; color: var(--text-muted); font-size: var(--fs-xs); }
+  .samples .links a { display: block; white-space: nowrap; }
+  .na { color: var(--text-muted); }
+  .wrap { overflow: hidden; }
+  .tbd { color: var(--warn); font-weight: 600; }
+  .only-phone, .samples .sub.only-phone { display: none; }
+
+  /* phone: each sample becomes a card */
+  @media (max-width: 760px) {
+    .only-phone { display: inline; }
+    .samples thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    .samples, .samples tbody, .samples tr, .samples td, .samples tbody th { display: block; }
+    .samples tbody tr { display: grid; grid-template-columns: 1fr 1fr; gap: 2px var(--s3); padding: var(--s3) var(--s4); border-bottom: 1px solid var(--border); }
+    .samples tbody th, .samples td { border: 0; padding: 2px 0; text-align: left !important; }
+    .samples tbody th { grid-column: 1 / -1; font-size: var(--fs-md); white-space: normal; }
+    .samples td::before { content: attr(data-label); display: block; font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); }
+    .samples td.links, .samples td.where { grid-column: 1 / -1; }
+    .samples td.name-cell { display: none; }
+    .samples .sub.only-phone { display: block; }
+  }
+
+  .state { padding: var(--s6) var(--s4); text-align: center; }
+  .state h2 { margin-bottom: var(--s2); }
+  .state p { color: var(--text-muted); max-width: 52ch; margin: 0 auto var(--s3); }
+  pre.raw { margin: var(--s3) 0 0; padding: var(--s3); background: var(--surface-2); border-radius: var(--radius-sm); overflow-x: auto; text-align: left; font: var(--fs-xs)/1.5 var(--mono); }
+  .api-line { margin-top: var(--s3); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container">
+    <a class="brand" href="index.html" aria-label="Sol Index home">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="8" fill="var(--accent)"/><ellipse cx="13" cy="13" rx="12" ry="4.5" fill="none" stroke="var(--text-muted)" stroke-width="1.4" transform="rotate(-20 13 13)"/></svg>
+      Sol Index <small>unofficial</small>
+    </a>
+    <nav class="nav" aria-label="Main">
+      <a href="index.html">Rovers</a>
+      <a href="photos.html?rover=perseverance" title="Latest sol">Photos</a>
+      <a href="manifest.html">Timeline</a>
+      <a href="map.html">Route map</a>
+      <a href="flights.html">Flights</a>
+      <a href="samples.html" aria-current="page">Samples</a>
+      <a href="index.html#api">API</a>
+    </nav>
+    <button class="theme-toggle" type="button" aria-label="Toggle colour theme">Theme</button>
+  </div>
+</header>
+
+<!-- Data: GET /api/v2/rovers/perseverance/samples -> {"rover","source_url","source_updated_at","updated_at","items":[Sample, ...30]}, number ASC, no pagination
+  Sample = {"number","name","feature_name","sampling_location","status","current_location","sample_type","sample_type_label","rock_type",
+            "sealed_on","sol","height_cm","height_note","dossier_url","total_photos","location"}
+  Values are parsed from the saved NASA page (data/samples/rock-samples.html, 30 rows); total_photos and location.match are made up.
+  Filters (status, type) and the summary tiles are computed on the client from items (30 rows, no filters in the API). -->
+
+<main>
+  <div class="container">
+
+    <div class="mock-bar" role="group" aria-label="Mockup switcher (not part of the product)">
+      <strong>Mockup</strong>
+      <button class="btn btn-sm" type="button" data-state="data" aria-pressed="true">Data</button>
+      <button class="btn btn-sm" type="button" data-state="loading" aria-pressed="false">Loading</button>
+      <button class="btn btn-sm" type="button" data-state="empty" aria-pressed="false">Empty (not loaded yet)</button>
+      <button class="btn btn-sm" type="button" data-state="error" aria-pressed="false">Error</button>
+      <span>· sample: values from the saved NASA page (30 rows), made-up photo counts</span>
+    </div>
+
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="index.html">Rovers</a> ›
+      <a href="photos.html?rover=perseverance">Perseverance</a> ›
+      <span aria-current="page">Samples</span>
+    </nav>
+
+    <nav class="view-tabs" aria-label="Views of Perseverance">
+      <a href="photos.html?rover=perseverance">Photos</a>
+      <a href="manifest.html?rover=perseverance">Timeline</a>
+      <a href="map.html?rover=perseverance">Route map</a>
+      <a href="samples.html" aria-current="page">Samples</a>
+      <a href="flights.html" title="Flights of the Ingenuity helicopter, which flew from Perseverance's landing site">Flights</a>
+    </nav>
+
+    <h1>Perseverance rock samples</h1>
+    <p class="muted" style="max-width:70ch">Sample tubes sealed by the rover, one row per tube. Open a sample&rsquo;s photos to see everything taken that sol, or the photos of the tube itself (camera CACHECAM).</p>
+
+    <section class="card source" id="source" aria-label="Data source">
+      <div><strong>Source: <a id="src-link" href="https://science.nasa.gov/mission/mars-2020-perseverance/mars-rock-samples/">NASA, Mars Rock Samples page ↗</a></strong></div>
+      <div class="muted">Page last edited <time id="src-date" datetime="2026-06-20">2026-06-20</time> · checked <time id="chk-date" datetime="2026-11-20">2026-11-20</time></div>
+      <span class="spacer"></span>
+      <div class="muted xsmall">Data from NASA&rsquo;s Mars Rock Samples page; it may lag the mission.</div>
+    </section>
+    <div id="banner"></div>
+
+    <section class="tiles" id="tiles" aria-label="Sample summary"></section>
+
+    <section id="view" aria-live="polite">
+      <div class="filters" id="filters" role="group" aria-label="Filter samples">
+        <div class="fgroup" role="group" aria-labelledby="f-status-l"><span class="label" id="f-status-l">Status</span><div class="chips" id="chips-status"></div></div>
+        <div class="fgroup" role="group" aria-labelledby="f-type-l"><span class="label" id="f-type-l">Type</span><div class="chips" id="chips-type"></div></div>
+      </div>
+      <p class="count-line" id="count-line"></p>
+      <div class="card wrap" id="table-card">
+        <table class="samples" id="tbl">
+          <caption class="visually-hidden">Perseverance rock samples</caption>
+          <thead><tr>
+            <th scope="col" class="num">№</th><th scope="col">Sample</th><th scope="col">Sampling location</th><th scope="col">Type / rock</th>
+            <th scope="col">Sealed</th><th scope="col" class="num">Height</th><th scope="col">Status</th><th scope="col">Links</th>
+          </tr></thead>
+          <tbody id="body"></tbody>
+        </table>
+      </div>
+      <div class="card state" id="no-match" hidden>
+        <h2>No samples match these filters</h2>
+        <p>Try another status or type.</p>
+        <button class="btn btn-sm" type="button" id="clear-filters">Clear filters</button>
+      </div>
+      <p class="xsmall muted" style="margin-top:var(--s3)">№ is the sample&rsquo;s order on the NASA page, not the tube serial number. Names and places are shown as published (including aliases). The sealing date has no time zone on the source page; the sol is the reliable key. Height is the core length in centimetres; &ldquo;TBD&rdquo; means the page has no date or sol yet. &ldquo;Photos of the tube&rdquo; = photos of that sol from the CACHECAM camera; the link is by sol only, so the tube may be out of frame. Dossier = the science report (PDF) on the Planetary Data System.</p>
+      <p class="xsmall mono muted api-line">API: GET /api/v2/rovers/perseverance/samples</p>
+    </section>
+
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="container">Sol Index is an independent, unofficial project, not affiliated with or endorsed by NASA or JPL. Sample data is taken from NASA&rsquo;s public page and linked to it; image credit is shown next to every photo.</div>
+</footer>
+
+<script>
+const SAMPLES_RESPONSE = {"rover":"perseverance","source_url":"https://science.nasa.gov/mission/mars-2020-perseverance/mars-rock-samples/","source_updated_at":"2026-06-20T16:45:46Z","updated_at":"2026-11-20T03:00:12Z","items":[{"number":1,"name":"Roubion","feature_name":"Roubion","sampling_location":"Polygon Valley","status":"depot","current_location":"Sample Depot","sample_type":"atmospheric","sample_type_label":"Atmospheric","rock_type":null,"sealed_on":"2021-08-06","sol":164,"height_cm":null,"height_note":null,"dossier_url":"https://pds-geosciences.wustl.edu/m2020/urn-nasa-pds-mars2020_sample_dossier/initial_reports/initial_reports_volume1.pdf#page=16","total_photos":328,"location":{"sol":157,"site":6,"drive":0,"lat":18.427695,"lon":77.45165,"elev_geoid":-2584.9,"match":"by_sol"}},{"number":2,"name":"Montdenier","feature_name":"Rochette","sampling_location":"Artuby Ridge","status":"depot","current_location":"Sample Depot","sample_type":"rock_core","sample_type_label":"Rock Core","rock_type":"Igneous","sealed_on":"2021-09-06","sol":194,"height_cm":5.98,"height_note":null,"dossier_url":"https://pds-geosciences.wustl.edu/m2020/urn-nasa-pds-mars2020_sample_dossier/initial_reports/initial_reports_volume1.pdf#page=36","total_photos":178,"location":{"sol":180,"site":7,"drive":0,"lat":18.430739,"lon":77.444366,"elev_geoid":-2574.5,"match":"nearest_before"}},{"number":3,"name":"Montagnac","feature_name":"Rochette","sampling_location":"Artuby Ridge","status":"on_rover","current_location":"Perseverance Rover","sample_type":"rock_core","sample_type_label":"Rock Core","rock_type":"Igneous","sealed_on":"2021-09-08","sol":196,"height_cm":6.14,"height_note":null,"dossier_url":"https://pds-geosciences.wustl.edu/m2020/urn-nasa-pds-mars2020_sample_dossier/initial_reports/initial_reports_volume1.pdf#page=59","total_photos":252,"location":{"sol":180,"site":7,"drive":0,"lat":18.430739,"lon":77.444366,"elev_geoid":-2574.5,"match":"by_sol"}},{"number":4,"name":"Salette","feature_name":"Brac","sampling_location":"South Séítah","status":"on_rover","current_location":"Perseverance Rover","sample_type":"rock_core","sample_type_label":"Rock Core","rock_type":"Igneous","sealed_on":"2021-11-15","sol":262,"height_cm":6.28,"height_note":null,"dossier_url":"https://pds-geosciences.wustl.edu/m2020/urn-nasa-pds-mars2020_sample_dossier/initial_reports/initial_reports_volume1.pdf#page=62","total_photos":174,"location":{"sol":248,"site":8,"drive":0,"lat":18.433964,"lon":77.443019,"elev_geoid":-2569.2,"match":"by_sol"}},{"number":5,"name":"Coulettes","feature_name":"Brac","sampling_location":"South Séítah","status":"depot","current_location":"Sample Depot","sample_type":"rock_core","sample_type_label":"Rock Core","rock_type":"Igneous","sealed_on":"2021-11-24","sol":271,"height_cm":3.3,"height_note":null,"dossier_url":"https://pds-geosciences.wustl.edu/m2020/urn-nasa-pds-mars2020_sample_dossier/initial_reports/initial_reports_volume1.pdf#page=90","total_photos":507,"location":{"sol":248,"site":8,"drive":0,"lat":18.433964,"lon":77.443019,"elev_geoid":-2569.2,"match":"by_sol"}},{"number":6,"name":"Robine","feature_name":"Issole","sampling_location":"South Séítah","status":"on_rover","current_location":"Perseverance Rover","sample_type":"rock_core","sample_type_label":"Rock Core","rock_type":"Igneous","sealed_on":"2021-12-22","sol":298,"height_cm":6.08,"height_note":null,"dossier_url":"https://pds-geosciences.wustl.edu/m2020/urn-nasa-pds-mars2020_sample_dossier/initial_reports/initial_reports_volume1.pdf#page=93","total_photos":246,"location":{"sol":286,"site":9,"drive":0,"lat":18.432661,"lon":77.441373,"elev_geoid":-2574.4,"match":"by_sol"}},{"number":7,"name":"Malay","feature_name":"Issole","sampling_location":"South Séítah","status":"depot","current_location":"Sample Depot","sample_type":"rock_core","sample_type_label":"Rock Core","rock_type":"Igneous","sealed_on":"2022-01-31","sol":337,"height_cm":3.07,"height_note":null,"dossier_url":"https://pds-geosciences.wustl.edu/m2020/urn-nasa-pds-mars2020_sample_dossier/initial_reports/initial_reports_volume1.pdf#page=125","total_photos":429,"location":{"sol":335,"site":9,"drive":276,"lat":18.432609,"lon":77.441314,"elev_geoid":-2574.2,"match":"by_sol"}},{"number":8,"name":"Ha'ahóni (aka \"Hahonih\")","feature_name":"Sid","sampling_location":"Octavia E. Butler Landing / Ch’ał outcrop","status":"on_rover","current_location":"Perseverance Rover","sample_type":"rock_core","sample_type_label":"Rock Core","rock_type":"Igneous","sealed_on":"2022-03-07","sol":371,"height_cm":6.5,"height_note":null,"dossier_url":"https://pds-geosciences.wustl.edu/m2020/urn-nasa-pds-mars2020_sample_dossier/initial_reports/initial_reports_volume1.pdf#page=128","total_photos":427,"location":{"sol":362,"site":11,"drive":108,"lat":18.443902,"lon":77.452434,"elev_geoid":-2568.7,"match":"exact"}},{"number":9,"name":"Atsá (aka \"Atsah\")","feature_name":"Sid","sampling_location":"Octavia E. Butler Landing / Ch’ał outcrop","status":"depot","current_location":"Sample Depot","sample_type":"rock_core","sample_type_label":"Rock Core","rock_type":"Igneous","sealed_on":"2022-03-13","sol":377,"height_cm":6.0,"height_note":null,"dossier_url":"https://pds-geosciences.wustl.edu/m2020/urn-nasa-pds-mars2020_sample_dossier/initial_reports/initial_reports_volume1.pdf#page=159","total_photos":229,"location":{"sol":362,"site":11,"drive":108,"lat":18.443902,"lon":77.452434,"elev_geoid":-2568.7,"match":"by_sol"}},{"number":10,"name":"Swift Run","feature_name":"Skinner Ridge","sampling_location":"Delta Front","status":"on_rover","current_location":"Perseverance Rover","sample_type":"rock_core","sample_type_label":"Rock Core","rock_type":"Sedimentary","sealed_on":"2022-07-07","sol":490,"height_cm":6.69,"height_note":null,"dossier_url":"https://pds-geosciences.wustl.edu/m2020/urn-nasa-pds-mars2020_sample_dossier/initial_reports/initial_reports_volume2.pdf#page=14","total_photos":210,"location":{"sol":477,"site":26,"drive":1004,"lat":18.458895,"lon":77.406168,"elev_geoid":-2520.9,"match":"by_sol"}},{"number":11,"name":"Skyland","feature_name":"Skinner Ridge","sampling_location":"Delta Front","status":"depot","current_location":"Sample Depot","sample_type":"rock_core","sample_type_label":"Rock Core","rock_type":"Sedimentary","sealed_on":"2022-07-12","sol":495,"height_cm":5.85,"height_note":null,"dossier_url":"https://pds-geosciences.wustl.edu/m2020/urn-nasa-pds-mars2020_sample_dossier/initial_reports/initial_reports_volume2.pdf#page=52","total_photos":395,"location":{"sol":477,"site":26,"drive":1004,"lat":18.458895,"lon":77.406168,"elev_geoid":-2520.9,"match":"by_sol"}},{"number":12,"name":"Hazeltop","feature_name":"Wildcat Ridge","sampling_location":"Delta Front","status":"on_rover","current_location":"Perseverance Rover","sample_type":"rock_core","sample_type_label":"Rock Core","rock_type":"Sedimentary","sealed_on":"2022-07-27","sol":509,"height_cm":5.97,"height_note":null,"dossier_url":"https://pds-geosciences.wustl.edu/m2020/urn-nasa-pds-mars2020_sample_dossier/initial_reports/initial_reports_volume2.pdf#page=58","total_photos":493,"location":{"sol":502,"site":26,"drive":1222,"lat":18.458647,"lon":77.405925,"elev_geoid":-2523.2,"match":"by_sol"}},{"number":13,"name":"Bearwallow","feature_name":"Wildcat Ridge","sampling_location":"Delta Front","status":"depot","current_location":"Sample Depot","sample_type":"rock_core","sample_type_label":"Rock Core","rock_type":"Sedimentary","sealed_on":"2022-08-03","sol":516,"height_cm":6.24,"height_note":null,"dossier_url":"https://pds-geosciences.wustl.edu/m2020/urn-nasa-pds-mars2020_sample_dossier/initial_reports/initial_reports_volume2.pdf#page=97","total_photos":332,"location":{"sol":502,"site":26,"drive":1222,"lat":18.458647,"lon":77.405925,"elev_geoid":-2523.2,"match":"by_sol"}},{"number":14,"name":"Shuyak","feature_name":"Amalik","sampling_location":"Delta Front","status":"on_rover","current_location":"Perseverance Rover","sample_type":"rock_core","sample_type_label":"Rock Core","rock_type":"Sedimentary","sealed_on":"2022-10-02","sol":575,"height_cm":5.55,"height_note":null,"dossier_url":"https://pds-geosciences.wustl.edu/m2020/urn-nasa-pds-mars2020_sample_dossier/initial_reports/initial_reports_volume2.pdf#page=100","total_photos":415,"location":{"sol":565,"site":29,"drive":0,"lat":18.450726,"lon":77.40144,"elev_geoid":-2526.5,"match":"by_sol"}},{"number":15,"name":"Mageik","feature_name":"Amalik","sampling_location":"Delta Front","status":"depot","current_location":"Sample Depot","sample_type":"rock_core","sample_type_label":"Rock Core","rock_type":"Sedimentary","sealed_on":"2022-11-16","sol":619,"height_cm":7.36,"height_note":null,"dossier_url":"https://pds-geosciences.wustl.edu/m2020/urn-nasa-pds-mars2020_sample_dossier/initial_reports/initial_reports_volume2.pdf#page=145","total_photos":363,"location":{"sol":609,"site":30,"drive":1172,"lat":18.453644,"lon":77.399154,"elev_geoid":-2517.3,"match":"by_sol"}},{"number":16,"name":"Kukaklek","feature_name":"Hidden Harbor","sampling_location":"Delta Front","status":"on_rover","current_location":"Perseverance Rover","sample_type":"rock_core","sample_type_label":"Rock Core","rock_type":"Sedimentary","sealed_on":"2022-11-29","sol":631,"height_cm":4.97,"height_note":null,"dossier_url":"https://pds-geosciences.wustl.edu/m2020/urn-nasa-pds-mars2020_sample_dossier/initial_reports/initial_reports_volume2.pdf#page=151","total_photos":387,"location":{"sol":629,"site":30,"drive":2188,"lat":18.451625,"lon":77.401437,"elev_geoid":-2523.8,"match":"by_sol"}},{"number":17,"name":"Atmo Mountain","feature_name":"Observation Mountain","sampling_location":"Delta Front","status":"on_rover","current_location":"Perseverance Rover","sample_type":"regolith","sample_type_label":"Regolith","rock_type":"Likely mixed sedimentary and igneous grains","sealed_on":"2022-12-02","sol":634,"height_cm":5.3,"height_note":null,"dossier_url":"https://pds-geosciences.wustl.edu/m2020/urn-nasa-pds-mars2020_sample_dossier/initial_reports/initial_reports_volume2.pdf#page=191","total_photos":498,"location":{"sol":632,"site":31,"drive":0,"lat":18.451331,"lon":77.401257,"elev_geoid":-2525.3,"match":"by_sol"}},{"number":18,"name":"Crosswind Lake","feature_name":"Observation Mountain","sampling_location":"Delta Front","status":"depot","current_location":"Sample Depot","sample_type":"regolith","sample_type_label":"Regolith","rock_type":"Likely mixed sedimentary and igneous grains","sealed_on":"2022-12-07","sol":639,"height_cm":5.3,"height_note":null,"dossier_url":"https://pds-geosciences.wustl.edu/m2020/urn-nasa-pds-mars2020_sample_dossier/initial_reports/initial_reports_volume2.pdf#page=231","total_photos":263,"location":{"sol":632,"site":31,"drive":0,"lat":18.451331,"lon":77.401257,"elev_geoid":-2525.3,"match":"by_sol"}},{"number":19,"name":"Melyn","feature_name":"Berea","sampling_location":"Upper Fan","status":"on_rover","current_location":"Perseverance Rover","sample_type":"rock_core","sample_type_label":"Rock Core","rock_type":"Sedimentary","sealed_on":"2023-03-30","sol":749,"height_cm":6.04,"height_note":null,"dossier_url":"https://pds-geosciences.wustl.edu/m2020/urn-nasa-pds-mars2020_sample_dossier/initial_reports/initial_reports_volume3.pdf#page=14","total_photos":553,"location":{"sol":736,"site":37,"drive":0,"lat":18.470212,"lon":77.383988,"elev_geoid":-2449.1,"match":"by_sol"}},{"number":20,"name":"Otis Peak","feature_name":"Emerald Lake","sampling_location":"Upper Fan","status":"on_rover","current_location":"Perseverance Rover","sample_type":"rock_core","sample_type_label":"Rock Core","rock_type":"Sedimentary","sealed_on":"2023-06-23","sol":832,"height_cm":5.77,"height_note":null,"dossier_url":"https://pds-geosciences.wustl.edu/m2020/urn-nasa-pds-mars2020_sample_dossier/initial_reports/initial_reports_volume3.pdf#page=48","total_photos":264,"location":{"sol":821,"site":40,"drive":132,"lat":18.482988,"lon":77.368194,"elev_geoid":-2420.8,"match":"by_sol"}},{"number":21,"name":"Pilot Mountain","feature_name":"Dream Lake","sampling_location":"Upper Fan","status":"on_rover","current_location":"Perseverance Rover","sample_type":"rock_core","sample_type_label":"Rock Core","rock_type":"Sedimentary","sealed_on":"2023-09-15","sol":913,"height_cm":6.0,"height_note":null,"dossier_url":"https://pds-geosciences.wustl.edu/m2020/urn-nasa-pds-mars2020_sample_dossier/initial_reports/initial_reports_volume3.pdf#page=86","total_photos":321,"location":{"sol":911,"site":45,"drive":0,"lat":18.483443,"lon":77.350694,"elev_geoid":-2423.3,"match":"by_sol"}},{"number":22,"name":"Pelican Point","feature_name":"Hans Amundsen Memorial Workspace","sampling_location":"Margin Unit","status":"on_rover","current_location":"Perseverance Rover","sample_type":"rock_core","sample_type_label":"Rock Core","rock_type":"Sedimentary","sealed_on":"2023-09-25","sol":923,"height_cm":6.1,"height_note":null,"dossier_url":"https://pds-geosciences.wustl.edu/m2020/urn-nasa-pds-mars2020_sample_dossier/initial_reports/initial_reports_volume4.pdf#page=14","total_photos":271,"location":{"sol":911,"site":45,"drive":0,"lat":18.483443,"lon":77.350694,"elev_geoid":-2423.3,"match":"by_sol"}},{"number":23,"name":"Lefroy Bay","feature_name":"Turquoise Bay","sampling_location":"Margin Unit","status":"on_rover","current_location":"Perseverance Rover","sample_type":"rock_core","sample_type_label":"Rock Core","rock_type":"Sedimentary","sealed_on":"2023-10-21","sol":949,"height_cm":4.7,"height_note":null,"dossier_url":"https://pds-geosciences.wustl.edu/m2020/urn-nasa-pds-mars2020_sample_dossier/initial_reports/initial_reports_volume4.pdf#page=49","total_photos":393,"location":{"sol":933,"site":46,"drive":0,"lat":18.488715,"lon":77.347043,"elev_geoid":-2407.7,"match":"by_sol"}},{"number":24,"name":"Comet Geyser","feature_name":"Bunsen Peak","sampling_location":"Margin Unit","status":"on_rover","current_location":"Perseverance Rover","sample_type":"rock_core","sample_type_label":"Rock Core","rock_type":"Silica-cemented Carbonate","sealed_on":"2024-03-12","sol":1088,"height_cm":5.78,"height_note":null,"dossier_url":"https://pds-geosciences.wustl.edu/m2020/urn-nasa-pds-mars2020_sample_dossier/initial_reports/initial_reports_volume4.pdf#page=87","total_photos":496,"location":{"sol":1084,"site":51,"drive":0,"lat":18.491833,"lon":77.327203,"elev_geoid":-2383.0,"match":"by_sol"}},{"number":25,"name":"Sapphire Canyon","feature_name":"Cheyava Falls","sampling_location":"Neretva Vallis","status":"on_rover","current_location":"Perseverance Rover","sample_type":"rock_core","sample_type_label":"Rock Core","rock_type":"Sedimentary","sealed_on":"2024-07-21","sol":1215,"height_cm":6.2,"height_note":null,"dossier_url":"https://pds-geosciences.wustl.edu/m2020/urn-nasa-pds-mars2020_sample_dossier/initial_reports/initial_reports_volume4.pdf#page=120","total_photos":155,"location":{"sol":1210,"site":56,"drive":0,"lat":18.497484,"lon":77.305191,"elev_geoid":-2354.0,"match":"exact"}},{"number":26,"name":"Silver Mountain","feature_name":"Shallow Bay","sampling_location":"Crater Rim (Witch Hazel Hill)","status":"on_rover","current_location":"Perseverance Rover","sample_type":"rock_core","sample_type_label":"Rock Core","rock_type":"Igneous/impactite","sealed_on":"2025-01-28","sol":1401,"height_cm":2.91,"height_note":null,"dossier_url":null,"total_photos":317,"location":{"sol":1400,"site":66,"drive":0,"lat":18.460553,"lon":77.264745,"elev_geoid":-1820.0,"match":"by_sol"}},{"number":27,"name":"Green Gardens","feature_name":"Tablelands","sampling_location":"Crater Rim (Witch Hazel Hill)","status":"on_rover","current_location":"Perseverance Rover","sample_type":"rock_core","sample_type_label":"Rock Core","rock_type":"Serpentinite","sealed_on":"2025-03-02","sol":1433,"height_cm":7.19,"height_note":null,"dossier_url":null,"total_photos":241,"location":{"sol":1431,"site":69,"drive":2000,"lat":18.461407,"lon":77.2592,"elev_geoid":-1906.7,"match":"by_sol"}},{"number":28,"name":"Main River","feature_name":"Broom Point","sampling_location":"Crater Rim (Witch Hazel Hill)","status":"on_rover","current_location":"Perseverance Rover","sample_type":"rock_core","sample_type_label":"Rock Core","rock_type":"Igneous/impactite","sealed_on":"2025-03-10","sol":1441,"height_cm":4.32,"height_note":null,"dossier_url":null,"total_photos":537,"location":{"sol":1435,"site":69,"drive":2124,"lat":18.461727,"lon":77.258503,"elev_geoid":-1918.5,"match":"by_sol"}},{"number":29,"name":"Bell Island","feature_name":"Pine Pond","sampling_location":"Crater Rim (Witch Hazel Hill)","status":"on_rover","current_location":"Perseverance Rover","sample_type":"rock_core","sample_type_label":"Rock Core","rock_type":"Igneous/impactite","sealed_on":null,"sol":null,"height_cm":null,"height_note":"Est. 5-7 cm (2-2.8 in)","dossier_url":null,"total_photos":null,"location":null},{"number":30,"name":"Gallants","feature_name":"Salmon Point","sampling_location":"Crater Rim (Krokodillen)","status":"on_rover","current_location":"Perseverance Rover","sample_type":"rock_core","sample_type_label":"Rock Core","rock_type":"Igneous or sedimentary","sealed_on":null,"sol":null,"height_cm":1.91,"height_note":null,"dossier_url":null,"total_photos":null,"location":null}]};
+const MAX_SOL = 2031;   // Rover.max_sol of Perseverance (GET /rovers/perseverance)
+const ITEMS = SAMPLES_RESPONSE.items;
+const $ = s => document.querySelector(s);
+const nf = new Intl.NumberFormat('en-US');
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const STATUS = { on_rover: ['On rover', 'badge-active'], depot: ['In depot', 'badge-complete'] };
+const state = { view: 'data', status: 'all', type: 'all' };
+
+function counts(items) {
+  const c = { on_rover: 0, depot: 0, rock_core: 0, regolith: 0, atmospheric: 0 };
+  items.forEach(x => { if (x.status) c[x.status]++; if (x.sample_type) c[x.sample_type]++; });
+  return c;
+}
+function tiles(items) {
+  const t = $('#tiles');
+  if (!items) { t.innerHTML = [1, 2, 3, 4].map(() => '<div class="card tile"><div class="skeleton" style="height:14px;width:50%"></div><div class="skeleton" style="height:30px;margin-top:8px;width:70%"></div></div>').join(''); return; }
+  if (!items.length) { t.innerHTML = ''; return; }
+  const c = counts(items), sols = items.filter(x => x.sol != null).map(x => x.sol), tbd = items.filter(x => x.sol == null).length;
+  t.innerHTML = `
+    <div class="card tile"><div class="k">Samples</div><div class="v">${items.length}</div><div class="s">sol ${Math.min(...sols)} – ${Math.max(...sols)}${tbd ? ` · ${tbd} not sealed yet` : ''}</div></div>
+    <div class="card tile"><div class="k">On the rover</div><div class="v">${c.on_rover}</div><div class="s">still carried by Perseverance</div></div>
+    <div class="card tile"><div class="k">In the depot</div><div class="v">${c.depot}</div><div class="s">left on the surface</div></div>
+    <div class="card tile"><div class="k">By type</div><ul><li><span>Rock core</span><strong>${c.rock_core}</strong></li><li><span>Regolith</span><strong>${c.regolith}</strong></li><li><span>Atmospheric</span><strong>${c.atmospheric}</strong></li></ul></div>`;
+}
+function banner(items) {
+  const el = $('#banner'), sols = items.filter(x => x.sol != null).map(x => x.sol), last = sols.length ? Math.max(...sols) : null;
+  const tbd = items.filter(x => x.sol == null).map(x => x.number);
+  const notes = [];
+  if (last != null && MAX_SOL - last > 100) notes.push(`<strong>The NASA page may be behind.</strong> Its last sealed sample was sealed on sol ${last}; Perseverance is now at sol ${MAX_SOL}. Newer samples, if any, are not listed yet.`);
+  if (tbd.length) notes.push(`Sample${tbd.length > 1 ? 's' : ''} ${tbd.join(' and ')} ${tbd.length > 1 ? 'have' : 'has'} no date or sol on the page yet (TBD).`);
+  el.innerHTML = notes.length ? `<div class="banner">${notes.join('<br>')}</div>` : '';
+}
+function chips(items) {
+  const c = counts(items);
+  const mk = (grp, list) => list.map(([k, l, n]) => `<button type="button" class="chip${n === 0 ? ' dim' : ''}" data-g="${grp}" data-k="${k}" aria-pressed="${state[grp] === k}">${l} <span class="count">${n}</span></button>`).join('');
+  $('#chips-status').innerHTML = mk('status', [['all', 'All', items.length], ['on_rover', 'On rover', c.on_rover], ['depot', 'In depot', c.depot]]);
+  $('#chips-type').innerHTML = mk('type', [['all', 'All', items.length], ['rock_core', 'Rock core', c.rock_core], ['regolith', 'Regolith', c.regolith], ['atmospheric', 'Atmospheric', c.atmospheric]]);
+  document.querySelectorAll('.chip').forEach(b => b.onclick = () => { state[b.dataset.g] = b.dataset.k; render(); });
+}
+const visible = () => ITEMS.filter(x => (state.status === 'all' || x.status === state.status) && (state.type === 'all' || x.sample_type === state.type));
+
+function row(x) {
+  const [slab, scls] = x.status ? STATUS[x.status] : [esc(x.current_location), ''];
+  const sealed = x.sol == null
+    ? `<span class="tbd">TBD</span><span class="sub">date and sol not published yet</span>`
+    : `<time datetime="${x.sealed_on}">${x.sealed_on}</time><span class="sub">sol ${x.sol}</span>`;
+  const height = x.height_cm != null ? `${x.height_cm} cm` : x.height_note ? esc(x.height_note) : `<span class="na" title="No height published">—</span>`;
+  const dossier = x.dossier_url ? `<a href="${esc(x.dossier_url)}" aria-label="Dossier PDF for sample ${x.number}, ${esc(x.name)}">Dossier (PDF) ↗</a>` : `<span class="na" title="No dossier published yet">No dossier yet</span>`;
+  const photos = x.sol == null ? `<span class="na">Photos: sol TBD</span>` :
+    `<a href="photos.html?rover=perseverance&amp;sol=${x.sol}" aria-label="${nf.format(x.total_photos)} photos of sol ${x.sol} (sample ${x.number})">Photos of sol ${x.sol} (${nf.format(x.total_photos)})</a>` +
+    `<a href="photos.html?rover=perseverance&amp;sol=${x.sol}&amp;camera=CACHECAM" aria-label="Photos of the tube, sample ${x.number}: sol ${x.sol}, camera CACHECAM">Photos of the tube</a>`;
+  const mapLink = x.location ? `<span class="sub"><a href="map.html?rover=perseverance&amp;from_sol=${x.location.sol}&amp;to_sol=${x.location.sol}" title="Stop of sol ${x.location.sol}, site ${x.location.site}, drive ${x.location.drive}">Show on route map</a></span>` : '';
+  return `<tr id="sample-${x.number}">
+    <th scope="row" class="num" data-label="№">${x.number}<span class="only-phone nm"> ${esc(x.name)}</span></th>
+    <td class="name-cell" data-label="Sample"><span class="nm">${esc(x.name)}</span>${x.feature_name ? `<span class="sub">Feature: ${esc(x.feature_name)}</span>` : ''}</td>
+    <td class="where" data-label="Sampling location">${x.sampling_location ? esc(x.sampling_location) : '<span class="na">—</span>'}${x.feature_name ? `<span class="sub only-phone">Feature: ${esc(x.feature_name)}</span>` : ''}${mapLink}</td>
+    <td data-label="Type / rock">${esc(x.sample_type_label)}<span class="sub">${x.rock_type ? esc(x.rock_type) : '—'}</span></td>
+    <td data-label="Sealed">${sealed}</td>
+    <td class="num" data-label="Height">${height}</td>
+    <td data-label="Status"><span class="badge ${scls}">${slab}</span></td>
+    <td class="links" data-label="Links">${dossier}${photos}</td>
+  </tr>`;
+}
+function stateBlock(kind) {
+  const el = document.createElement('div');
+  el.className = 'card state state-block';
+  if (kind === 'empty') el.innerHTML = `<h2>No samples loaded yet</h2><p>Sol Index has not fetched NASA&rsquo;s sample table yet (<code>items: []</code>, <code>updated_at: null</code>). Check back soon, or read the page at the source.</p><a class="btn" href="https://science.nasa.gov/mission/mars-2020-perseverance/mars-rock-samples/">Open NASA&rsquo;s sample page ↗</a>`;
+  else el.innerHTML = `<div class="alert alert-error" style="text-align:left;max-width:640px;margin:0 auto" role="alert"><div><div class="alert-title">Samples could not be loaded</div><div>The service is temporarily unavailable. Nothing is wrong with your filters; try again in a moment.</div><pre class="raw">HTTP 503
+{"error":{"code":"db_unavailable","message":"Database is unavailable","details":null}}</pre><p style="margin:var(--s3) 0 0"><button class="btn btn-primary btn-sm" type="button" onclick="setState('data')">Try again</button></p></div></div>`;
+  return el;
+}
+function render() {
+  document.querySelectorAll('[data-state]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.state === state.view)));
+  document.querySelectorAll('.state-block').forEach(e => e.remove());
+  const data = state.view === 'data';
+  $('#filters').hidden = $('#count-line').hidden = $('#table-card').hidden = !data;
+  $('#source').hidden = state.view === 'loading' || state.view === 'error';
+  $('#no-match').hidden = true; $('#banner').innerHTML = '';
+  if (data) {
+    tiles(ITEMS); banner(ITEMS); chips(ITEMS);
+    const v = visible();
+    $('#body').innerHTML = v.map(row).join('');
+    $('#table-card').hidden = !v.length; $('#no-match').hidden = !!v.length;
+    $('#count-line').textContent = `Showing ${v.length} of ${ITEMS.length} samples`;
+  } else if (state.view === 'loading') {
+    tiles(null);
+    const sk = document.createElement('div'); sk.className = 'card panel state-block'; sk.setAttribute('role', 'status'); sk.setAttribute('aria-label', 'Loading samples');
+    sk.innerHTML = Array.from({ length: 8 }, () => '<div class="skeleton" style="height:34px;margin-bottom:10px"></div>').join('');
+    $('#view').prepend(sk);
+  } else {
+    tiles([]);
+    $('#view').prepend(stateBlock(state.view));
+  }
+}
+function setState(s) { state.view = s; render(); }
+window.setState = setState;
+document.querySelectorAll('[data-state]').forEach(b => b.onclick = () => setState(b.dataset.state));
+$('#clear-filters').onclick = () => { state.status = state.type = 'all'; render(); };
+// deep link #sample-N: make sure the row is not filtered out
+function reveal() {
+  const m = /^#sample-(\d+)$/.exec(location.hash); if (!m) return;
+  if (!visible().some(x => x.number === +m[1])) { state.status = state.type = 'all'; render(); }
+  const t = document.getElementById('sample-' + m[1]); if (t) t.scrollIntoView();
+}
+window.addEventListener('hashchange', reveal);
+document.querySelector('.theme-toggle').onclick = () => {
+  const r = document.documentElement, dark = r.dataset.theme ? r.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  r.dataset.theme = dark ? 'light' : 'dark';
+};
+render(); reveal();
+</script>
+</body>
+</html>

@@ -219,6 +219,15 @@ class FlightNotFound(NotFoundError):
         super().__init__("Flight not found")
 
 
+class SampleNotFound(NotFoundError):
+    """v2: no such Perseverance sample."""
+
+    code = "sample_not_found"
+
+    def __init__(self) -> None:
+        super().__init__("Sample not found")
+
+
 class RoverNotFound(NotFoundError):
     """v2: unknown or malformed rover slug."""
 

@@ -60,6 +60,9 @@ def cache_control_for(path: str) -> str:
     # "/rovers/{rover}/location" and "/rovers/{rover}/traverse"
     if len(parts) == 4 and parts[1] == "rovers" and parts[2] and parts[3] in _LOCATION_SEGMENTS:
         return LOCATION_CACHE_CONTROL
+    # "/rovers/{rover}/samples" and "/rovers/{rover}/samples/{number}" (stage 13)
+    if len(parts) in (4, 5) and parts[1] == "rovers" and parts[2] and parts[3] == "samples":
+        return LOCATION_CACHE_CONTROL
     return LIST_CACHE_CONTROL
 
 

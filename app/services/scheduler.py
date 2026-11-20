@@ -10,6 +10,7 @@ from app.core.config import Settings
 from app.core.errors import SyncInProgress
 from app.services.alerts import AlertMonitor
 from app.services.location_sync import LocationSyncService
+from app.services.sample_sync import SampleSyncService
 from app.services.sync import SyncResult, SyncService
 from app.sources.http import UpstreamClient
 from app.sources.registry import SYNCABLE_ROVERS, build_adapter
@@ -28,11 +29,13 @@ class SyncScheduler:
         client: UpstreamClient,
         settings: Settings,
         locations: LocationSyncService | None = None,
+        samples: SampleSyncService | None = None,
     ) -> None:
         self._service = service
         self._client = client
         self._settings = settings
         self._locations = locations
+        self._samples = samples
         self._scheduler = AsyncIOScheduler(timezone=UTC)
         self._current: asyncio.Task[list[SyncResult]] | None = None
 
@@ -98,6 +101,7 @@ class SyncScheduler:
             except Exception:
                 logger.exception("Scheduled sync failed rover=%s", rover_id)
         await self._refresh_locations()
+        await self._refresh_samples()
         return results
 
     async def _refresh_locations(self) -> None:
@@ -109,6 +113,16 @@ class SyncScheduler:
             raise
         except Exception:
             logger.exception("Scheduled location refresh failed")
+
+    async def _refresh_samples(self) -> None:
+        if self._samples is None:
+            return
+        try:
+            await self._samples.refresh_due()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Scheduled samples refresh failed")
 
 
 ALERT_JOB_ID = "alert-check"

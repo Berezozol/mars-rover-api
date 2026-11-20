@@ -1,4 +1,4 @@
-"""v2 rovers: list, detail, cameras, photos, latest photos, manifest, location and traverse."""
+"""v2 rovers: list, detail, cameras, photos, latest, manifest, location, traverse and samples."""
 
 from typing import Annotated, Any
 
@@ -14,6 +14,7 @@ from app.api.v2.params import (
     FlightNumberPath,
     LatestParam,
     Pagination,
+    SampleNumberPath,
     SampleTypeParam,
     SiteParam,
     SolParam,
@@ -29,6 +30,8 @@ from app.api.v2.schemas import (
     PhotosResponse,
     RoverOut,
     RoversResponse,
+    SampleOut,
+    SamplesResponse,
     TraverseResponse,
     camera_out,
     flight_dict,
@@ -38,10 +41,13 @@ from app.api.v2.schemas import (
     manifest_body,
     photos_body,
     rover_dict,
+    sample_dict,
+    samples_body,
     traverse_body,
 )
 from app.db.session import get_session
 from app.services import locations, v2
+from app.services import samples as samples_service
 from app.services.v2 import PhotoQuery
 
 router = APIRouter()
@@ -138,6 +144,17 @@ async def list_flights(rover: str, session: Session) -> FastJSONResponse:
 async def get_flight(rover: str, n: FlightNumberPath, session: Session) -> FastJSONResponse:
     flight, total_photos = await v2.get_flight(session, rover, n)
     return FastJSONResponse(flight_dict(flight, total_photos))
+
+
+@router.get("/rovers/{rover}/samples", response_model=SamplesResponse, responses=_ERRORS)
+async def list_samples(request: Request, rover: str, session: Session) -> FastJSONResponse:
+    data = await samples_service.list_samples(session, rover)
+    return FastJSONResponse(samples_body(data, request.app.state.settings.samples_url))
+
+
+@router.get("/rovers/{rover}/samples/{number}", response_model=SampleOut, responses=_ERRORS)
+async def get_sample(rover: str, number: SampleNumberPath, session: Session) -> FastJSONResponse:
+    return FastJSONResponse(sample_dict(await samples_service.get_sample(session, rover, number)))
 
 
 @router.get("/rovers/{rover}/location", response_model=LocationResponse, responses=_ERRORS)

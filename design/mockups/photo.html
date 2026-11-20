@@ -63,6 +63,7 @@
       <a href="manifest.html">Timeline</a>
       <a href="map.html">Route map</a>
       <a href="flights.html">Flights</a>
+      <a href="samples.html">Samples</a>
       <a href="index.html#api">API</a>
     </nav>
     <button class="theme-toggle" type="button" aria-label="Toggle colour theme">Theme</button>
@@ -104,6 +105,13 @@
       <button class="btn btn-sm" type="button" data-loc="exact" aria-pressed="false">exact: true</button>
       <button class="btn btn-sm" type="button" data-loc="none" aria-pressed="false">location: null</button>
       <span>&middot; null (no site/drive, Spirit/Opportunity, no stop yet) hides the whole block, no empty heading</span>
+    </div>
+
+    <div class="mock-bar" role="group" aria-label="Sample block states (not part of the product)">
+      <strong>Mockup &middot; samples</strong>
+      <button class="btn btn-sm" type="button" data-sm="none" aria-pressed="true">samples: []</button>
+      <button class="btn btn-sm" type="button" data-sm="one" aria-pressed="false">samples: [25] (sol 1215)</button>
+      <span>&middot; <code>PhotoDetail.samples</code>: sample numbers sealed on this sol; empty list &rarr; no block, no heading. The sample variant moves the frame to sol 1215.</span>
     </div>
 
     <nav class="crumbs" aria-label="Breadcrumb">
@@ -174,8 +182,8 @@
           </div>
           <dl>
             <dt>Rover</dt><dd id="rv-rover"><a href="photos.html?rover=perseverance">Perseverance</a></dd>
-            <dt>Sol</dt><dd><a href="photos.html?rover=perseverance&amp;sol=2031">2031</a></dd>
-            <dt>Earth date</dt><dd>2026-11-06</dd>
+            <dt>Sol</dt><dd id="ph-sol"><a href="photos.html?rover=perseverance&amp;sol=2031">2031</a></dd>
+            <dt>Earth date</dt><dd id="ph-date">2026-11-06</dd>
             <dt>Taken at</dt><dd><time datetime="2026-11-06T12:16:25Z">2026-11-06 12:16:25 UTC</time></dd>
             <dt>Camera</dt><dd id="rv-cam"><span class="mono">SUPERCAM_RMI</span><br><span class="muted">SuperCam Remote Micro Imager</span></dd>
             <dt>Sample type</dt><dd>full</dd>
@@ -201,6 +209,20 @@
         <section id="noflight" aria-labelledby="nf-h" hidden>
           <h2 id="nf-h">Flight</h2>
           <p class="small muted" style="margin:0">No flight on this sol (<code>flight: null</code>). <a href="flights.html">See all 72 flights</a>.</p>
+        </section>
+
+        <!-- PhotoDetail.samples = [25] -> GET /api/v2/rovers/perseverance/samples/25 (or the cached list). [] -> section is not rendered. -->
+        <section id="sample" aria-labelledby="sm-h" hidden>
+          <h2 id="sm-h">Sample</h2>
+          <p style="margin:0 0 var(--s2)"><a href="samples.html#sample-25" style="font-weight:700"><span aria-hidden="true">&#9670; </span>Sample 25 &mdash; Sapphire Canyon</a></p>
+          <div class="row" style="gap:6px;margin-bottom:var(--s2)">
+            <span class="badge badge-active">On rover</span>
+            <span class="badge no-dot">Rock core</span>
+            <span class="badge no-dot">Sedimentary</span>
+          </div>
+          <p class="small" style="margin:0">Sealed on this sol (2024-07-21), feature Cheyava Falls, Neretva Vallis.</p>
+          <p class="loc-note" style="margin-top:var(--s2)">Linked by sol only: this frame does not necessarily show the sample.</p>
+          <p class="small" style="margin:var(--s2) 0 0"><a href="photos.html?rover=perseverance&amp;sol=1215&amp;camera=CACHECAM">Photos of the tube (CACHECAM)</a> &middot; <a href="samples.html">All samples</a></p>
         </section>
 
         <section id="loc" aria-labelledby="loc-h">
@@ -349,10 +371,25 @@ GET /api/v2/photos/81234/image?size=large</pre>
       q('#flight-badge').hidden = k !== 'flight';
       q('#flight').hidden = k !== 'flight';
       q('#noflight').hidden = k !== 'noflight';
-      if (heli) { q('#loc').hidden = true; q('#sitedrive').textContent = '—'; }
+      if (heli) { q('#sample').hidden = true; q('#loc').hidden = true; q('#sitedrive').textContent = '—'; }
       else renderLoc('approx');
     }
     document.querySelectorAll('[data-rv]').forEach(b => b.onclick = () => setRv(b.dataset.rv));
+  })();
+
+  // Mockup only: PhotoDetail.samples = [] or [25].
+  (function () {
+    const q = s => document.querySelector(s);
+    const orig = { title: q('#ph-title').textContent, sol: q('#ph-sol').innerHTML, date: q('#ph-date').textContent };
+    function setSm(k) {
+      document.querySelectorAll('[data-sm]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.sm === k)));
+      const one = k === 'one';
+      q('#sample').hidden = !one;
+      q('#ph-title').textContent = one ? 'Mars Perseverance Sol 1215: SuperCam Camera' : orig.title;
+      q('#ph-sol').innerHTML = one ? '<a href="photos.html?rover=perseverance&amp;sol=1215">1215</a>' : orig.sol;
+      q('#ph-date').textContent = one ? '2024-07-21' : orig.date;
+    }
+    document.querySelectorAll('[data-sm]').forEach(b => b.onclick = () => setSm(b.dataset.sm));
   })();
 
   document.querySelector('.theme-toggle').onclick = () => {

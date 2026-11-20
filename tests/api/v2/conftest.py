@@ -143,7 +143,8 @@ PHOTO_DETAIL_KEYS = [
     "location",
     "local_time",
     "in_sol",
-    "flight",  # stage 12, last key
+    "flight",  # stage 12
+    "samples",  # stage 13, last key
 ]
 IN_SOL_KEYS = ["position", "total", "newer_id", "older_id"]
 LOCAL_TIME_KEYS = ["time", "kind"]
@@ -489,6 +490,7 @@ class World:
             "local_time": EXPECTED_LOCAL_TIME.get(source_id),
             "in_sol": self.in_sol(source_id),
             "flight": None,  # only Ingenuity photos can have a flight
+            "samples": [],  # no samples loaded in the shared dataset
         }
 
     def ids(self, source_ids: Sequence[str]) -> list[int]:

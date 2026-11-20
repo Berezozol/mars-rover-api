@@ -10,6 +10,7 @@ import type {
   PhotoPage,
   PhotoQuery,
   Rover,
+  SamplesResponse,
   Traverse,
 } from "./types";
 
@@ -150,6 +151,23 @@ export function clearApiCache(): void {
   cache.clear();
 }
 
+// At most a few queued requests at once, for lists that ask one small question per row.
+const MAX_QUEUED = 3;
+let queuedActive = 0;
+const queuedWaiting: (() => void)[] = [];
+async function queued<T>(run: () => Promise<T>): Promise<T> {
+  // A finished request hands its slot straight to the next waiter, so the count never dips.
+  if (queuedActive >= MAX_QUEUED) await new Promise<void>((resolve) => queuedWaiting.push(resolve));
+  else queuedActive++;
+  try {
+    return await run();
+  } finally {
+    const next = queuedWaiting.shift();
+    if (next) next();
+    else queuedActive--;
+  }
+}
+
 const slug = (rover: string) => encodeURIComponent(rover);
 
 export const api = {
@@ -160,6 +178,15 @@ export const api = {
   cameras: (rover: string, sol?: number) =>
     cached(`cameras:${rover}:${sol ?? ""}`, () =>
       request<{ items: Camera[] }>(`/rovers/${slug(rover)}/cameras`, { sol }).then((r) => r.items),
+    ),
+  /** Same data and cache as `cameras(rover, sol)`, but at most a few requests in flight (one per sample row). */
+  camerasQueued: (rover: string, sol: number) =>
+    cached(`cameras:${rover}:${sol}`, () =>
+      queued(() =>
+        request<{ items: Camera[] }>(`/rovers/${slug(rover)}/cameras`, { sol }).then(
+          (r) => r.items,
+        ),
+      ),
     ),
   photos: (rover: string, q: PhotoQuery, signal?: AbortSignal) =>
     request<PhotoPage>(`/rovers/${slug(rover)}/photos`, { ...q }, signal),
@@ -200,6 +227,9 @@ export const api = {
       () => single(),
     );
   },
+  /** All samples of a rover (Perseverance only; 30 rows, no pagination): fetched once and cached. */
+  samples: (rover: string) =>
+    cached(`samples:${rover}`, () => request<SamplesResponse>(`/rovers/${slug(rover)}/samples`)),
   /** The whole route as GeoJSON (large for Curiosity: fetched once per rover and cached). */
   traverse: (rover: string) =>
     cached(`traverse:${rover}`, () => request<Traverse>(`/rovers/${slug(rover)}/traverse`)),

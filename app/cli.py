@@ -22,6 +22,9 @@
   sent unless ``--force``, which also skips the no-op and shrink checks. Exit codes: 0 every
   file changed, unchanged or skipped, 1 a file was rejected or failed, 2 unknown rover or a
   rover without a location source (Spirit, Opportunity).
+- ``samples [--force]``: load the Perseverance sample table from the NASA samples page now,
+  ignoring the once-a-day rule; ``--force`` drops the conditional request, the no-op and the
+  "no stored sample may disappear" check. Exit codes: 0 changed or unchanged, 1 rejected or failed.
 """
 
 import argparse
@@ -46,6 +49,7 @@ from app.services.backfill import (
 )
 from app.services.location_sync import DatasetResult, LocationSyncService
 from app.services.mer_download import download_indexes
+from app.services.sample_sync import SampleSyncResult, SampleSyncService
 from app.services.sync import SyncResult, SyncService, compact_ranges
 from app.sources.base import SourceAdapter
 from app.sources.http import UpstreamClient, UpstreamError
@@ -155,6 +159,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="no conditional request, no no-op or shrink checks: replace the data",
     )
 
+    samples = commands.add_parser(
+        "samples", help="load the Perseverance sample table from the NASA samples page now"
+    )
+    samples.add_argument(
+        "--force",
+        action="store_true",
+        help="no conditional request or no-op, accept a page where a stored sample is missing",
+    )
+
     rec = commands.add_parser("reconcile", help="compare stored photos with the source")
     rec.add_argument("--rover", required=True, type=str.lower, help="rover slug")
     rec.add_argument(
@@ -186,6 +199,8 @@ def main(argv: list[str] | None = None) -> int:
         return _main_batches(args, run_import_mer_command)
     if args.command == "locations":
         return _main_locations(args)
+    if args.command == "samples":
+        return _main_samples(args)
     parser.print_help(sys.stderr)
     return EXIT_FAILED
 
@@ -232,6 +247,12 @@ def _main_locations(args: argparse.Namespace) -> int:
     settings = get_settings()
     configure_logging(settings.log_level)
     return asyncio.run(run_locations_command(args.rover, args.force, settings))
+
+
+def _main_samples(args: argparse.Namespace) -> int:
+    settings = get_settings()
+    configure_logging(settings.log_level)
+    return asyncio.run(run_samples_command(args.force, settings))
 
 
 def _main_reconcile(args: argparse.Namespace) -> int:
@@ -310,6 +331,28 @@ def _location_line(result: DatasetResult) -> str:
         f"{result.rover_id} {result.kind}: {result.status}, "
         f"items={result.items}, dropped={result.dropped}"
     )
+    return f"{line}, error: {result.error}" if result.error else line
+
+
+async def run_samples_command(force: bool, settings: Settings) -> int:
+    """Load the samples page and return the exit code (0 changed/unchanged, 1 otherwise)."""
+    engine = create_engine(
+        settings.database_url, connect_timeout=settings.db_connect_timeout_seconds
+    )
+    try:
+        async with UpstreamClient(settings) as client:
+            result = await SampleSyncService(engine, client, settings).refresh(force=force)
+    except Exception:
+        logger.exception("Samples load crashed")
+        return EXIT_PARTIAL
+    finally:
+        await engine.dispose()
+    print(_samples_line(result))
+    return EXIT_SUCCESS if result.status in ("changed", "unchanged") else EXIT_PARTIAL
+
+
+def _samples_line(result: SampleSyncResult) -> str:
+    line = f"perseverance samples: {result.status}, items={result.items}"
     return f"{line}, error: {result.error}" if result.error else line
 
 

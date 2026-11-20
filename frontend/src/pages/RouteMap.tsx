@@ -1,8 +1,9 @@
 import type { JSX } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { api } from "../api/client";
-import type { LocationResponse, Rover, Traverse, Waypoint } from "../api/types";
+import type { LocationResponse, Rover, Sample, Traverse, Waypoint } from "../api/types";
 import { RoverTabs } from "../components/RoverTabs";
+import { SampleBadges, TubeLink } from "../components/SampleParts";
 import { EmptyState, ErrorAlert, PageSkeleton } from "../components/States";
 import { fmt } from "../lib/format";
 import { useAsync, useRovers, useTitle } from "../lib/hooks";
@@ -33,6 +34,14 @@ import {
   type View,
 } from "../lib/mapgeo";
 import { findStop, mapHref, stopPhotosHref } from "../lib/maplinks";
+import {
+  groupByStop,
+  MATCH_TEXT,
+  samplesHref,
+  SAMPLES_ROVER,
+  solPhotosHref,
+  stopKey,
+} from "../lib/samples";
 import { Link, navigate, qs, useQuery } from "../router";
 
 const LIST_PAGE = 8;
@@ -84,6 +93,7 @@ function ViewTabs({ rover, rovers }: { rover: Rover; rovers: Rover[] }) {
       <Link href={`/rovers/${rover.id}/map`} aria-current="page">
         Route map
       </Link>
+      {rover.id === SAMPLES_ROVER && <Link href={samplesHref()}>Samples</Link>}
       {heli && (rover.id === "perseverance" || rover.id === "ingenuity") && (
         <Link
           href={`/rovers/${heli.id}/flights`}
@@ -161,15 +171,23 @@ function LatestPosition({
 interface Loaded {
   traverse: Traverse;
   location: LocationResponse;
+  /** Perseverance only. Markers are a bonus: when the list cannot be loaded the map works without them. */
+  samples: Sample[] | null;
 }
 
 function MapLoader({ rover }: { rover: Rover }) {
   const [state, retry] = useAsync<Loaded>(async () => {
-    const [traverse, location] = await Promise.all([
+    const [traverse, location, samples] = await Promise.all([
       api.traverse(rover.id),
       api.location(rover.id),
+      rover.id === SAMPLES_ROVER
+        ? api.samples(rover.id).then(
+            (r) => r.items,
+            () => null,
+          )
+        : Promise.resolve(null),
     ]);
-    return { traverse, location };
+    return { traverse, location, samples };
   }, [rover.id]);
 
   if (state.status === "loading") {
@@ -212,17 +230,26 @@ function MapLoader({ rover }: { rover: Rover }) {
       />
     );
   }
-  return <MapData rover={rover} traverse={state.data.traverse} location={state.data.location} />;
+  return (
+    <MapData
+      rover={rover}
+      traverse={state.data.traverse}
+      location={state.data.location}
+      samples={state.data.samples}
+    />
+  );
 }
 
 function MapData({
   rover,
   traverse,
   location,
+  samples,
 }: {
   rover: Rover;
   traverse: Traverse;
   location: LocationResponse;
+  samples: Sample[] | null;
 }) {
   const unavailable = !traverse.available || !location.available;
   const prepared = useMemo(
@@ -267,17 +294,19 @@ function MapData({
       </section>
     );
   }
-  return <RouteMapView rover={rover} data={prepared} location={location} />;
+  return <RouteMapView rover={rover} data={prepared} location={location} samples={samples} />;
 }
 
 function RouteMapView({
   rover,
   data,
   location,
+  samples,
 }: {
   rover: Rover;
   data: Prepared;
   location: LocationResponse;
+  samples: Sample[] | null;
 }) {
   const { stops, kx, bounds, route } = data;
   const q = useQuery();
@@ -295,6 +324,15 @@ function RouteMapView({
     () => highlightRuns(data, from, to, inRange),
     [data, from, to, inRange],
   );
+
+  // Sample markers: samples sharing a stop are drawn as one marker with a count.
+  const [showSamples, setShowSamples] = useState(true);
+  const groups = useMemo(() => groupByStop(samples ?? []), [samples]);
+  const groupAt = useMemo(() => new Map(groups.map((g) => [g.key, g])), [groups]);
+  const placed = groups.reduce((n, g) => n + g.items.length, 0);
+  const hasSamples = samples !== null && samples.length > 0;
+  const samplesAt = (w: Waypoint): Sample[] =>
+    showSamples ? (groupAt.get(stopKey(w.sol, w.site, w.drive))?.items ?? []) : [];
 
   const initialStop = useRef(
     findStop(stops, intParam(q.get("sol")), intParam(q.get("site")), intParam(q.get("drive"))),
@@ -617,7 +655,7 @@ function RouteMapView({
     if (!shownStop) return null;
     const [x, y] = project(view, kx, shownStop.lon, shownStop.lat);
     const tw = 210;
-    const th = 84;
+    const th = 84 + 16 * samplesAt(shownStop).length;
     let left = x + 14;
     let top = y - th - 10;
     if (left + tw > W - 4) left = x - tw - 14;
@@ -700,6 +738,16 @@ function RouteMapView({
             >
               Latest stop
             </button>
+            {hasSamples && (
+              <label class="tgl">
+                <input
+                  type="checkbox"
+                  checked={showSamples}
+                  onChange={(e) => setShowSamples(e.currentTarget.checked)}
+                />{" "}
+                Samples
+              </label>
+            )}
             <div class="mp-legend" role="group" aria-label="Legend">
               <span>
                 <i class="lg-route" />
@@ -719,6 +767,18 @@ function RouteMapView({
                 <i class="lg-latest" />
                 Latest
               </span>
+              {hasSamples && showSamples && (
+                <span>
+                  <i class="lg-sample" />
+                  Sample sealed here
+                </span>
+              )}
+              {hasSamples && showSamples && groups.some((g) => g.approximate) && (
+                <span>
+                  <i class="lg-sample lg-apx" />
+                  Sample, approximate stop
+                </span>
+              )}
             </div>
           </div>
           <div
@@ -756,6 +816,29 @@ function RouteMapView({
               {hiD && <path class="route-hi" d={hiD} />}
               <path class="stops-base" d={dotsBaseD} />
               {dotsHiD && <path class="stops-hi" d={dotsHiD} />}
+              {hasSamples && showSamples && (
+                <g class="sample-markers">
+                  {groups.map((g) => {
+                    const [x, y] = project(view, kx, g.lon, g.lat);
+                    if (x < -12 || x > W + 12 || y < -12 || y > H + 12) return null;
+                    return (
+                      <g
+                        key={g.key}
+                        class="smp-g"
+                        data-stop={g.key}
+                        transform={`translate(${x.toFixed(1)} ${y.toFixed(1)})`}
+                      >
+                        <path class={g.approximate ? "smp smp-apx" : "smp"} d="M0 -9L8 5H-8Z" />
+                        {g.items.length > 1 && (
+                          <text class="smp-n" x="9" y="-3">
+                            {g.items.length}
+                          </text>
+                        )}
+                      </g>
+                    );
+                  })}
+                </g>
+              )}
               {last && lastPt && (
                 <>
                   <g transform={`translate(${lastPt[0].toFixed(1)} ${lastPt[1].toFixed(1)})`}>
@@ -806,6 +889,11 @@ function RouteMapView({
                 {latLabel(shownStop.lat)}, {lonLabel(shownStop.lon)}
                 <br />
                 Drive {km(shownStop.dist_m)} · total {km(shownStop.dist_total_m)}
+                {samplesAt(shownStop).map((x) => (
+                  <div key={x.number}>
+                    <span aria-hidden="true">▲ </span>Sample {x.number} — {x.name}
+                  </div>
+                ))}
               </div>
             )}
             {rangeEmpty && (
@@ -834,6 +922,15 @@ function RouteMapView({
               {live || " "}
             </span>
             <span class="spacer" />
+            {hasSamples && showSamples && (
+              <span id="smp-foot">
+                ▲ {placed} sample{placed === 1 ? "" : "s"} shown at {groups.length} stop
+                {groups.length === 1 ? "" : "s"}
+                {samples!.length > placed &&
+                  `; ${samples!.length - placed} not placed (no sol on the NASA page, or no stop yet)`}
+                .
+              </span>
+            )}
             <span>Plain background: no imagery. Drag to pan, Ctrl + wheel to zoom.</span>
             <span>Positions: JPL MMGIS map layers.</span>
           </div>
@@ -956,6 +1053,7 @@ function RouteMapView({
                     Clear
                   </button>
                 </div>
+                <SampleCards samples={samplesAt(selected)} />
                 <p class="apx" style={{ margin: "var(--s2) 0 0" }}>
                   <strong>Photos of sol {selected.sol}</strong> = everything taken that day,
                   possibly at several stops. <strong>Photos at this stop</strong> = frames taken
@@ -991,24 +1089,35 @@ function RouteMapView({
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((o) => (
-                      <tr key={o.i} class={o.i === sel ? "sel" : undefined}>
-                        <td>
-                          <button
-                            type="button"
-                            aria-pressed={o.i === sel}
-                            aria-label={`Select stop: sol ${o.w.sol}, site ${o.w.site}, drive ${o.w.drive}`}
-                            onClick={() => select(o.i, true)}
-                          >
-                            {o.w.sol}
-                          </button>
-                        </td>
-                        <td>
-                          {o.w.site}/{o.w.drive}
-                        </td>
-                        <td>{km(o.w.dist_m)}</td>
-                      </tr>
-                    ))}
+                    {rows.map((o) => {
+                      const here = samplesAt(o.w);
+                      return (
+                        <tr key={o.i} class={o.i === sel ? "sel" : undefined}>
+                          <td>
+                            <button
+                              type="button"
+                              aria-pressed={o.i === sel}
+                              aria-label={`Select stop: sol ${o.w.sol}, site ${o.w.site}, drive ${o.w.drive}${
+                                here.length ? `, ${here.length} sample(s) sealed here` : ""
+                              }`}
+                              onClick={() => select(o.i, true)}
+                            >
+                              {o.w.sol}
+                            </button>
+                            {here.length > 0 && (
+                              <span class="smp-mark" aria-hidden="true" title="Sample sealed here">
+                                {" "}
+                                ▲{here.length > 1 ? here.length : ""}
+                              </span>
+                            )}
+                          </td>
+                          <td>
+                            {o.w.site}/{o.w.drive}
+                          </td>
+                          <td>{km(o.w.dist_m)}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
                 <div class="mp-pager">
@@ -1041,6 +1150,12 @@ function RouteMapView({
       <p class="api-line">
         API: <code>GET /api/v2/rovers/{rover.id}/traverse</code> +{" "}
         <code>GET /api/v2/rovers/{rover.id}/location</code>
+        {hasSamples && (
+          <>
+            {" "}
+            + <code>GET /api/v2/rovers/{rover.id}/samples</code>
+          </>
+        )}
       </p>
     </>
   );
@@ -1059,4 +1174,51 @@ function HoverRing({ view, kx, w }: { view: View; kx: number; w: Waypoint }) {
 function SelRing({ view, kx, w }: { view: View; kx: number; w: Waypoint }) {
   const [x, y] = project(view, kx, w.lon, w.lat);
   return <circle class="sel-ring" cx={x.toFixed(1)} cy={y.toFixed(1)} r="11" />;
+}
+
+/** "Sample sealed here" cards of the selected stop. `by_sol` placements say that they are approximate. */
+function SampleCards({ samples }: { samples: Sample[] }) {
+  if (samples.length === 0) return null;
+  return (
+    <div class="smp-cards">
+      <h3 style={{ margin: "var(--s4) 0 0", fontSize: "var(--fs-sm)" }}>
+        {samples.length === 1 ? "Sample sealed here" : `${samples.length} samples sealed here`}
+      </h3>
+      {samples.map((x) => {
+        const l = x.location!;
+        return (
+          <div key={x.number} class={`smp-card${l.match === "by_sol" ? " smp-card-apx" : ""}`}>
+            <h3>
+              <span aria-hidden="true" style={{ color: "var(--map-sample)" }}>
+                ▲{" "}
+              </span>
+              <Link href={samplesHref(x.number)}>
+                Sample {x.number} — {x.name}
+              </Link>
+            </h3>
+            <div style={{ margin: "4px 0" }}>
+              <SampleBadges x={x} />
+            </div>
+            {x.sol !== null && (
+              <div class="small">
+                Sealed on sol {x.sol}
+                {x.sealed_on ? ` (${x.sealed_on})` : ""}
+                {x.feature_name ? ` · ${x.feature_name}` : ""}
+              </div>
+            )}
+            <div class="apx" style={{ marginTop: 4 }}>
+              {MATCH_TEXT[l.match]}
+              {x.sol !== null && l.sol !== x.sol ? ` Stop of sol ${l.sol}.` : ""}
+            </div>
+            {x.sol !== null && (
+              <div class="small" style={{ marginTop: 6 }}>
+                <TubeLink sol={x.sol} number={x.number} after=" · " />
+                <Link href={solPhotosHref(x.sol)}>Photos of sol {x.sol}</Link>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
 }

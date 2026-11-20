@@ -10,6 +10,7 @@ import {
   type PhotoQuery,
 } from "../api/types";
 import { FlightBadge, FlightBlock } from "../components/FlightBlock";
+import { SampleBlock } from "../components/SampleBlock";
 import { LocationBlock } from "../components/LocationBlock";
 import { photoHref } from "../components/PhotoTile";
 import { PhotoTile } from "../components/PhotoTile";
@@ -623,6 +624,8 @@ function Meta({
       </section>
 
       <FlightBlock photo={photo} />
+
+      <SampleBlock photo={photo} />
 
       {photo.location && <LocationBlock rover={photo.rover} roverName={rn} loc={photo.location} />}
 

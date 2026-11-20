@@ -87,6 +87,15 @@ class Settings(BaseSettings):
     # Alert when no check of a location file succeeded for this many days.
     location_stale_days: int = Field(default=3, ge=1)
 
+    # Perseverance sample table of the NASA "Mars Rock Samples" page, checked at most once a
+    # day (stage 13). Active only together with SYNC_ENABLED.
+    samples_sync_enabled: bool = True
+    samples_url: str = "https://science.nasa.gov/mission/mars-2020-perseverance/mars-rock-samples/"
+    samples_refresh_hours: int = Field(default=24, ge=1)
+    samples_max_bytes: int = Field(default=4 * 1024 * 1024, ge=1024)
+    # Alert when no check of the samples page succeeded for this many days.
+    samples_stale_days: int = Field(default=3, ge=1)
+
     # Build of the Sol Index web interface (stage 10); served at / when index.html exists.
     # A relative path is resolved against the project root.
     frontend_dist_dir: Path = Path("frontend/dist")

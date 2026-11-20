@@ -33,6 +33,8 @@ APP_TABLES = {
     "rover_traverse_segments",
     "location_datasets",
     "ingenuity_flights",
+    "rover_samples",
+    "sample_datasets",
 }
 
 

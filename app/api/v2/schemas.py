@@ -6,10 +6,11 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, PlainSerializer, StrictInt, StrictStr
 
 from app.api.v2.params import MAX_SOL
-from app.db.models import IngenuityFlight, Photo, SolSummary, SyncRun
+from app.db.models import IngenuityFlight, Photo, RoverSample, SolSummary, SyncRun
 from app.services import v2
 from app.services.admin import RunPage
 from app.services.locations import LocationData, PhotoLocation, TraverseData
+from app.services.samples import SampleLocation, SamplesData, SampleView
 from app.services.v2 import (
     CameraInfo,
     LatestPhotos,
@@ -139,6 +140,7 @@ class PhotoDetailOut(PhotoOut):
     local_time: LocalTimeOut | None
     in_sol: InSolOut
     flight: int | None
+    samples: list[int]
 
 
 class FlightOut(BaseModel):
@@ -160,6 +162,43 @@ class FlightOut(BaseModel):
 
 class FlightsResponse(BaseModel):
     items: list[FlightOut]
+
+
+class SampleLocationOut(BaseModel):
+    sol: int
+    site: int
+    drive: int
+    lat: float
+    lon: float
+    elev_geoid: float | None
+    match: Literal["exact", "nearest_before", "by_sol"]
+
+
+class SampleOut(BaseModel):
+    number: int
+    name: str
+    feature_name: str | None
+    sampling_location: str | None
+    status: Literal["on_rover", "depot"] | None
+    current_location: str | None
+    sample_type: Literal["rock_core", "regolith", "atmospheric"] | None
+    sample_type_label: str | None
+    rock_type: str | None
+    sealed_on: date | None
+    sol: int | None
+    height_cm: float | None
+    height_note: str | None
+    dossier_url: str | None
+    total_photos: int | None
+    location: SampleLocationOut | None
+
+
+class SamplesResponse(BaseModel):
+    rover: str
+    source_url: str
+    source_updated_at: UtcDateTime | None
+    updated_at: UtcDateTime | None
+    items: list[SampleOut]
 
 
 class WaypointOut(BaseModel):
@@ -351,6 +390,7 @@ def photo_detail_out(detail: PhotoDetail, origin: str) -> PhotoDetailOut:
         local_time=_local_time_out(meta.local_time),
         in_sol=_in_sol_out(detail.in_sol),
         flight=detail.flight,
+        samples=detail.samples,
     )
 
 
@@ -372,6 +412,54 @@ def flight_dict(flight: IngenuityFlight, total_photos: int) -> Json:
 
 def flights_body(items: list[tuple[IngenuityFlight, int]]) -> Json:
     return {"items": [flight_dict(flight, total) for flight, total in items]}
+
+
+def sample_location_dict(location: SampleLocation | None) -> Json | None:
+    if location is None:
+        return None
+    wp = location.waypoint
+    return {
+        "sol": wp.sol,
+        "site": wp.site,
+        "drive": wp.drive,
+        "lat": wp.lat,
+        "lon": wp.lon,
+        "elev_geoid": wp.elev_geoid,
+        "match": location.match,
+    }
+
+
+def sample_dict(view: SampleView) -> Json:
+    """Numerics are sent as JSON numbers (``height_cm`` is a ``Decimal`` column)."""
+    sample: RoverSample = view.sample
+    return {
+        "number": sample.number,
+        "name": sample.name,
+        "feature_name": sample.feature_name,
+        "sampling_location": sample.sampling_location,
+        "status": sample.status,
+        "current_location": sample.current_location,
+        "sample_type": sample.sample_type,
+        "sample_type_label": sample.sample_type_label,
+        "rock_type": sample.rock_type,
+        "sealed_on": sample.sealed_on,
+        "sol": sample.sol,
+        "height_cm": None if sample.height_cm is None else float(sample.height_cm),
+        "height_note": sample.height_note,
+        "dossier_url": sample.dossier_url,
+        "total_photos": view.total_photos,
+        "location": sample_location_dict(view.location),
+    }
+
+
+def samples_body(data: SamplesData, source_url: str) -> Json:
+    return {
+        "rover": data.rover,
+        "source_url": source_url,
+        "source_updated_at": _utc_z_or_none(data.source_modified_at),
+        "updated_at": _utc_z_or_none(data.updated_at),
+        "items": [sample_dict(view) for view in data.items],
+    }
 
 
 def _local_time_out(value: LocalTime | None) -> LocalTimeOut | None:

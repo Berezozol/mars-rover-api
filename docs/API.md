@@ -23,7 +23,7 @@
   ```
   | HTTP | code | когда |
   |---|---|---|
-  | 404 | `rover_not_found`, `photo_not_found`, `flight_not_found`, `not_found` | нет сущности или пути |
+  | 404 | `rover_not_found`, `photo_not_found`, `flight_not_found`, `sample_not_found`, `not_found` | нет сущности или пути |
   | 422 | `validation_error` | неверные параметры; `details` — список `{"field", "message"}` |
   | 401 | `unauthorized` | admin-ручка без верного `X-Admin-Token` |
   | 409 | `sync_in_progress` | синхронизация марсохода уже идёт |
@@ -73,7 +73,7 @@
 
 `img_src` всегда равен `images.full`. У Curiosity `small`, `medium` и `large` — `null`. У Spirit и Opportunity (этап 9a, решение владельца): `images.small` — уменьшенный JPEG архива NASA PDS (превью), `images.full` (и `img_src`) — абсолютная ссылка на нашу конвертацию полного кадра `{origin}/api/v2/photos/{id}/image?size=full` (`origin` — от хоста текущего запроса, как на странице `/`), `medium`, `large` и `title` — `null`, `source.link` — исходный продукт PDS `.img`.
 
-**PhotoDetail** = Photo + `caption`, `received_at`, `site`, `drive`, `extra` (объект с техническими полями источника), `location` (этап 11), `local_time`, `in_sol`, `flight` (этап 12).
+**PhotoDetail** = Photo + `caption`, `received_at`, `site`, `drive`, `extra` (объект с техническими полями источника), `location` (этап 11), `local_time`, `in_sol`, `flight` (этап 12), `samples` (этап 13).
 ```json
 "local_time": {"time": "11:25:43", "kind": "lmst"},
 "in_sol": {"position": 17, "total": 52, "newer_id": 81233, "older_id": 81240}
@@ -81,6 +81,7 @@
 - `local_time` — местное солнечное время съёмки на Марсе, `HH:MM:SS` (24 марсианских часа, без долей секунды). `kind`: `"lmst"` — среднее (Curiosity, Perseverance), `"ltst"` — истинное (Spirit, Opportunity; отличается от среднего до ~50 минут). `null`, если источник время не дал: у Curiosity — примерно у половины снимков, у Perseverance — у снимков, загруженных до этой доработки.
 - `in_sol` — место снимка в его соле в порядке списка `/photos` (`taken_at DESC, id DESC`): `position` — номер с 1, `total` — снимков в соле, `newer_id` — предыдущий в списке (снят позже), `older_id` — следующий (снят раньше); `null` у краёв. Учитывает параметры `camera` и `sample_type` запроса `/photos/{id}` (см. эндпоинт). Карточка кэшируется на час — у последних солов, куда снимки ещё доходят, `in_sol` может отставать на это время.
 - `flight` (этап 12, последним ключом) — у снимков Ingenuity номер полёта, совершённого в сол снимка, или `null` (в этот сол полёта не было); у остальных марсоходов всегда `null`. Связь только по солу: снимок мог быть сделан до или после полёта в тот же сол. У Ingenuity `location` всегда `null`, `site`/`drive` — `null`.
+- `samples` (этап 13, последним ключом) — номера образцов Perseverance, запечатанных в сол снимка, по возрастанию; `[]`, если в этот сол образцов нет, и у остальных марсоходов. Связь только по солу: снимок не обязательно изображает образец (пробирку снимает камера `CACHECAM`).
 
 ## Эндпоинты
 
@@ -246,6 +247,44 @@
 ### `GET /api/v2/rovers/{rover}/flights/{n}`
 `n` — целое ≥ 1; нечисловое → `422`; нет такого полёта (в т.ч. `0`, отрицательные и любые числа больше 32 767) → `404 flight_not_found`. `200 Flight` · `404 rover_not_found` / `not_found` (как у списка).
 
+**Sample** (этап 13; образец Perseverance; данные страницы NASA «Mars Rock Samples»)
+```json
+{"number": 25, "name": "Sapphire Canyon", "feature_name": "Cheyava Falls",
+ "sampling_location": "Neretva Vallis",
+ "status": "on_rover", "current_location": "Perseverance Rover",
+ "sample_type": "rock_core", "sample_type_label": "Rock Core", "rock_type": "Sedimentary",
+ "sealed_on": "2024-07-21", "sol": 1215, "height_cm": 6.2, "height_note": null,
+ "dossier_url": "https://pds-geosciences.wustl.edu/m2020/urn-nasa-pds-mars2020_sample_dossier/initial_reports/initial_reports_volume4.pdf#page=120",
+ "total_photos": 289,
+ "location": {"sol": 1212, "site": 56, "drive": 0, "lat": 18.4447, "lon": 77.3951,
+              "elev_geoid": -2489.7, "match": "exact"}}
+```
+(координаты в примере условные)
+- `number` — порядковый номер образца на странице (не серийный номер пробирки). Строки — как на странице (имена с диакритикой и псевдонимами, `(aka "…")`, не разбираются).
+- `feature_name`, `sampling_location`, `rock_type` — текст страницы или `null` (пусто, `n/a`).
+- `status` — `on_rover` (на борту) или `depot` (в депо на поверхности); `null`, если на странице незнакомое значение; `current_location` — текст страницы всегда.
+- `sample_type` — `rock_core`, `regolith`, `atmospheric` или `null` (незнакомое значение); `sample_type_label` — текст страницы.
+- `sealed_on` — дата запечатывания как на странице (часовой пояс не указан), `sol` — сол; оба `null`, пока на странице `TBD`. Надёжный ключ — `sol`.
+- `height_cm` — высота керна, см, или `null` (нет или только оценка); `height_note` — текст страницы, если высоту нельзя дать числом (`"Est. 5-7 cm (2-2.8 in)"`), иначе `null`.
+- `dossier_url` — PDF научного досье в PDS или `null`.
+- `total_photos` — снимков Perseverance за `sol` (все типы); `null` при `sol: null`. Снимки сола — `/rovers/perseverance/photos?sol={sol}`, пробирка — `&camera=CACHECAM`.
+- `location` — стоянка, где стоял марсоход в сол запечатывания, или `null` (нет `sol`, нет стоянок): поля как у `location` в PhotoDetail, вместо `exact` — `match`: `exact` — `site`/`drive` снимков этого сола совпали со стоянкой; `nearest_before` — стоянка того же `site` с ближайшим меньшим `drive`; `by_sol` — снимков с `site`/`drive` в этот сол нет, пар несколько или для единственной пары нет стоянки того же `site` с `drive` не больше; взята последняя стоянка с `sol` не больше сола образца (в этом соле — с наибольшими `site`, `drive`).
+
+### `GET /api/v2/rovers/{rover}/samples`
+Только `perseverance`. Параметров нет (неизвестные игнорируются). Все образцы без пагинации, сортировка `number ASC`.
+```json
+{"rover": "perseverance",
+ "source_url": "https://science.nasa.gov/mission/mars-2020-perseverance/mars-rock-samples/",
+ "source_updated_at": "2026-06-20T16:45:46Z", "updated_at": "2026-11-21T03:00:12Z",
+ "items": [Sample, ...]}
+```
+- `source_url` — страница-источник (данные NASA; проект неофициальный). `source_updated_at` — дата правки страницы по её метаданным или `null`; `updated_at` — когда список последний раз изменился у нас; оба `null` и `items: []`, пока данных нет.
+- Страница обновляется с отставанием от миссии (месяцами): последних образцов в ней может не быть. Данные проверяются не чаще раза в сутки.
+- Другой существующий марсоход → `404 not_found`; неизвестный → `404 rover_not_found`. `Cache-Control: public, max-age=3600`.
+
+### `GET /api/v2/rovers/{rover}/samples/{number}`
+`number` — целое ≥ 1; нечисловое → `422`; нет такого образца (в т.ч. `0`, отрицательные и больше 32 767) → `404 sample_not_found`. `200 Sample` · `404 rover_not_found` / `not_found` (как у списка). `Cache-Control: public, max-age=3600`.
+
 ## Admin
 
 Заголовок `X-Admin-Token`. Если `ADMIN_TOKEN` не задан в настройках, этих ручек нет (`404`).
@@ -278,7 +317,7 @@
 
 - `HEAD` поддерживается на всех `GET`-ручках v1 и v2: те же заголовки, без тела.
 - Успешные `GET` (`200`) отдают `ETag`; повторный запрос с совпадающим `If-None-Match` получает `304` без тела.
-- `Cache-Control`: списки, марсоходы, камеры и манифест — `public, max-age=300`; карточка снимка (`/photos/{id}`) — `public, max-age=3600`; редирект на изображение — `public, max-age=86400`; `/rovers/{rover}/location` и `/rovers/{rover}/traverse` — `public, max-age=3600` (данные меняются не чаще раза в сутки); ошибки и admin-ручки — `no-store`.
+- `Cache-Control`: списки, марсоходы, камеры и манифест — `public, max-age=300`; карточка снимка (`/photos/{id}`) — `public, max-age=3600`; редирект на изображение — `public, max-age=86400`; `/rovers/{rover}/location`, `/rovers/{rover}/traverse`, `/rovers/{rover}/samples` и `/samples/{number}` — `public, max-age=3600` (данные меняются не чаще раза в сутки); ошибки и admin-ручки — `no-store`.
 - CORS — любые источники, только `GET`; заголовок `ETag` виден клиенту.
 - Сжатие: при `Accept-Encoding: gzip` ответы от 1 КБ сжимаются; во всех ответах API — `Vary: Accept-Encoding`. `ETag` слабый и считается по несжатому телу, поэтому один и тот же для сжатого и несжатого ответа; `304` работает при любом кодировании.
 

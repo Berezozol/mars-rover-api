@@ -5,7 +5,7 @@ codes. Parameters arrive already typed and range-checked by the router; this mod
 what needs the database (rover, camera codes) and combinations of parameters.
 """
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import date
 from typing import Literal
 
@@ -16,12 +16,14 @@ from app.db.models import Camera, IngenuityFlight, Photo, Rover, SolSummary
 from app.repositories import flights as flights_repo
 from app.repositories import photos as photos_repo
 from app.repositories import rovers as rovers_repo
+from app.repositories import samples as samples_repo
 from app.repositories.photos import PhotoFilter
 from app.services.locations import PhotoLocation, photo_location
 from app.services.rover_lookup import find_rover
 from app.sources import photo_meta as meta_parser
 from app.sources.photo_meta import LocalTime
 from app.sources.registry import SYNCABLE_ROVERS
+from app.sources.samples import SAMPLES_ROVER
 
 # Values for the ``sample_type`` filter; other source values are only visible unfiltered.
 SAMPLE_TYPES: tuple[str, ...] = ("full", "subframe", "downsampled")
@@ -228,6 +230,8 @@ class PhotoDetail:
     in_sol: SolPosition
     # Ingenuity: the flight made in the photo's sol; None for other rovers or sols.
     flight: int | None = None
+    # Perseverance: numbers of the samples sealed in the photo's sol, ascending.
+    samples: list[int] = field(default_factory=list)
 
 
 async def get_photo_detail(
@@ -254,7 +258,12 @@ async def get_photo_detail(
     flight = None
     if photo.rover_id == FLIGHT_ROVER:
         flight = await flights_repo.flight_by_sol(session, photo.sol)
-    return PhotoDetail(photo, location, SolPosition(position, total, newer_id, older_id), flight)
+    samples: list[int] = []
+    if photo.rover_id == SAMPLES_ROVER:
+        samples = await samples_repo.sample_numbers_by_sol(session, photo.rover_id, photo.sol)
+    return PhotoDetail(
+        photo, location, SolPosition(position, total, newer_id, older_id), flight, samples
+    )
 
 
 @dataclass(frozen=True)

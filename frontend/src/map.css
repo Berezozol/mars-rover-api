@@ -381,3 +381,64 @@ input[aria-invalid="true"] {
   font-size: var(--fs-sm);
   margin: var(--s3) 0 0;
 }
+
+/* Sample markers (ported from design/mockups/map.html): a triangle, so the shape tells it from stops and "latest" */
+.lg-sample {
+  width: 12px;
+  height: 11px;
+  background: var(--map-sample);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+.lg-sample.lg-apx {
+  opacity: 0.45;
+}
+.smp {
+  fill: var(--map-sample);
+  stroke: var(--map-bg);
+  stroke-width: 2;
+  paint-order: stroke;
+}
+/* Approximate stop (match by_sol): lighter fill and a dashed outline, so it is not read as exact */
+.smp.smp-apx {
+  fill-opacity: 0.4;
+  stroke: var(--map-sample);
+  stroke-width: 1.6;
+  stroke-dasharray: 3 2;
+  paint-order: normal;
+}
+.smp-n {
+  fill: var(--text);
+  font: 700 11px var(--mono);
+  paint-order: stroke;
+  stroke: var(--map-bg);
+  stroke-width: 3px;
+}
+.smp-mark {
+  color: var(--map-sample);
+  font-size: var(--fs-xs);
+}
+.smp-card {
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--map-sample);
+  border-radius: var(--radius-sm);
+  padding: var(--s3);
+  margin-top: var(--s2);
+}
+.smp-card-apx {
+  border-left-style: dashed;
+}
+.smp-card h3 {
+  margin: 0 0 var(--s1);
+  font-size: var(--fs-sm);
+}
+.tgl {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-sm);
+  padding: 0 var(--s2);
+  min-height: 32px;
+}
+.mp-card .smp-g {
+  pointer-events: none;
+}

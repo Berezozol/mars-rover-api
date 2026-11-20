@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import type { Manifest, Photo, PhotoDetail, Rover } from "../src/api/types";
+import type { Manifest, Photo, PhotoDetail, Rover, Sample } from "../src/api/types";
 
 export function json(body: unknown, init: ResponseInit = {}): Response {
   return new Response(JSON.stringify(body), {
@@ -19,6 +19,16 @@ export function apiError(
   return json({ error: { code, message, details } }, { status, headers });
 }
 
+export function samplesResponse(items: Sample[]) {
+  return {
+    rover: "perseverance",
+    source_url: "https://science.nasa.gov/mission/mars-2020-perseverance/mars-rock-samples/",
+    source_updated_at: items.length ? "2026-06-20T16:45:46Z" : null,
+    updated_at: items.length ? "2026-11-20T03:00:12Z" : null,
+    items,
+  };
+}
+
 /** Requests that no mock handled; `setup.ts` fails the test if any remain. */
 export const unmatched: string[] = [];
 
@@ -26,7 +36,12 @@ type Result = Response | object;
 type Handler = Result | ((url: URL) => Result | Promise<Result>);
 
 /** Replace `fetch` with a router by pathname. Unmatched requests fail the test loudly. */
-export function mockApi(routes: Record<string, Handler>) {
+export function mockApi(overrides: Record<string, Handler>) {
+  // The route map asks for the sample list of Perseverance; most tests do not care, so it is empty unless a test says otherwise.
+  const routes: Record<string, Handler> = {
+    "/api/v2/rovers/perseverance/samples": samplesResponse([]),
+    ...overrides,
+  };
   const calls: URL[] = [];
   const fn = vi.fn(async (input: RequestInfo | URL) => {
     const url = new URL(String(input), "http://localhost");

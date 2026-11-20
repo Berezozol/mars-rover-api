@@ -1056,3 +1056,190 @@ table.flights {
   white-space: normal;
   min-width: 14ch;
 }
+
+/* ---------- Perseverance samples (ported from design/mockups/samples.html) ---------- */
+.tile ul {
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+.tile li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s2);
+}
+.source {
+  display: flex;
+  gap: var(--s2) var(--s4);
+  flex-wrap: wrap;
+  align-items: center;
+  padding: var(--s3) var(--s4);
+  margin: var(--s3) 0;
+  border-left: 4px solid var(--border-strong);
+  font-size: var(--fs-sm);
+}
+.source .spacer {
+  flex: 1;
+}
+.banner p + p {
+  margin-top: var(--s2) !important;
+}
+.smp-filters {
+  display: grid;
+  gap: var(--s3);
+  margin-bottom: var(--s3);
+}
+.fgroup {
+  display: flex;
+  gap: var(--s2) var(--s3);
+  flex-wrap: wrap;
+  align-items: center;
+}
+.fgroup .label {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  min-width: 56px;
+}
+.count-line {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  margin: 0 0 var(--s2);
+}
+.wrap {
+  overflow-x: auto;
+}
+table.samples {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+.samples th,
+.samples td {
+  padding: 10px var(--s3);
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.samples thead th {
+  background: var(--surface);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.samples .num {
+  text-align: right;
+  white-space: nowrap;
+}
+.samples tbody tr {
+  scroll-margin-top: 72px;
+}
+.samples tbody tr.target th,
+.samples tbody tr.target td {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.samples tbody tr:hover {
+  background: var(--surface-2);
+}
+.samples tbody th {
+  font-weight: 700;
+  white-space: nowrap;
+}
+.samples .nm {
+  font-weight: 600;
+}
+.samples .sub {
+  display: block;
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+}
+.samples .links a,
+.samples .links .tube-slot {
+  display: block;
+  white-space: nowrap;
+}
+.samples .links .tube-slot {
+  min-height: 1.4em;
+}
+.tbd {
+  color: var(--warn);
+  font-weight: 600;
+}
+.only-phone,
+.samples .sub.only-phone {
+  display: none;
+}
+@media (max-width: 760px) {
+  .only-phone {
+    display: inline;
+  }
+  .samples thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .samples,
+  .samples tbody,
+  .samples tr,
+  .samples td,
+  .samples tbody th {
+    display: block;
+  }
+  .samples tbody tr {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px var(--s3);
+    padding: var(--s3) var(--s4);
+    border-bottom: 1px solid var(--border);
+  }
+  .samples tbody th,
+  .samples td {
+    border: 0;
+    padding: 2px 0;
+    text-align: left !important;
+  }
+  .samples tbody th {
+    grid-column: 1 / -1;
+    font-size: var(--fs-md);
+    white-space: normal;
+  }
+  .samples td::before {
+    content: attr(data-label);
+    display: block;
+    font-size: var(--fs-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+  }
+  .samples td.links,
+  .samples td.where {
+    grid-column: 1 / -1;
+  }
+  .samples td.name-cell {
+    display: none;
+  }
+  .samples .sub.only-phone {
+    display: block;
+  }
+}
+.state {
+  padding: var(--s6) var(--s4);
+  text-align: center;
+}
+.state h2 {
+  margin-bottom: var(--s2);
+}
+.state p {
+  color: var(--text-muted);
+  max-width: 52ch;
+  margin: 0 auto var(--s3);
+}

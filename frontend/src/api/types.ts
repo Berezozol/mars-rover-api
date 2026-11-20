@@ -87,6 +87,8 @@ export interface PhotoDetail extends Photo {
   in_sol?: InSol | null;
   /** Ingenuity only: number of the flight made on the sol of the photo, or null. Always null for other rovers. */
   flight?: number | null;
+  /** Perseverance only: numbers of the samples sealed on the photo's sol, ascending; `[]` otherwise. */
+  samples?: number[];
 }
 
 /** One Ingenuity flight from the flight log (`GET /rovers/ingenuity/flights`). */
@@ -193,4 +195,48 @@ export interface Traverse {
   updated_at: string | null;
   source_max_sol: number | null;
   features: TraverseFeature[];
+}
+
+export type SampleStatus = "on_rover" | "depot";
+export type SampleKind = "rock_core" | "regolith" | "atmospheric";
+export type SampleMatch = "exact" | "nearest_before" | "by_sol";
+
+/** The stop where the rover stood on the sealing sol. `by_sol` is approximate. */
+export interface SampleLocation {
+  sol: number;
+  site: number;
+  drive: number;
+  lat: number;
+  lon: number;
+  elev_geoid: number | null;
+  match: SampleMatch;
+}
+
+/** One sample tube of Perseverance. Text fields are shown exactly as the source page publishes them. */
+export interface Sample {
+  number: number;
+  name: string;
+  feature_name: string | null;
+  sampling_location: string | null;
+  /** null: a value the page uses that we do not know; `current_location` then says it in words. */
+  status: SampleStatus | null;
+  current_location: string;
+  sample_type: SampleKind | null;
+  sample_type_label: string;
+  rock_type: string | null;
+  sealed_on: string | null;
+  sol: number | null;
+  height_cm: number | null;
+  height_note: string | null;
+  dossier_url: string | null;
+  total_photos: number | null;
+  location: SampleLocation | null;
+}
+
+export interface SamplesResponse {
+  rover: string;
+  source_url: string;
+  source_updated_at: string | null;
+  updated_at: string | null;
+  items: Sample[];
 }

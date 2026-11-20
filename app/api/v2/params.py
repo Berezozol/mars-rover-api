@@ -62,6 +62,7 @@ SampleTypeParam = Annotated[
 SiteParam = Annotated[int | None, Query(ge=0, le=MAX_SOL, description="Stop number."), StrictInt]
 DriveParam = Annotated[int | None, Query(ge=0, le=MAX_SOL), StrictInt]
 FlightNumberPath = Annotated[int, Path(description="Flight number, from 1."), StrictInt]
+SampleNumberPath = Annotated[int, Path(description="Sample number, from 1."), StrictInt]
 PhotoIdPath = Annotated[int, Path(), StrictInt]
 
 

@@ -13,11 +13,13 @@ import httpx
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
-from app.db.models import LocationDataset
+from app.db.models import LocationDataset, SampleDataset
 from app.repositories import locations as locations_repo
+from app.repositories import samples as samples_repo
 from app.services.health import RoverFreshness, get_sync_freshness
 from app.services.sync import SyncResult
 from app.sources.locations import KINDS, LOCATION_MISSIONS
+from app.sources.samples import SAMPLES_ROVER
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +87,16 @@ class LocationHealth:
     last_error: str | None
 
 
+@dataclass(frozen=True)
+class SamplesHealth:
+    """Whether the samples page is being checked successfully."""
+
+    stale: bool
+    # Last successful check; None if there never was one.
+    last_success_at: datetime | None
+    last_error: str | None
+
+
 class AlertMonitor:
     """Alerts on freshness transitions (per rover) and on failed or partial syncs.
 
@@ -109,11 +121,16 @@ class AlertMonitor:
         # Rover -> stale at the last reported check; absent = fresh.
         self._stale: dict[str, bool] = {}
         self._location_stale: dict[str, bool] = {}
+        self._samples_stale = False
 
     async def check(self, now: datetime | None = None) -> str | None:
         """Check freshness and alert on changes; returns the text sent (None if nothing)."""
         now = now or datetime.now(UTC)
-        texts = [await self._check_photos(now), await self._check_locations(now)]
+        texts = [
+            await self._check_photos(now),
+            await self._check_locations(now),
+            await self._check_samples(now),
+        ]
         sent = [text for text in texts if text]
         return "\n".join(sent) if sent else None
 
@@ -151,6 +168,25 @@ class AlertMonitor:
         if not await self._notifier.send(text):
             return None
         self._location_stale.update({h.rover: h.stale for h in changed})
+        return text
+
+    async def _check_samples(self, now: datetime) -> str | None:
+        if not self._settings.samples_sync_enabled:
+            return None
+        try:
+            async with self._session_factory() as session:
+                dataset = await samples_repo.get_dataset(session, SAMPLES_ROVER)
+        except Exception as exc:
+            logger.warning("Samples freshness check for alerts failed: %s", type(exc).__name__)
+            return None
+        stale_after = timedelta(days=self._settings.samples_stale_days)
+        health = samples_health(dataset, now, stale_after)
+        if health.stale == self._samples_stale:
+            return None
+        text = f"{PREFIX} {_samples_line(health, stale_after)}"
+        if not await self._notifier.send(text):
+            return None
+        self._samples_stale = health.stale
         return text
 
     async def on_sync_finished(self, run: SyncResult) -> str | None:
@@ -216,6 +252,31 @@ def _location_line(health: LocationHealth, stale_after: timedelta) -> str:
         return f"{health.rover}: position data checks recovered"
     line = (
         f"{health.rover}: position data not checked successfully for over "
+        f"{stale_after.days} days (last success {_when(health.last_success_at)})"
+    )
+    if health.last_error:
+        line += f"\nerror: {_truncate(health.last_error)}"
+    return line
+
+
+def samples_health(
+    dataset: SampleDataset | None, now: datetime, stale_after: timedelta
+) -> SamplesHealth:
+    """Stale: coalesce(succeeded_at, created_at) is older than ``stale_after``.
+
+    A page that was never attempted (no state row: fresh install, loading off) is not stale.
+    """
+    if dataset is None:
+        return SamplesHealth(False, None, None)
+    reference = dataset.succeeded_at or dataset.created_at
+    return SamplesHealth(now - reference > stale_after, dataset.succeeded_at, dataset.last_error)
+
+
+def _samples_line(health: SamplesHealth, stale_after: timedelta) -> str:
+    if not health.stale:
+        return "perseverance: samples page checks recovered"
+    line = (
+        "perseverance: samples page not checked successfully for over "
         f"{stale_after.days} days (last success {_when(health.last_success_at)})"
     )
     if health.last_error:
