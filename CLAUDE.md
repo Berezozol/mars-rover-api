@@ -22,6 +22,8 @@ Python 3.13+, FastAPI, SQLAlchemy 2.0 (async) + asyncpg, Alembic, httpx + tenaci
 - тесты: `uv run pytest -q -n 12` (параллельно, у каждого воркера своя БД `mars_test_gwN`, ~3 мин; без `-n` — последовательно, ~16 мин); по слоям: `-m unit`, `-m integration`, `-m api`. Тестовую БД мигрирует сама фикстура `migrated_db` — подключай её в тестах, которым нужна база.
 - фронтенд (`frontend/`, Node 26): `npm ci`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run build` → `frontend/dist`, сервер раздаёт его на `/`; `npm run dev` — с прокси на `127.0.0.1:8000`
 - линтер: `uv run ruff check .` и `uv run ruff format .`
+- типы (пока отчёт, не гейт CI): `uv run mypy app`; покрытие: `uv run pytest -q -n 12 --cov` (`pytest-cov`)
+- инструменты проверки — группа зависимостей `tools` (`uv run --group tools ...`): `bandit -r app -ll` (небезопасные шаблоны), `pip-audit` (уязвимые зависимости — только с моего «ок», ходит в сеть), `schemathesis` (генерация запросов по `docs/openapi.json`, только против локального сервера), `pre-commit run --all-files` (локальные хуки, `pre-commit install` ставит их в git)
 - синхронизация: `uv run python -m app.cli sync --rover perseverance --from-sol 2029 --to-sol 2031`
 
 Работаем на Windows: в командах — только `uv run ...`, `docker compose ...` и `npm ...` в `frontend/`, без make и bash-специфики.

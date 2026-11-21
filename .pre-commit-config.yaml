@@ -1,0 +1,25 @@
+# Local hooks only: they run the same commands as CI through uv, nothing is downloaded.
+# Install once with `uv run --group tools pre-commit install`; run on demand with
+# `uv run --group tools pre-commit run --all-files`.
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check
+        language: system
+        types: [python]
+      - id: ruff-format
+        name: ruff format --check
+        entry: uv run ruff format --check
+        language: system
+        types: [python]
+      - id: no-secrets-files
+        name: forbid .env, dumps and local data
+        entry: >-
+          python -c "import sys; bad=[f for f in sys.argv[1:] if f.replace(chr(92),'/').split('/')[-1]
+          in ('.env',) or f.replace(chr(92),'/').startswith(('data/','frontend/dist/')) or f.endswith(('.dump','.pem','.key'))];
+          print('Do not commit: '+', '.join(bad)) if bad else None; sys.exit(1 if bad else 0)"
+        language: system
+        pass_filenames: true
+        always_run: false
