@@ -5,6 +5,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import ClientKey, get_heavy_query_gate
 from app.api.home import request_origin
 from app.api.responses import FastJSONResponse, GeoJSONResponse
 from app.api.v2.params import (
@@ -58,6 +59,7 @@ from app.api.v2.schemas import (
     samples_body,
     traverse_body,
 )
+from app.core.overload import HeavyQueryGate
 from app.db.session import get_session
 from app.services import locations, v2
 from app.services import samples as samples_service
@@ -100,6 +102,8 @@ async def list_photos(
     request: Request,
     rover: str,
     session: Session,
+    gate: Annotated[HeavyQueryGate, Depends(get_heavy_query_gate)],
+    client: ClientKey,
     pagination: Pagination,
     sol: SolParam = None,
     earth_date: EarthDateParam = None,
@@ -148,7 +152,8 @@ async def list_photos(
     )
     return FastJSONResponse(
         photos_body(
-            await v2.search_photos(session, rover, query, pagination), request_origin(request)
+            await v2.search_photos(session, rover, query, pagination, gate=gate, client=client),
+            request_origin(request),
         )
     )
 

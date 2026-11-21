@@ -7,8 +7,11 @@ what needs the database (rover, camera codes) and combinations of parameters.
 
 import math
 import re
+from collections.abc import AsyncIterator, Sequence
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field, replace
 from datetime import date
+from enum import StrEnum
 from functools import lru_cache
 from typing import Literal
 
@@ -20,8 +23,10 @@ from app.core.errors import (
     InvalidParam,
     NotFoundError,
     PhotoNotFound,
+    RoverNotFound,
     ValidationAppError,
 )
+from app.core.overload import HeavyQueryGate
 from app.db.models import Camera, IngenuityFlight, Photo, Rover, SolSummary
 from app.repositories import flights as flights_repo
 from app.repositories import photos as photos_repo
@@ -29,7 +34,7 @@ from app.repositories import rovers as rovers_repo
 from app.repositories import samples as samples_repo
 from app.repositories.photos import DEFAULT_SORT, PhotoFilter, PhotoSort
 from app.services.locations import PhotoLocation, photo_location
-from app.services.rover_lookup import find_rover
+from app.services.rover_lookup import _ROVER_SLUG_RE, find_rover
 from app.sources import photo_meta as meta_parser
 from app.sources.locations import LOCATION_MISSIONS
 from app.sources.photo_meta import LocalTime
@@ -216,18 +221,32 @@ async def list_cameras(
 
 
 async def search_photos(
-    session: AsyncSession, slug: str, query: PhotoQuery, page: PageRequest
+    session: AsyncSession,
+    slug: str,
+    query: PhotoQuery,
+    page: PageRequest,
+    gate: HeavyQueryGate | None = None,
+    client: str | None = None,
 ) -> PhotoPage:
-    """Photos of one rover by the query's filters, in the order of ``query.sort``."""
+    """Photos of one rover by the query's filters, in the order of ``query.sort``.
+
+    A heavy search (see ``needs_heavy_slot``) takes a slot of ``gate`` for ``client`` after the
+    checks that need no database and before the first query (also before the rover lookup);
+    with no free slot it fails with ``ServiceBusy``.
+    """
+    _check_rover_slug(slug)
     _check_query(query)
     if (query.camera is not None and "," in query.camera) or query.near is not None:
         _check_window(page)
-    rover = await find_rover(session, slug)
-    _check_near_scope(query, [rover.id])
-    codes = await _camera_filters(session, [rover.id], query.camera)
-    flt = _rover_filter(rover.id, query, None if codes is None else codes[rover.id])
-    result = await _photo_page(session, rover, flt, page, query.sort)
+    shape = _shape_filter(slug, query)
+    async with _heavy_gate(gate, [shape], page, client, query.sort):
+        rover = await find_rover(session, slug)
+        _check_near_scope(query, [rover.id])
+        codes = await _camera_filters(session, [rover.id], query.camera)
+        flt = _rover_filter(rover.id, query, None if codes is None else codes[rover.id])
+        result = await _photo_page(session, rover, flt, page, query.sort)
     if result.total == 0 and (query.sol is not None or query.earth_date is not None):
+        # Intentionally outside the gate: two indexed reads of sol_summaries, only with sol/date.
         before, after = await photos_repo.nearest_sols(
             session, rover.id, sol=query.sol, earth_date=query.earth_date
         )
@@ -235,21 +254,52 @@ async def search_photos(
     return result
 
 
+def _check_rover_slug(slug: str) -> None:
+    """Unknown or malformed slug -> ``RoverNotFound`` without the database (before the gate)."""
+    if not _ROVER_SLUG_RE.fullmatch(slug) or slug.lower() not in ROVER_SLUGS:
+        raise RoverNotFound(slug)
+
+
+def _shape_filter(rover_id: str, query: PhotoQuery) -> PhotoFilter:
+    """The filter of the query without database lookups, for the gate decision only.
+
+    A requested camera is stood in by an empty list: ``classify_total`` looks at whether a
+    camera filter is present, not at which cameras.
+    """
+    return _rover_filter(rover_id, query, [] if query.camera is not None else None)
+
+
 async def search_photos_multi(
-    session: AsyncSession, query: MultiPhotoQuery, page: PageRequest
+    session: AsyncSession,
+    query: MultiPhotoQuery,
+    page: PageRequest,
+    gate: HeavyQueryGate | None = None,
+    client: str | None = None,
 ) -> PhotoPage:
-    """Photos of several rovers (all by default) as one list in the order of ``query.sort``."""
+    """Photos of several rovers (all by default) as one list in the order of ``query.sort``.
+
+    One gate slot for the whole request if any rover's filter is heavy (see ``search_photos``);
+    taken before the camera lookup, from the shape of the filters.
+    """
     rover_ids = parse_rovers(query.rovers)
     _check_query(query)
     _check_site_scope(query, rover_ids)
     _check_near_scope(query, rover_ids)
     _check_window(page)
-    codes = await _camera_filters(session, rover_ids, query.camera)
-    filters = [
-        _rover_filter(rover_id, query, None if codes is None else codes[rover_id])
-        for rover_id in rover_ids
-        if codes is None or codes[rover_id]
-    ]
+    shapes = [_shape_filter(rover_id, query) for rover_id in rover_ids]
+    async with _heavy_gate(gate, shapes, page, client, query.sort):
+        codes = await _camera_filters(session, rover_ids, query.camera)
+        filters = [
+            _rover_filter(rover_id, query, None if codes is None else codes[rover_id])
+            for rover_id in rover_ids
+            if codes is None or codes[rover_id]
+        ]
+        return await _multi_page(session, filters, query.sort, page)
+
+
+async def _multi_page(
+    session: AsyncSession, filters: list[PhotoFilter], sort: PhotoSort, page: PageRequest
+) -> PhotoPage:
     # Totals and the list are separate statements (read committed): a sync committing between
     # them can make the page and ``total`` differ by a few rows; the next request is exact.
     total = 0
@@ -264,7 +314,7 @@ async def search_photos_multi(
     items: list[Photo] = []
     if page.offset < total:
         items = await photos_repo.list_photos_multi(
-            session, hinted, query.sort, page.per_page, page.offset
+            session, hinted, sort, page.per_page, page.offset
         )
     return PhotoPage(items, page.page, page.per_page, total)
 
@@ -710,12 +760,76 @@ resolve_camera_codes = _camera_codes
 normalize_sample_type = _sample_type
 
 
-async def _sol_range_total(session: AsyncSession, rover_id: str, flt: PhotoFilter) -> int:
-    """Total of a sol range from the per-sol counts when they answer it exactly."""
-    sample_type = flt.sample_type.lower() if flt.sample_type is not None else None
-    if sample_type not in (None, photos_repo.FULL_SAMPLE_TYPE):
-        return await photos_repo.count_photos(session, flt)
-    full_only = sample_type is not None
+class TotalSource(StrEnum):
+    """Where the ``total`` of a filter comes from; also how heavy the search is."""
+
+    # Read from sol_summaries / camera_sol_counts: no scan of photos.
+    SUMMARY = "summary"
+    # Counted in photos from a narrow slice (one sol or day) or index-only: cheap.
+    SCAN_LIGHT = "scan_light"
+    # Counted over the rover's photos (heap scan): the search takes a gate slot.
+    SCAN_HEAVY = "scan_heavy"
+
+
+def _is_full_or_any(flt: PhotoFilter) -> bool:
+    return flt.sample_type is None or flt.sample_type.lower() == photos_repo.FULL_SAMPLE_TYPE
+
+
+def _answered_by_summaries(flt: PhotoFilter) -> bool:
+    """True when sol_summaries / camera_sol_counts give the exact total of the filter."""
+    stops = flt.site is not None or flt.site_min is not None or flt.site_max is not None
+    dates = flt.date_min is not None or flt.date_max is not None
+    if stops or dates or flt.near is not None or _has_meta_filter(flt):
+        return False
+    if flt.sol_min is not None or flt.sol_max is not None:
+        return _is_full_or_any(flt)
+    by_date = flt.sol is not None or flt.earth_date is not None
+    if flt.camera_codes is not None:
+        # Camera alone, or camera + full: summed from camera_sol_counts.
+        return not by_date and _is_full_or_any(flt)
+    if flt.earth_date is not None:
+        return False
+    if flt.sample_type is not None:
+        # Only "full" without a sol (summed full_photos); a sol with a type is counted.
+        return _is_full_or_any(flt) and flt.sol is None
+    return True
+
+
+def classify_total(flt: PhotoFilter) -> TotalSource:
+    """The source of ``total`` for one rover's filter, from its shape alone (no database).
+
+    ``_total`` follows it; a search with a ``SCAN_HEAVY`` filter takes a gate slot. A ``sol`` or
+    ``earth_date`` pins the search to one sol or day, so it is at most ``SCAN_LIGHT``. Stops and
+    ``near`` are index-only over ``ix_photos_near_cover`` (which includes ``sol`` and
+    ``sample_type``), so they are light with ``sample_type``, heavy with a camera, dates or
+    local time / frame size. Anything else counted in photos is heavy: dates, local time, frame
+    size, a ``sample_type`` other than ``full`` (also with a sol range or a camera).
+    """
+    if _answered_by_summaries(flt):
+        return TotalSource.SUMMARY
+    if flt.sol is not None or flt.earth_date is not None:
+        return TotalSource.SCAN_LIGHT
+    located = (
+        flt.site is not None
+        or flt.site_min is not None
+        or flt.site_max is not None
+        or flt.near is not None
+    )
+    if located:
+        other = (
+            flt.camera_codes is not None
+            or flt.camera_ids is not None
+            or flt.date_min is not None
+            or flt.date_max is not None
+            or _has_meta_filter(flt)
+        )
+        return TotalSource.SCAN_HEAVY if other else TotalSource.SCAN_LIGHT
+    return TotalSource.SCAN_HEAVY
+
+
+async def _summary_total(session: AsyncSession, rover_id: str, flt: PhotoFilter) -> int:
+    """Total from the per-sol counts for a filter ``_answered_by_summaries`` accepted."""
+    full_only = flt.sample_type is not None
     if flt.camera_codes is not None:
         return await photos_repo.camera_total_photos(
             session,
@@ -725,37 +839,66 @@ async def _sol_range_total(session: AsyncSession, rover_id: str, flt: PhotoFilte
             sol_min=flt.sol_min,
             sol_max=flt.sol_max,
         )
-    return await photos_repo.sol_range_total_photos(
-        session, rover_id, flt.sol_min, flt.sol_max, full_only=full_only
-    )
+    if flt.sol_min is not None or flt.sol_max is not None or full_only:
+        return await photos_repo.sol_range_total_photos(
+            session, rover_id, flt.sol_min, flt.sol_max, full_only=full_only
+        )
+    if flt.sol is None:
+        return await photos_repo.rover_total_photos_from_summaries(session, rover_id)
+    return await photos_repo.sol_total_photos(session, rover_id, flt.sol)
 
 
 async def _total(session: AsyncSession, rover_id: str, flt: PhotoFilter) -> int:
-    """Total for the filter, read from sol_summaries when they answer it exactly.
+    """Total for the filter, read from sol_summaries when they answer it exactly
+    (``classify_total``).
 
     Not rovers.total_photos: that cache is refreshed only when a sync finishes, while photos
     and summaries are committed per sol, so it lags during a sync or after a crash.
     """
-    stops = flt.site is not None or flt.site_min is not None or flt.site_max is not None
-    dates = flt.date_min is not None or flt.date_max is not None
-    if stops or dates or flt.near is not None or _has_meta_filter(flt):
-        return await photos_repo.count_photos(session, flt)
-    if flt.sol_min is not None or flt.sol_max is not None:
-        return await _sol_range_total(session, rover_id, flt)
-    by_date = flt.sol is not None or flt.earth_date is not None
-    sample_type = flt.sample_type.lower() if flt.sample_type is not None else None
-    full_or_any = sample_type in (None, photos_repo.FULL_SAMPLE_TYPE)
-    if flt.camera_codes is not None and not by_date and full_or_any:
-        # Camera alone, or camera + full: summed from camera_sol_counts, no photos scan.
-        return await photos_repo.camera_total_photos(
-            session, rover_id, flt.camera_codes, full_only=sample_type is not None
-        )
-    narrowed = flt.earth_date is not None or flt.camera_codes is not None
-    if narrowed or flt.sample_type is not None:
-        return await photos_repo.count_photos(session, flt)
-    if flt.sol is None:
-        return await photos_repo.rover_total_photos_from_summaries(session, rover_id)
-    return await photos_repo.sol_total_photos(session, rover_id, flt.sol)
+    if classify_total(flt) is TotalSource.SUMMARY:
+        return await _summary_total(session, rover_id, flt)
+    return await photos_repo.count_photos(session, flt)
+
+
+def _taken_at_scan(flt: PhotoFilter, sort: PhotoSort) -> bool:
+    """A camera or sample_type with a taken_at sort and no sol / earth_date: no index serves it."""
+    if sort not in ("taken_at", "-taken_at") or flt.sol is not None or flt.earth_date is not None:
+        return False
+    return flt.camera_codes is not None or flt.sample_type is not None
+
+
+def needs_heavy_slot(
+    filters: Sequence[PhotoFilter], page: PageRequest, sort: PhotoSort = DEFAULT_SORT
+) -> bool:
+    """True when the search takes a gate slot: a ``SCAN_HEAVY`` filter (``classify_total``), a
+    deep page (``offset >= MAX_RESULT_WINDOW``, every skipped row is read) or a camera /
+    ``sample_type`` with ``sort=taken_at`` / ``-taken_at`` and no sol or earth_date.
+    """
+    if page.offset >= MAX_RESULT_WINDOW:
+        return True
+    return any(
+        classify_total(flt) is TotalSource.SCAN_HEAVY or _taken_at_scan(flt, sort)
+        for flt in filters
+    )
+
+
+@asynccontextmanager
+async def _heavy_gate(
+    gate: HeavyQueryGate | None,
+    filters: Sequence[PhotoFilter],
+    page: PageRequest,
+    client: str | None = None,
+    sort: PhotoSort = DEFAULT_SORT,
+) -> AsyncIterator[None]:
+    """Hold one gate slot while a heavy search (``needs_heavy_slot``) reads the database.
+
+    One slot per request, whatever the number of rovers. Without a gate (None) nothing is held.
+    """
+    if gate is None or not needs_heavy_slot(filters, page, sort):
+        yield
+        return
+    async with gate.slot(client):
+        yield
 
 
 async def _photo_page(

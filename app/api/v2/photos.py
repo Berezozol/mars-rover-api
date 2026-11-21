@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import ClientKey, get_heavy_query_gate
 from app.api.home import request_origin
 from app.api.responses import FastJSONResponse
 from app.api.v2.params import (
@@ -39,6 +40,7 @@ from app.api.v2.schemas import (
     photo_detail_out,
     photo_list_body,
 )
+from app.core.overload import HeavyQueryGate
 from app.db.session import get_session
 from app.services import v2
 from app.services.mer_images import MerImageService
@@ -58,6 +60,8 @@ router = APIRouter()
 async def list_all_photos(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
+    gate: Annotated[HeavyQueryGate, Depends(get_heavy_query_gate)],
+    client: ClientKey,
     pagination: Pagination,
     rovers: RoversParam = None,
     sol: SolParam = None,
@@ -106,7 +110,7 @@ async def list_all_photos(
         near=near,
         radius_km=radius_km,
     )
-    result = await v2.search_photos_multi(session, query, pagination)
+    result = await v2.search_photos_multi(session, query, pagination, gate=gate, client=client)
     return FastJSONResponse(photo_list_body(result, request_origin(request)))
 
 

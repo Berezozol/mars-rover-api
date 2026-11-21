@@ -142,6 +142,17 @@ class ConverterBusy(ServiceUnavailableError):
         super().__init__("Image converter is busy, try again later")
 
 
+class ServiceBusy(ServiceUnavailableError):
+    """503: every place for a heavy search is taken (``HeavyQueryGate``); raised without
+    touching the database. Same body and headers as a database overrun."""
+
+    code = "service_busy"
+
+    def __init__(self, in_use: int = 0) -> None:
+        super().__init__(SERVICE_BUSY_MESSAGE)
+        self.in_use = in_use
+
+
 class SyncInProgress(ConflictError):
     """A sync of this rover is already running (the advisory lock is held)."""
 
@@ -328,15 +339,31 @@ def is_db_unavailable(exc: BaseException) -> bool:
     return isinstance(exc, DBAPIError) and exc.connection_invalidated
 
 
+def log_route(request: Request) -> str:
+    """The matched route template for logs (``/rovers/{rover}/photos``), never the raw path.
+
+    ``scope["route"].path`` is relative to the including router (no ``/api/v2`` prefix); an
+    unmatched request logs a constant.
+    """
+    path = getattr(request.scope.get("route"), "path", None)
+    return path if isinstance(path, str) else "unmatched"
+
+
 async def _handle_app_error(request: Request, exc: AppError) -> JSONResponse:
     headers = None
+    message = exc.message
     if isinstance(exc, RateLimited | ConverterBusy):
         headers = rate_limited_headers(exc.retry_after)
+    elif isinstance(exc, ServiceBusy):
+        logger.warning("Heavy query rejected path=%s in_use=%d", log_route(request), exc.in_use)
+        headers = rate_limited_headers(BUSY_RETRY_AFTER_SECONDS)
+        if is_legacy_path(request.url.path):
+            message = LEGACY_SERVICE_BUSY_MESSAGE
     return error_response(
         request,
         status_code=exc.status_code,
         code=exc.code,
-        message=exc.message,
+        message=message,
         details=exc.details,
         headers=headers,
     )
@@ -394,7 +421,7 @@ async def _handle_db_error(request: Request, exc: Exception) -> JSONResponse:
     if is_db_busy(exc):
         logger.warning(
             "Database busy path=%s error=%s sqlstate=%s",
-            request.url.path,
+            log_route(request),
             type(exc).__name__,
             db_sqlstate(exc) or "none",
         )

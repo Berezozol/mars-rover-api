@@ -14,6 +14,7 @@ from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests._ingenuity import FLIGHTS
+from tests.integration.test_ingenuity_roundtrip import NEAR_INDEX_TMP
 
 pytestmark = pytest.mark.integration
 
@@ -235,7 +236,8 @@ async def test_flight_number_is_smallint_and_numeric_columns_have_contract_types
 async def test_photos_site_drive_index_is_covering_valid_and_partial(
     db_session: AsyncSession,
 ) -> None:
-    """0014 replaced `ix_photos_rover_id_site_drive` with a covering index on the same key."""
+    """0014 replaced `ix_photos_rover_id_site_drive` with a covering index on the same key;
+    0015 (overload protection, AC-15) widened its INCLUDE list by `sample_type`, `camera_id`."""
     rows = (
         await db_session.execute(
             text(
@@ -249,7 +251,9 @@ async def test_photos_site_drive_index_is_covering_valid_and_partial(
     assert len(rows) == 1
     assert rows[0].indisvalid and rows[0].indisready
     definition = rows[0].indexdef
-    assert "(rover_id, site, drive) INCLUDE (sol, taken_at, id)" in definition
+    assert (
+        "(rover_id, site, drive) INCLUDE (sol, taken_at, id, sample_type, camera_id)" in definition
+    )
     assert "WHERE (site IS NOT NULL)" in definition
     assert "ON public.photos" in definition
 
@@ -271,3 +275,15 @@ async def test_rover_unique_legacy_id_blocks_a_duplicate(db_session: AsyncSessio
                 "status) VALUES ('dup', 9, 'Dup', 'x', DATE '2020-01-01', DATE '2020-01-02', 'x')"
             )
         )
+
+
+async def test_photos_near_cover_index_has_no_leftover_temporary_copy(
+    db_session: AsyncSession,
+) -> None:
+    """AC-15: 0015 builds the new index under a temporary name and renames it."""
+    rows = (
+        await db_session.execute(
+            text("SELECT 1 FROM pg_class WHERE relname = :name"), {"name": NEAR_INDEX_TMP}
+        )
+    ).all()
+    assert rows == []

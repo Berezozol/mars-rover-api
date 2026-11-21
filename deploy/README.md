@@ -83,6 +83,8 @@ the image.
 | `MER_CONVERT_TIMEOUT_SECONDS` | no | default 60: time limit of one conversion |
 | `MER_CONVERT_QUEUE` | no | default 8: conversions waiting for a free slot; beyond that the request is refused |
 | `MER_PDS_MAX_RPS` | no | default 2: requests per second to NASA PDS from all conversions together |
+| `DB_POOL_SIZE`, `DB_MAX_OVERFLOW` | no | defaults 10 and 5: connection pool of the HTTP engine (at most size + overflow connections). Startup refuses a pool above 50 combined (Postgres `max_connections` is 100; the rest is for the worker, `pg_dump` and admin sessions). The laptop does not set them, the defaults are right |
+| `HEAVY_QUERY_CONCURRENCY` | no | default 2: heavy v2 searches running at once; extra ones get `503 service_busy` (`Retry-After: 5`) immediately. Must be at least 1 and below pool size + overflow. Not set on the laptop |
 
 The server runs a single uvicorn process (no `--workers`): the scheduler, the rate-limit counters
 and the alert state live in-process.
@@ -329,7 +331,7 @@ so run the steps by hand (same commands as the script), from `%USERPROFILE%\mars
 
 1. Prepare: `git pull --ff-only` in the repository, then `docker build -t mars-rover-api:local <repo>`
    (the old container keeps running on the old image) and a backup:
-   `powershell -NoProfile -ExecutionPolicy Bypass -File <repo>\deploy\laptopackup.ps1 -ComposeDir %USERPROFILE%\mars-server`.
+   `powershell -NoProfile -ExecutionPolicy Bypass -File <repo>\deploy\laptop\backup.ps1 -ComposeDir %USERPROFILE%\mars-server`.
 2. Pause the scheduler: `docker compose -p mars stop app` (the API is down from here to step 6, a few
    minutes). `docker compose run` containers do not start the scheduler.
 3. Migrate: `docker compose -p mars run --rm app alembic upgrade head` (head becomes `0014`). If it
@@ -356,6 +358,61 @@ rerun-safe, with the new image still tagged `:local`), check out the previous co
 `docker build -t mars-rover-api:local <repo>`, `docker compose -p mars up -d app`. Run the
 `pg_index` check of step 5 again (the old index valid, `ix_photos_near_cover` gone). The data is
 not touched by either direction.
+
+#### Release: overload protection (migration 0015)
+
+Migration 0015 rebuilds `ix_photos_near_cover` with
+`INCLUDE (sol, taken_at, id, sample_type, camera_id)` (+2 columns; same key and predicate), so counts
+by stop and near searches with `sample_type` or a camera run as index-only scans. It builds
+`ix_photos_near_cover_swap` with `CREATE INDEX CONCURRENTLY`, drops the old index, renames the swap
+(~4 s and ~102 MB on dev, +23 MB over the old index; keep ~150 MB free until the old one is dropped).
+Rerun-safe: the state is read from the catalog, a valid finished index is left alone, the table is never
+without an index, and a leftover INVALID swap index is rebuilt. Same constraints as 18B-3: the API keeps
+serving during the build, but sync and the scheduler must be stopped (`lock_timeout = 5s` can fail
+late: just rerun).
+
+New settings (`DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `HEAVY_QUERY_CONCURRENCY`, see the table above) have
+defaults that suit the laptop: the live `.env` and `compose.yml` need no change. API connections now
+carry `application_name` `mars-api`, the sync worker `mars-worker`.
+
+Same manual sequence as 18B-3 (`update.ps1` would start the app before the `VACUUM`), from
+`%USERPROFILE%\mars-server`:
+
+1. Prepare: `git pull --ff-only`, `docker build -t mars-rover-api:local <repo>` (the old container
+   keeps running), and a backup:
+   `powershell -NoProfile -ExecutionPolicy Bypass -File <repo>\deploy\laptop\backup.ps1 -ComposeDir %USERPROFILE%\mars-server`.
+   Note the current commit (`3f3c02f`) for rollback.
+2. Pause the scheduler: `docker compose -p mars stop app` (API down until step 6).
+3. Migrate: `docker compose -p mars run --rm app alembic upgrade head` (head becomes `0015`).
+4. Visibility map (needed for index-only scans):
+   ```
+   docker compose -p mars exec db psql -U <db-user> -d <db-name> -c "VACUUM (ANALYZE, PARALLEL 0) photos"
+   ```
+5. Check the index (valid, 5 INCLUDE columns, no `_swap`):
+   ```
+   docker compose -p mars exec db psql -U <db-user> -d <db-name> -c "SELECT indexrelid::regclass, indisvalid, indnatts - indnkeyatts AS include_cols FROM pg_index WHERE indrelid='photos'::regclass"
+   ```
+   `ix_photos_near_cover` is `t` with `5`; `ix_photos_near_cover_swap` is absent.
+6. Start the new version: `docker compose -p mars up -d app`, wait for `200` on
+   `http://127.0.0.1:8000/health`, check `GET /health/sync`.
+7. Post-deploy checks:
+   - connection labels (expect `mars-api` up to 15 connections and `mars-worker`):
+     ```
+     docker compose -p mars exec db psql -U <db-user> -d <db-name> -c "SELECT application_name, count(*) FROM pg_stat_activity GROUP BY 1"
+     ```
+   - smoke test (section "Smoke test") and the 18B-3 near check;
+   - `GET http://127.0.0.1:8000/api/v2/rovers/curiosity/photos?date_min=2012-08-06&sample_type=full` -> `200`;
+   - one heavy request per address: send three such requests in parallel from one machine; at least
+     one must answer `503` with body `{"error": {"code": "service_busy", ...}}` and `Retry-After: 5`. Run it
+     from outside the laptop to also pass Funnel, or from the laptop on `127.0.0.1`; mind the per-IP
+     limit of 60/min and wait a minute before repeating;
+   - `GET /api/v2/rovers/nosuch/photos` -> `404`.
+
+Rollback: `docker compose -p mars stop app`, then
+`docker compose -p mars run --rm app alembic downgrade 0014` (rebuilds the old 3-column INCLUDE
+index, rerun-safe, with the new image still tagged `:local`), check out `3f3c02f`,
+`docker build -t mars-rover-api:local <repo>`, `docker compose -p mars up -d app`. Rerun the
+`pg_index` check of step 5 (`include_cols` is `3`, no `_swap`). Data is not touched in either direction.
 
 ### MER image cache
 

@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     db_statement_timeout_seconds: float = Field(default=5.0, ge=0)
     # How long a request waits for a free pooled connection.
     db_pool_timeout_seconds: float = Field(default=5.0, gt=0)
+    # Pool of the engine serving HTTP requests: pooled connections plus overflow.
+    db_pool_size: int = Field(default=10, ge=1, le=50)
+    db_max_overflow: int = Field(default=5, ge=0, le=50)
+    # Heavy v2 searches running at the same time on the whole server; an extra one gets 503
+    # service_busy at once. Must stay below the pool so light requests always find a connection.
+    heavy_query_concurrency: int = Field(default=2, ge=1)
 
     sync_enabled: bool = False
     sync_interval_minutes: int = 360
@@ -152,6 +158,11 @@ class Settings(BaseSettings):
             raise ValueError("RATE_LIMIT_PER_HOUR must be >= RATE_LIMIT_PER_MINUTE")
         return self
 
+    @model_validator(mode="after")
+    def _check_heavy_query_concurrency(self) -> Self:
+        check_pool_settings(self)
+        return self
+
     @property
     def admin_token_value(self) -> str:
         """The stripped admin token, "" when admin is disabled."""
@@ -170,6 +181,26 @@ class Settings(BaseSettings):
     @property
     def alerts_enabled(self) -> bool:
         return bool(self.telegram_token_value and (self.telegram_chat_id or "").strip())
+
+
+MAX_DB_POOL = 50
+# API pool (size + overflow) leaves room under Postgres max_connections=100 for the worker,
+# pg_dump and admin sessions.
+MAX_DB_CONNECTIONS = 50
+
+
+def check_pool_settings(settings: Settings) -> None:
+    """Pool bounds and the gate rule; ``create_app`` repeats it for ``model_copy`` settings."""
+    if not 1 <= settings.db_pool_size <= MAX_DB_POOL:
+        raise ValueError(f"DB_POOL_SIZE must be 1..{MAX_DB_POOL}")
+    if not 0 <= settings.db_max_overflow <= MAX_DB_POOL:
+        raise ValueError(f"DB_MAX_OVERFLOW must be 0..{MAX_DB_POOL}")
+    if settings.db_pool_size + settings.db_max_overflow > MAX_DB_CONNECTIONS:
+        raise ValueError(f"DB_POOL_SIZE + DB_MAX_OVERFLOW must be <= {MAX_DB_CONNECTIONS}")
+    if settings.heavy_query_concurrency < 1:
+        raise ValueError("HEAVY_QUERY_CONCURRENCY must be >= 1")
+    if settings.heavy_query_concurrency >= settings.db_pool_size + settings.db_max_overflow:
+        raise ValueError("HEAVY_QUERY_CONCURRENCY must be < DB_POOL_SIZE + DB_MAX_OVERFLOW")
 
 
 MIN_ADMIN_TOKEN_LENGTH = 16

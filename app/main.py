@@ -21,9 +21,10 @@ from app.api.ratelimit import RateLimitMiddleware
 from app.api.v2 import router as v2_router
 from app.api.v2.admin import admin_auth_limiter
 from app.api.v2.admin import router as admin_router
-from app.core.config import Settings, check_admin_token, get_settings
+from app.core.config import Settings, check_admin_token, check_pool_settings, get_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging
+from app.core.overload import HeavyQueryGate
 from app.core.ratelimit import RateLimiter
 from app.db.session import create_engine, create_session_factory
 from app.services.admin import AdapterFactory, cancel_background
@@ -59,8 +60,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     - ``health_sync_cache``: ``FreshnessCache`` of /health/sync (``ttl``, ``clock``, ``clear()``).
     """
     settings = settings or get_settings()
-    # Fail fast on a too-short ADMIN_TOKEN (model_copy(update=...) skips the validator).
+    # model_copy(update=...) skips the validators: repeat the token and pool/gate checks.
     check_admin_token(settings.admin_token)
+    check_pool_settings(settings)
     configure_logging(settings.log_level)
 
     # Requests get a statement timeout and a short pool wait; the sync service, alerts and
@@ -70,9 +72,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         connect_timeout=settings.db_connect_timeout_seconds,
         statement_timeout=settings.db_statement_timeout_seconds,
         pool_timeout=settings.db_pool_timeout_seconds,
+        pool_size=settings.db_pool_size,
+        max_overflow=settings.db_max_overflow,
+        disable_jit=True,
+        no_parallel_workers=True,
+        application_name="mars-api",
     )
     worker_engine = create_engine(
-        settings.database_url, connect_timeout=settings.db_connect_timeout_seconds
+        settings.database_url,
+        connect_timeout=settings.db_connect_timeout_seconds,
+        application_name="mars-worker",
     )
 
     @asynccontextmanager
@@ -114,6 +123,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.worker_engine = worker_engine
     app.state.session_factory = create_session_factory(engine)
     app.state.worker_session_factory = create_session_factory(worker_engine)
+    # Heavy v2 searches in flight (tests may read ``in_use`` or replace the gate).
+    app.state.heavy_query_gate = HeavyQueryGate(settings.heavy_query_concurrency)
     app.state.upstream_client = None
     app.state.scheduler = None
     # Set when the scheduler starts (SYNC_ENABLED): the rover position loader.

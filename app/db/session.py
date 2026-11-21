@@ -26,22 +26,44 @@ def create_engine(
     connect_timeout: float = 5.0,
     statement_timeout: float | None = None,
     pool_timeout: float | None = None,
+    pool_size: int | None = None,
+    max_overflow: int | None = None,
+    disable_jit: bool = False,
+    no_parallel_workers: bool = False,
+    application_name: str | None = None,
 ) -> AsyncEngine:
     """Create the engine. Creating it does not open a connection.
 
     ``statement_timeout`` (seconds; None or 0 = unlimited) is set on every connection of the
     engine: only the engine serving HTTP requests gets one, the sync, backfill and loaders
     run on engines without it. ``pool_timeout`` is how long a request waits for a free
-    connection (None = the SQLAlchemy default of 30 s).
+    connection (None = the SQLAlchemy default of 30 s); ``pool_size`` / ``max_overflow``
+    likewise default to SQLAlchemy's. ``disable_jit`` sets ``jit = off`` on every connection:
+    JIT adds 160-210 ms to any plan above the cost threshold and never pays off for API reads.
+    ``no_parallel_workers`` sets ``max_parallel_workers_per_gather = 0`` likewise.
+    ``application_name`` labels the connections in pg_stat_activity.
     """
     connect_args: dict[str, Any] = {"timeout": connect_timeout}
+    server_settings: dict[str, str] = {}
     if statement_timeout:
-        # No parallel workers for request queries: one slow request must not take several cores.
-        connect_args["server_settings"] = {
-            "statement_timeout": str(int(statement_timeout * 1000)),
-            "max_parallel_workers_per_gather": "0",
-        }
-    pool_args: dict[str, Any] = {} if pool_timeout is None else {"pool_timeout": pool_timeout}
+        server_settings["statement_timeout"] = str(int(statement_timeout * 1000))
+    if no_parallel_workers:
+        # One slow request must not take several cores.
+        server_settings["max_parallel_workers_per_gather"] = "0"
+    if disable_jit:
+        server_settings["jit"] = "off"
+    if application_name:
+        server_settings["application_name"] = application_name
+    if server_settings:
+        connect_args["server_settings"] = server_settings
+    pool_args: dict[str, Any] = {}
+    for key, value in (
+        ("pool_timeout", pool_timeout),
+        ("pool_size", pool_size),
+        ("max_overflow", max_overflow),
+    ):
+        if value is not None:
+            pool_args[key] = value
     return create_async_engine(
         database_url, pool_pre_ping=True, connect_args=connect_args, **pool_args
     )

@@ -116,7 +116,7 @@ class Photo(Base):
             "rover_id",
             "site",
             "drive",
-            postgresql_include=["sol", "taken_at", "id"],
+            postgresql_include=["sol", "taken_at", "id", "sample_type", "camera_id"],
             postgresql_where=text("site IS NOT NULL"),
         ),
         # Filter by local solar time and frame width (v2, stage 18B-2); NULLs are not indexed.

@@ -6,17 +6,37 @@ section 5): that is what these tests pin, together with "other rovers are untouc
 """
 
 import asyncio
+import importlib.util
+from pathlib import Path
 
 import pytest
 from alembic import command
 from alembic.config import Config as AlembicConfig
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.pool import NullPool
 
 from tests.integration.test_migrations_roundtrip import _db_state, _execute, _fetch, _head
+
+_MIGRATION_0015 = (
+    Path(__file__).resolve().parents[2]
+    / "migrations"
+    / "versions"
+    / "20261127_0015_photos_near_cover_include.py"
+)
+_spec = importlib.util.spec_from_file_location("migration_0015_under_test", _MIGRATION_0015)
+assert _spec is not None and _spec.loader is not None
+_migration_0015 = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_migration_0015)
 
 pytestmark = [pytest.mark.integration, pytest.mark.migrations_roundtrip]
 
 INDEX = "ix_photos_rover_id_site_drive"  # created by 0009, replaced by 0014
-NEAR_INDEX = "ix_photos_near_cover"  # created by 0014
+NEAR_INDEX = "ix_photos_near_cover"  # created by 0014, widened by 0015
+NEAR_INDEX_TMP = _migration_0015.SWAP_INDEX  # 0015's temporary name: must never be left behind
+assert NEAR_INDEX == _migration_0015.INDEX
+OLD_INCLUDE = "(rover_id, site, drive) INCLUDE (sol, taken_at, id)"  # 0014
+NEW_INCLUDE = "(rover_id, site, drive) INCLUDE (sol, taken_at, id, sample_type, camera_id)"  # 0015
 SEED_CAMERAS_BEFORE = 17 + 7 + 6 + 6
 
 
@@ -103,6 +123,206 @@ def test_migration_0014_downgrade_restores_the_plain_index_and_upgrade_replaces_
         assert INDEX not in names
     finally:
         command.upgrade(alembic_cfg, "head")
+
+
+def _near_index_state(url: str) -> list[dict]:
+    return asyncio.run(
+        _fetch(
+            url,
+            "SELECT c.relname AS name, i.indisvalid AS valid, i.indisready AS ready, "
+            "pg_get_indexdef(i.indexrelid) AS definition "
+            "FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid "
+            f"WHERE c.relname IN ('{NEAR_INDEX}', '{NEAR_INDEX_TMP}')",
+        )
+    )
+
+
+def _assert_near_index(url: str, include: str, other: str) -> None:
+    [index] = _near_index_state(url)  # exactly one: the temporary name is gone
+    assert index["name"] == NEAR_INDEX
+    assert index["valid"] and index["ready"]
+    definition = index["definition"]
+    assert include in definition
+    assert other not in definition
+    assert "WHERE (site IS NOT NULL)" in definition
+    assert "ON public.photos" in definition
+
+
+def test_migration_0015_upgrade_downgrade_upgrade_widens_and_narrows_the_covering_index(
+    migrated_db: str, alembic_cfg: AlembicConfig
+) -> None:
+    """AC-15 (migration part): head -> 0014 -> 0015 swaps the INCLUDE list and back."""
+    try:
+        assert _head(alembic_cfg) == "0015"
+        _assert_near_index(migrated_db, NEW_INCLUDE, OLD_INCLUDE)
+
+        command.downgrade(alembic_cfg, "0014")
+        assert asyncio.run(_db_state(migrated_db))["versions"] == ["0014"]
+        _assert_near_index(migrated_db, OLD_INCLUDE, "sample_type, camera_id")
+
+        command.upgrade(alembic_cfg, "0015")
+        assert asyncio.run(_db_state(migrated_db))["versions"] == ["0015"]
+        _assert_near_index(migrated_db, NEW_INCLUDE, OLD_INCLUDE)
+    finally:
+        command.upgrade(alembic_cfg, "head")
+
+
+async def _autocommit(url: str, *statements: str) -> None:
+    """Run statements outside a transaction (CREATE INDEX CONCURRENTLY needs that)."""
+    engine = create_async_engine(url, poolclass=NullPool, isolation_level="AUTOCOMMIT")
+    try:
+        async with engine.connect() as conn:
+            for statement in statements:
+                await conn.execute(text(statement))
+    finally:
+        await engine.dispose()
+
+
+def _create_swap(url: str, include: str) -> list[str]:
+    return [
+        f"CREATE INDEX CONCURRENTLY {NEAR_INDEX_TMP} ON photos (rover_id, site, drive) "
+        f"INCLUDE ({include}) WHERE site IS NOT NULL"
+    ]
+
+
+def _swap_oid(url: str) -> int | None:
+    rows = asyncio.run(_fetch(url, f"SELECT to_regclass('{NEAR_INDEX_TMP}')::oid::int AS oid"))
+    return rows[0]["oid"]
+
+
+def _main_oid(url: str) -> int | None:
+    rows = asyncio.run(_fetch(url, f"SELECT to_regclass('{NEAR_INDEX}')::oid::int AS oid"))
+    return rows[0]["oid"]
+
+
+def test_migration_0015_rerun_with_invalid_swap_index_and_old_main_rebuilds_the_swap(
+    migrated_db: str, alembic_cfg: AlembicConfig
+) -> None:
+    """AC-15: a crash during the build leaves an INVALID swap index; the rerun replaces it."""
+    try:
+        command.downgrade(alembic_cfg, "0014")
+        asyncio.run(
+            _autocommit(
+                migrated_db,
+                *_create_swap(migrated_db, "sol, taken_at, id, sample_type, camera_id"),
+                f"UPDATE pg_index SET indisvalid = false "
+                f"WHERE indexrelid = '{NEAR_INDEX_TMP}'::regclass",
+            )
+        )
+        broken = _near_index_state(migrated_db)
+        assert {i["name"]: i["valid"] for i in broken} == {NEAR_INDEX: True, NEAR_INDEX_TMP: False}
+
+        command.upgrade(alembic_cfg, "0015")
+
+        assert asyncio.run(_db_state(migrated_db))["versions"] == ["0015"]
+        _assert_near_index(migrated_db, NEW_INCLUDE, OLD_INCLUDE)
+    finally:
+        command.upgrade(alembic_cfg, "head")
+
+
+def test_migration_0015_rerun_with_main_missing_and_valid_swap_only_renames_it(
+    migrated_db: str, alembic_cfg: AlembicConfig
+) -> None:
+    """AC-15: a crash after the drop, before the rename: the valid swap index is kept."""
+    try:
+        command.downgrade(alembic_cfg, "0014")
+        asyncio.run(
+            _autocommit(
+                migrated_db,
+                *_create_swap(migrated_db, "sol, taken_at, id, sample_type, camera_id"),
+                f"DROP INDEX CONCURRENTLY {NEAR_INDEX}",
+            )
+        )
+        swap_oid = _swap_oid(migrated_db)
+        assert swap_oid is not None and _main_oid(migrated_db) is None
+
+        command.upgrade(alembic_cfg, "0015")
+
+        _assert_near_index(migrated_db, NEW_INCLUDE, OLD_INCLUDE)
+        assert _main_oid(migrated_db) == swap_oid  # renamed, not rebuilt
+        assert _swap_oid(migrated_db) is None
+    finally:
+        command.upgrade(alembic_cfg, "head")
+
+
+@pytest.mark.parametrize(
+    ("direction", "start", "wrong_include", "target", "wanted", "other"),
+    [
+        pytest.param(
+            "upgrade",
+            "0014",
+            "sol, taken_at, id",
+            "0015",
+            NEW_INCLUDE,
+            OLD_INCLUDE,
+            id="upgrade-with-old-swap",
+        ),
+        pytest.param(
+            "downgrade",
+            "0015",
+            "sol, taken_at, id, sample_type, camera_id",
+            "0014",
+            OLD_INCLUDE,
+            "sample_type, camera_id",
+            id="downgrade-with-new-swap",
+        ),
+    ],
+)
+def test_migration_0015_rerun_with_valid_swap_of_the_wrong_include_rebuilds_it(
+    migrated_db: str,
+    alembic_cfg: AlembicConfig,
+    direction: str,
+    start: str,
+    wrong_include: str,
+    target: str,
+    wanted: str,
+    other: str,
+) -> None:
+    """AC-15: a VALID swap index left by the opposite direction must not be promoted as is."""
+    try:
+        if start == "0014":
+            command.downgrade(alembic_cfg, "0014")
+        asyncio.run(_autocommit(migrated_db, *_create_swap(migrated_db, wrong_include)))
+        assert [i["valid"] for i in _near_index_state(migrated_db)] == [True, True]
+
+        if direction == "upgrade":
+            command.upgrade(alembic_cfg, target)
+        else:
+            command.downgrade(alembic_cfg, target)
+
+        _assert_near_index(migrated_db, wanted, other)
+    finally:
+        command.upgrade(alembic_cfg, "head")
+
+
+def test_migration_0015_keeps_photos_and_leaves_no_other_near_index(
+    migrated_db: str, alembic_cfg: AlembicConfig
+) -> None:
+    """AC-15: only the index is replaced; rows survive both directions; no stray index."""
+    asyncio.run(
+        _execute(
+            migrated_db,
+            "INSERT INTO photos (rover_id, camera_id, source_id, sol, earth_date, taken_at, "
+            "sample_type, img_full, site, drive) "
+            "SELECT 'curiosity', c.id, 'rt-0015', 7, DATE '2012-08-13', "
+            "TIMESTAMPTZ '2012-08-13 01:00:00+00', 'full', 'https://x.test/i', 5, 10 "
+            "FROM cameras c WHERE c.rover_id = 'curiosity' AND c.code = 'FHAZ'",
+        )
+    )
+    try:
+        command.downgrade(alembic_cfg, "0014")
+        command.upgrade(alembic_cfg, "0015")
+        rows = asyncio.run(
+            _fetch(migrated_db, "SELECT site, drive FROM photos WHERE source_id = 'rt-0015'")
+        )
+        assert rows == [{"site": 5, "drive": 10}]
+        names = _index_names(migrated_db)
+        assert names.count(NEAR_INDEX) == 1
+        assert NEAR_INDEX_TMP not in names
+        assert INDEX not in names
+    finally:
+        command.upgrade(alembic_cfg, "head")
+        asyncio.run(_execute(migrated_db, "DELETE FROM photos WHERE source_id = 'rt-0015'"))
 
 
 def test_migration_0008_downgrade_removes_ingenuity_everywhere_and_keeps_other_rovers(

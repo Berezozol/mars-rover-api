@@ -337,7 +337,6 @@ async def list_photos_multi(
     filters = [part for flt in filters for part in _per_camera(flt)]
     if not filters:
         return []
-    await _near_session_setup(session, filters)
     if len(filters) == 1:
         keys_stmt = _keys_query(filters[0], sort, limit, offset, 0)
         page_ids = [row.id for row in await session.execute(keys_stmt, execution_options=FRESH)]
@@ -396,25 +395,9 @@ def _keys_query(
 
 async def count_photos(session: AsyncSession, flt: PhotoFilter) -> int:
     if flt.near is not None:
-        await _near_session_setup(session, [flt])
         return await session.scalar(_near_count_query(flt)) or 0
     stmt = _filtered(select(func.count()).select_from(Photo), flt, bound_taken_at=False)
     return await session.scalar(stmt) or 0
-
-
-async def _near_session_setup(session: AsyncSession, filters: Sequence[PhotoFilter]) -> None:
-    """JIT adds 160-210 ms of compilation to a near query even when it finds nothing; turn
-    it off for the current transaction (the session's, which the request's queries share).
-    Done once per transaction: ``session.info`` keeps the transaction it was issued in, so
-    after a commit or rollback the next call issues it again."""
-    if all(flt.near is None for flt in filters):
-        return
-    if session.info.get("jit_off_tx") is not None and (
-        session.info["jit_off_tx"] is session.get_transaction()
-    ):
-        return
-    await session.execute(text("SET LOCAL jit = off"))
-    session.info["jit_off_tx"] = session.get_transaction()
 
 
 def _stops_in_radius(flt: PhotoFilter) -> Any:
