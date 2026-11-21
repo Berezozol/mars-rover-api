@@ -290,7 +290,7 @@ and `FORWARDED_ALLOW_IPS` is no longer `*`. Run the client-IP checks of section 
 
 Migration 0013 adds `photos.local_time_s`, `width`, `height` and three partial indexes
 (`CREATE INDEX CONCURRENTLY`). The columns are then filled once from `extra` by
-`python -m app.cli backfill-meta` (~1.3M rows, ~2 min on dev, no network).
+`python -m app.cli backfill-meta` (~1.3M rows, no network; ~2 min on dev, but ~33 min on the laptop).
 
 1. Before updating: check free disk on the laptop. The backfill rewrites ~1.3M rows once, so the
    `photos` table may grow by ~1-1.5 GB of dead tuples until autovacuum reuses the space
@@ -298,7 +298,7 @@ Migration 0013 adds `photos.local_time_s`, `width`, `height` and three partial i
 2. Run `update.ps1` as usual: `alembic upgrade head` is its step 4 (index builds take a while; the old version keeps serving).
 3. Pause the scheduler for the backfill: concurrent sync upserts can deadlock with the backfill
    or rewrite overlapping sols once. Simplest: `docker compose -p mars stop app` (the API is down
-   for the ~2-3 minutes of the run). Alternative: skip the pause, run the backfill right after the update
+   for the whole run: ~33 min on the laptop, measured at the 18B-2 release). Alternative: skip the pause, run the backfill right after the update
    and accept a possible retry. Note `docker compose run` containers do not start the scheduler, so
    only the running `app` matters; `SYNC_ENABLED` is fixed to `"true"` in `compose.yml`.
 4. Run the backfill in a one-off container (rerun is idempotent: the second run reports 0 updates):
@@ -313,6 +313,49 @@ Migration 0013 adds `photos.local_time_s`, `width`, `height` and three partial i
    ```
    (Separate `-c` options share one session, so the `SET` applies, and `VACUUM` is not wrapped in a transaction.)
 6. Re-enable the scheduler: `docker compose -p mars up -d app` and check `GET /health/sync`.
+
+#### Release 18B-3: migration 0014 (near-search index)
+
+Migration 0014 builds `ix_photos_near_cover` (`CREATE INDEX CONCURRENTLY`, ~8 s and ~79 MB on dev,
+1.7M rows), then drops `ix_photos_rover_id_site_drive` (`DROP INDEX CONCURRENTLY`). It is
+rerun-safe: an INVALID leftover is dropped and rebuilt, a VALID index is never rebuilt, and the old
+index is dropped only after the new one is valid. The API keeps serving during the build (no pause
+needed); only sync and the scheduler must be stopped, because `CREATE INDEX CONCURRENTLY` waits for
+older transactions and with `lock_timeout = 5s` it can fail late (then just rerun). Expect ~50 MB
+more disk for the index; the old one is freed at the end.
+
+`update.ps1` starts the new app right after the migration, but the `VACUUM` must come between them,
+so run the steps by hand (same commands as the script), from `%USERPROFILE%\mars-server`:
+
+1. Prepare: `git pull --ff-only` in the repository, then `docker build -t mars-rover-api:local <repo>`
+   (the old container keeps running on the old image) and a backup:
+   `powershell -NoProfile -ExecutionPolicy Bypass -File <repo>\deploy\laptopackup.ps1 -ComposeDir %USERPROFILE%\mars-server`.
+2. Pause the scheduler: `docker compose -p mars stop app` (the API is down from here to step 6, a few
+   minutes). `docker compose run` containers do not start the scheduler.
+3. Migrate: `docker compose -p mars run --rm app alembic upgrade head` (head becomes `0014`). If it
+   fails on the lock timeout, run it again.
+4. Visibility map for index-only scans (`PARALLEL 0` avoids the small Docker `/dev/shm`; the db has
+   `shm_size: 256m`; the `-c` options share one session and `VACUUM` is not in a transaction):
+   ```
+   docker compose -p mars exec db psql -U <db-user> -d <db-name> -c "VACUUM (ANALYZE, PARALLEL 0) photos"
+   ```
+5. Check the index:
+   ```
+   docker compose -p mars exec db psql -U <db-user> -d <db-name> -c "SELECT indexrelid::regclass, indisvalid FROM pg_index WHERE indrelid='photos'::regclass"
+   ```
+   `ix_photos_near_cover` is `t`, `ix_photos_rover_id_site_drive` is absent.
+6. Start the new version: `docker compose -p mars up -d app`, wait for `200` on
+   `http://127.0.0.1:8000/health`, check `GET /health/sync`.
+7. Smoke test (section 3) plus the near check, on `http://127.0.0.1:8000`:
+   - `GET /api/v2/photos?rovers=perseverance&near=18.4447,77.4508&radius_km=1` -> `200`, `total > 0`;
+   - `GET /api/v2/photos?rovers=spirit&near=18.4447,77.4508&radius_km=1` -> `422` (no site data).
+
+Rollback: `docker compose -p mars stop app`, then
+`docker compose -p mars run --rm app alembic downgrade 0013` (rebuilds the old index, also
+rerun-safe, with the new image still tagged `:local`), check out the previous commit (`4768f5c`),
+`docker build -t mars-rover-api:local <repo>`, `docker compose -p mars up -d app`. Run the
+`pg_index` check of step 5 again (the old index valid, `ix_photos_near_cover` gone). The data is
+not touched by either direction.
 
 ### MER image cache
 
