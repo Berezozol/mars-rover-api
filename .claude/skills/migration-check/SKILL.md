@@ -2,7 +2,6 @@
 name: migration-check
 description: Проверить новую миграцию Alembic на отдельной временной базе — upgrade, downgrade на шаг, снова upgrade, alembic check, зеркальность downgrade, индексы под запросы. Базы разработки и тестовые не затрагиваются.
 argument-hint: "[ревизия, по умолчанию последняя]"
-disable-model-invocation: true
 ---
 
 Ты тимлид. Проверка миграции $ARGUMENTS (по умолчанию последняя в `migrations/versions/`). Работаешь на временной базе `mars_migcheck` в контейнере разработки и после проверки её удаляешь. Базы `mars`, `mars_test` и `mars_test_gw*` не трогаешь.
