@@ -17,7 +17,7 @@ from app.api.home import root_router as root_home_router
 from app.api.home import router as home_router
 from app.api.legacy import router as legacy_router
 from app.api.llms import router as llms_router
-from app.api.ratelimit import RateLimitMiddleware
+from app.api.ratelimit import RateLimitMiddleware, ResponseSizeMiddleware
 from app.api.v2 import router as v2_router
 from app.api.v2.admin import admin_auth_limiter
 from app.api.v2.admin import router as admin_router
@@ -54,6 +54,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     - ``sync_tasks``: set of the running background sync tasks (await them in tests).
     - ``rate_limiter`` (only with RATE_LIMIT_ENABLED) and ``admin_auth_limiter`` (only with
       admin enabled): ``RateLimiter`` instances; tests may replace their ``clock``.
+    - ``v1_bytes_per_request`` (only with RATE_LIMIT_ENABLED): bytes of a v1 response per charged
+      request; tests may change it.
     - ``alert_monitor``: ``AlertMonitor`` when Telegram alerts are configured, else None.
     - ``mer_image_service``: ``MerImageService`` of the Spirit/Opportunity full frames (a stub
       with ``async get_full_jpeg(photo) -> bytes`` also works; ``aclose()`` is optional).
@@ -152,6 +154,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         # Inside CORS (browsers can read the 429), outside caching (304s count too).
         app.add_middleware(RateLimitMiddleware)
+        # Test hook: bytes of a v1 response that cost one request.
+        app.state.v1_bytes_per_request = settings.rate_limit_v1_bytes_per_request
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
@@ -173,6 +177,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         compresslevel=GZIP_COMPRESS_LEVEL,
         exclude_content_types=(*DEFAULT_EXCLUDED_CONTENT_TYPES, "image/*"),
     )
+    if settings.rate_limit_enabled:
+        # Outside GZip: v1 responses are charged by the bytes on the wire (after compression).
+        app.add_middleware(ResponseSizeMiddleware)
     app.add_middleware(VaryAcceptEncodingMiddleware)
     register_exception_handlers(app)
 

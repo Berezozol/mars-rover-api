@@ -399,12 +399,12 @@ async def _handle_unexpected_error(request: Request, exc: Exception) -> JSONResp
         # Not logger.exception: the message would carry the statement text and parameters.
         logger.error(
             "Database error path=%s type=%s sqlstate=%s",
-            request.url.path,
+            log_route(request),
             type(exc).__name__,
             db_sqlstate(exc) or "unknown",
         )
     else:
-        logger.exception("Unhandled error path=%s", request.url.path)
+        logger.exception("Unhandled error path=%s", log_route(request))
     # Rendered by the outermost ServerErrorMiddleware, outside the caching middleware.
     return error_response(
         request,
@@ -438,7 +438,7 @@ async def _handle_db_error(request: Request, exc: Exception) -> JSONResponse:
         )
     if not is_db_unavailable(exc):
         return await _handle_unexpected_error(request, exc)
-    logger.warning("Database unavailable path=%s error=%s", request.url.path, type(exc).__name__)
+    logger.warning("Database unavailable path=%s error=%s", log_route(request), type(exc).__name__)
     return error_response(
         request,
         status_code=503,

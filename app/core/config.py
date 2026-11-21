@@ -125,6 +125,8 @@ class Settings(BaseSettings):
     rate_limit_per_hour: int = Field(default=2000, ge=1)
     # Requests of one IP served at the same time; an extra one gets 429 at once.
     rate_limit_concurrent: int = Field(default=4, ge=1)
+    # A v1 response costs one request per started chunk of this many bytes (after gzip).
+    rate_limit_v1_bytes_per_request: int = Field(default=262_144, ge=1024)
     # Failed admin token checks per IP before admin answers 429 for the rest of the window.
     admin_auth_max_failures: int = Field(default=10, ge=1)
     admin_auth_window_minutes: int = Field(default=15, ge=1)

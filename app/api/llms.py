@@ -27,7 +27,9 @@ Opportunity and Spirit rovers (and Ingenuity flights) from public NASA/JPL feeds
 Base URL: {origin}
 
 No API key is needed. An `api_key` query parameter is accepted and ignored. Rate limit per client \
-IP: 60 requests per minute, 2000 per hour (`429` with `Retry-After` when exceeded).
+IP: 60 requests per minute, 2000 per hour (`429` with `Retry-After` when exceeded). \
+On v1 paths a response costs one request per started 256 KiB of the body as sent (after gzip), \
+so whole-sol v1 requests without `page` should use `Accept-Encoding: gzip` or `page`.
 
 ## v1 (compatible with the old API)
 
