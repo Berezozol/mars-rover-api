@@ -47,6 +47,9 @@ MAX_RESULT_WINDOW = 10_000
 # sorting (``PhotoFilter.narrow``); see ``_hint_narrow``.
 _NARROW_MATCHES = 100_000
 
+# Golden hour in seconds of the local day: 05:30-07:00 and 17:00-18:30.
+GOLDEN_HOUR_WINDOWS: tuple[tuple[int, int], ...] = ((19_800, 25_200), (61_200, 66_600))
+
 # Sizes of /photos/{id}/image; a missing size falls back to "full".
 IMAGE_SIZES: tuple[str, ...] = ("full", "large", "medium", "small")
 
@@ -103,6 +106,13 @@ class PhotoQuery:
     site_min: int | None = None
     site_max: int | None = None
     sort: PhotoSort = DEFAULT_SORT
+    # Stage 18B-2: local solar time window ("HH:MM", already format-checked), golden hour,
+    # minimum frame size.
+    local_time_min: str | None = None
+    local_time_max: str | None = None
+    golden_hour: bool = False
+    min_width: int | None = None
+    min_height: int | None = None
 
 
 @dataclass(frozen=True)
@@ -224,12 +234,17 @@ async def search_photos_multi(
         for rover_id in rover_ids
         if codes is None or codes[rover_id]
     ]
+    # Totals and the list are separate statements (read committed): a sync committing between
+    # them can make the page and ``total`` differ by a few rows; the next request is exact.
     total = 0
     hinted: list[PhotoFilter] = []
     for flt in filters:
         found = await _total(session, flt.rover_id, flt)
         total += found
-        hinted.append(_hint_narrow(flt, found))
+        if found:
+            # A rover without matches adds nothing to the page, and proving it by walking
+            # the sort index can read the whole rover.
+            hinted.append(_hint_narrow(flt, found))
     items: list[Photo] = []
     if page.offset < total:
         items = await photos_repo.list_photos_multi(
@@ -436,8 +451,47 @@ def _check_query(query: PhotoQuery) -> None:
     _check_order(query.sol_min, query.sol_max, "sol_min", "sol_max")
     _check_order(query.date_min, query.date_max, "date_min", "date_max")
     _check_order(query.site_min, query.site_max, "site_min", "site_max")
+    _check_local_time(query)
     if query.site is not None and (query.site_min is not None or query.site_max is not None):
         raise InvalidParam("site", "site cannot be used with site_min or site_max")
+
+
+def _seconds(value: str | None) -> int | None:
+    """``HH:MM`` (validated by the router) as seconds of the day."""
+    if value is None:
+        return None
+    hours, minutes = value.split(":")
+    return int(hours) * 3600 + int(minutes) * 60
+
+
+def _check_local_time(query: PhotoQuery) -> None:
+    if query.golden_hour and (query.local_time_min or query.local_time_max):
+        raise InvalidParam("golden_hour", "golden_hour cannot be used with local_time_min/max")
+    if query.local_time_min is not None and query.local_time_min == query.local_time_max:
+        raise InvalidParam("local_time_max", "local_time_max must differ from local_time_min")
+
+
+def _local_time_ranges(query: PhotoQuery) -> tuple[tuple[int, int], ...]:
+    """Windows ``[start, end)`` in seconds of the day for the filter; empty: no time filter.
+
+    ``min > max`` wraps over midnight; a single bound leaves the other end open.
+    """
+    if query.golden_hour:
+        return GOLDEN_HOUR_WINDOWS
+    low, high = _seconds(query.local_time_min), _seconds(query.local_time_max)
+    if low is None and high is None:
+        return ()
+    if low is None:
+        return ((0, high or 0),)
+    if high is None:
+        return ((low, photos_repo.SECONDS_PER_DAY),)
+    if low < high:
+        return ((low, high),)
+    return ((low, photos_repo.SECONDS_PER_DAY), (0, high))
+
+
+def _has_meta_filter(flt: PhotoFilter) -> bool:
+    return bool(flt.local_time_ranges) or flt.min_width is not None or flt.min_height is not None
 
 
 def _hint_narrow(flt: PhotoFilter, matches: int) -> PhotoFilter:
@@ -454,6 +508,7 @@ def _hint_narrow(flt: PhotoFilter, matches: int) -> PhotoFilter:
         any(value is not None for value in (flt.sol_min, flt.sol_max, flt.date_min, flt.date_max))
         or flt.site_min is not None
         or flt.site_max is not None
+        or _has_meta_filter(flt)
     )
     return replace(flt, narrow=ranged and matches <= _NARROW_MATCHES)
 
@@ -489,6 +544,9 @@ def _rover_filter(rover_id: str, query: PhotoQuery, cameras: list[Camera] | None
         date_max=query.date_max,
         site_min=query.site_min,
         site_max=query.site_max,
+        local_time_ranges=_local_time_ranges(query),
+        min_width=query.min_width,
+        min_height=query.min_height,
     )
 
 
@@ -624,7 +682,7 @@ async def _total(session: AsyncSession, rover_id: str, flt: PhotoFilter) -> int:
     """
     stops = flt.site is not None or flt.site_min is not None or flt.site_max is not None
     dates = flt.date_min is not None or flt.date_max is not None
-    if stops or dates:
+    if stops or dates or _has_meta_filter(flt):
         return await photos_repo.count_photos(session, flt)
     if flt.sol_min is not None or flt.sol_max is not None:
         return await _sol_range_total(session, rover_id, flt)

@@ -860,6 +860,96 @@
             "description": "-sol: sol DESC, taken_at DESC, id DESC (default); sol: ascending; -taken_at: taken_at DESC, id DESC; taken_at: ascending."
           },
           {
+            "name": "local_time_min",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Local solar time HH:MM (00:00-23:59); the window is min <= t < max, over midnight when min > max.",
+              "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+              "title": "Local Time Min"
+            },
+            "description": "Local solar time HH:MM (00:00-23:59); the window is min <= t < max, over midnight when min > max."
+          },
+          {
+            "name": "local_time_max",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Local solar time HH:MM (00:00-23:59); the window is min <= t < max, over midnight when min > max.",
+              "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+              "title": "Local Time Max"
+            },
+            "description": "Local solar time HH:MM (00:00-23:59); the window is min <= t < max, over midnight when min > max."
+          },
+          {
+            "name": "golden_hour",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "true: local time 05:30-07:00 or 17:00-18:30; not with local_time_*.",
+              "default": false,
+              "title": "Golden Hour"
+            },
+            "description": "true: local time 05:30-07:00 or 17:00-18:30; not with local_time_*."
+          },
+          {
+            "name": "min_width",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 32767,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Full frame size in pixels, at least.",
+              "title": "Min Width"
+            },
+            "description": "Full frame size in pixels, at least."
+          },
+          {
+            "name": "min_height",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 32767,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Full frame size in pixels, at least.",
+              "title": "Min Height"
+            },
+            "description": "Full frame size in pixels, at least."
+          },
+          {
             "name": "page",
             "in": "query",
             "required": false,
@@ -2033,6 +2123,96 @@
               "title": "Sort"
             },
             "description": "-sol: sol DESC, taken_at DESC, id DESC (default); sol: ascending; -taken_at: taken_at DESC, id DESC; taken_at: ascending."
+          },
+          {
+            "name": "local_time_min",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Local solar time HH:MM (00:00-23:59); the window is min <= t < max, over midnight when min > max.",
+              "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+              "title": "Local Time Min"
+            },
+            "description": "Local solar time HH:MM (00:00-23:59); the window is min <= t < max, over midnight when min > max."
+          },
+          {
+            "name": "local_time_max",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Local solar time HH:MM (00:00-23:59); the window is min <= t < max, over midnight when min > max.",
+              "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+              "title": "Local Time Max"
+            },
+            "description": "Local solar time HH:MM (00:00-23:59); the window is min <= t < max, over midnight when min > max."
+          },
+          {
+            "name": "golden_hour",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "true: local time 05:30-07:00 or 17:00-18:30; not with local_time_*.",
+              "default": false,
+              "title": "Golden Hour"
+            },
+            "description": "true: local time 05:30-07:00 or 17:00-18:30; not with local_time_*."
+          },
+          {
+            "name": "min_width",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 32767,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Full frame size in pixels, at least.",
+              "title": "Min Width"
+            },
+            "description": "Full frame size in pixels, at least."
+          },
+          {
+            "name": "min_height",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 32767,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Full frame size in pixels, at least.",
+              "title": "Min Height"
+            },
+            "description": "Full frame size in pixels, at least."
           },
           {
             "name": "page",

@@ -1,7 +1,7 @@
 """Frame size and local solar time read from a stored photo's ``extra``.
 
 The shape of ``extra`` is set by the adapters, so it is also parsed here, in ``sources/``.
-Both functions are pure and total: anything missing or malformed gives ``None``.
+All functions are pure and total: anything missing or malformed gives ``None``.
 """
 
 import re
@@ -43,6 +43,48 @@ def local_time(rover_id: str, extra: Mapping[str, Any]) -> LocalTime | None:
     if rover_id in _MER:
         return _make_time(extra.get("local_true_solar_time"), "ltst")
     return None
+
+
+@dataclass(frozen=True)
+class StoredMeta:
+    """Values of the photos columns ``local_time_s``, ``width`` and ``height`` (filters only)."""
+
+    local_time_s: int | None
+    width: int | None
+    height: int | None
+
+
+# The ``extra`` paths that ``frame_size`` and ``local_time`` read; the backfill projects only these.
+STORED_META_PATHS: tuple[tuple[str, ...], ...] = (
+    ("extended", "dimension"),
+    ("extended", "lmst"),
+    ("date_taken_mars",),
+    ("local_true_solar_time",),
+    ("line_samples",),
+    ("lines",),
+)
+
+# photos.width / height are smallint.
+MAX_STORED_SIZE = 32767
+
+
+def stored_meta(rover_id: str, extra: Mapping[str, Any]) -> StoredMeta:
+    """Column values derived from ``extra``; width and height are both set or both None.
+
+    ``local_time_s`` is the second of the local solar day (0-86399). A frame size outside
+    1..32767 is not stored.
+    """
+    moment = local_time(rover_id, extra)
+    seconds = None if moment is None else _seconds_of_day(moment.time)
+    size = frame_size(rover_id, extra)
+    if size is None or max(size) > MAX_STORED_SIZE:
+        return StoredMeta(seconds, None, None)
+    return StoredMeta(seconds, size[0], size[1])
+
+
+def _seconds_of_day(value: str) -> int:
+    hours, minutes, seconds = (int(part) for part in value.split(":"))
+    return hours * 3600 + minutes * 60 + seconds
 
 
 def _mapping(value: Any) -> Mapping[str, Any]:

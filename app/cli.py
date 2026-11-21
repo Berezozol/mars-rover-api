@@ -25,6 +25,10 @@
 - ``samples [--force]``: load the Perseverance sample table from the NASA samples page now,
   ignoring the once-a-day rule; ``--force`` drops the conditional request, the no-op and the
   "no stored sample may disappear" check. Exit codes: 0 changed or unchanged, 1 rejected or failed.
+- ``backfill-meta [--rover R] [--from-sol A] [--to-sol B] [--batch-sols N]``: fill the photos
+  columns local_time_s, width and height of stored photos from ``extra`` (all rovers by
+  default), sol batches upwards, one commit per batch; offline and idempotent, safe to rerun
+  or resume with --from-sol. Exit codes: 0 done, 1 failed, 2 invalid input.
 - ``openapi [--output PATH]``: write the OpenAPI schema (admin routes excluded) as JSON, to
   stdout by default. Exit codes: 0 written, 2 the file cannot be written.
 - ``openapi-ts [--output PATH]``: the same schemas as TypeScript declarations; same exit codes.
@@ -52,8 +56,10 @@ from app.services.backfill import (
 )
 from app.services.location_sync import DatasetResult, LocationSyncService
 from app.services.mer_download import download_indexes
+from app.services.meta_backfill import DEFAULT_BATCH_SOLS, MetaBackfillService
 from app.services.sample_sync import SampleSyncResult, SampleSyncService
 from app.services.sync import SyncResult, SyncService, compact_ranges
+from app.services.v2 import ROVER_SLUGS
 from app.sources.base import SourceAdapter
 from app.sources.http import UpstreamClient, UpstreamError
 from app.sources.locations import LOCATION_MISSIONS
@@ -185,6 +191,24 @@ def _build_parser() -> argparse.ArgumentParser:
         "--output", type=Path, default=None, help="file to write (default: print to stdout)"
     )
 
+    meta = commands.add_parser(
+        "backfill-meta", help="fill photos.local_time_s / width / height from extra (offline)"
+    )
+    meta.add_argument(
+        "--rover",
+        type=str.lower,
+        default=None,
+        choices=ROVER_SLUGS,
+        help="one rover (default: all)",
+    )
+    meta.add_argument("--from-sol", type=int, default=0, help="lowest sol (default 0)")
+    meta.add_argument("--to-sol", type=int, default=None, help="highest sol (default: the latest)")
+    meta.add_argument(
+        "--batch-sols",
+        type=int,
+        default=DEFAULT_BATCH_SOLS,
+        help=f"sols per batch, one commit each (default {DEFAULT_BATCH_SOLS})",
+    )
     rec = commands.add_parser("reconcile", help="compare stored photos with the source")
     rec.add_argument("--rover", required=True, type=str.lower, help="rover slug")
     rec.add_argument(
@@ -210,6 +234,8 @@ def main(argv: list[str] | None = None) -> int:
         return _main_batches(args, run_backfill_command)
     if args.command == "reconcile":
         return _main_reconcile(args)
+    if args.command == "backfill-meta":
+        return _main_backfill_meta(args)
     if args.command == "mer-download":
         return _main_mer_download(args)
     if args.command == "import-mer":
@@ -248,6 +274,47 @@ def _main_batches(args: argparse.Namespace, command: BatchesCommand) -> int:
         # The running sync run was marked failed on cancellation; a rerun resumes.
         print("interrupted: rerun the same command to resume", file=sys.stderr)
         return EXIT_INTERRUPTED
+
+
+def _main_backfill_meta(args: argparse.Namespace) -> int:
+    if args.batch_sols < 1 or args.from_sol < 0:
+        print("error: --batch-sols must be at least 1 and --from-sol at least 0", file=sys.stderr)
+        return EXIT_USAGE
+    if args.to_sol is not None and args.to_sol < args.from_sol:
+        print("error: --to-sol must not be less than --from-sol", file=sys.stderr)
+        return EXIT_USAGE
+    settings = get_settings()
+    configure_logging(settings.log_level)
+    try:
+        return asyncio.run(run_backfill_meta_command(args, settings))
+    except KeyboardInterrupt:
+        print("interrupted: rerun the same command to continue", file=sys.stderr)
+        return EXIT_INTERRUPTED
+
+
+async def run_backfill_meta_command(args: argparse.Namespace, settings: Settings) -> int:
+    """Run ``backfill-meta`` on an engine without a statement timeout."""
+    engine = create_engine(
+        settings.database_url, connect_timeout=settings.db_connect_timeout_seconds
+    )
+    rovers = [args.rover] if args.rover else list(ROVER_SLUGS)
+    try:
+        service = MetaBackfillService(create_session_factory(engine))
+        result = await service.run(
+            rovers, from_sol=args.from_sol, to_sol=args.to_sol, batch_sols=args.batch_sols
+        )
+    except Exception:
+        logger.exception("backfill-meta crashed; rerun to continue")
+        return EXIT_PARTIAL
+    finally:
+        await engine.dispose()
+    for item in result.rovers:
+        print(
+            f"{item.rover_id}: batches={item.batches} looked_at={item.looked_at} "
+            f"updated={item.updated} seconds={item.seconds:.1f}"
+        )
+    print(f"updated rows: {result.updated}")
+    return EXIT_SUCCESS
 
 
 def _main_mer_download(args: argparse.Namespace) -> int:

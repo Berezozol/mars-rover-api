@@ -30,7 +30,7 @@ EXPECTED_COLUMNS = {
         "id", "rover_id", "camera_id", "source_id", "sol", "earth_date", "taken_at",
         "received_at", "sample_type", "img_full", "img_small", "img_medium", "img_large",
         "title", "caption", "credit", "source_link", "site", "drive", "extra",
-        "created_at", "updated_at", "feed_at",
+        "created_at", "updated_at", "feed_at", "local_time_s", "width", "height",
     },
     "sol_summaries": {
         "rover_id", "sol", "earth_date", "total_photos", "cameras", "full_photos", "full_cameras",

@@ -117,6 +117,25 @@ class Photo(Base):
             "drive",
             postgresql_where=text("site IS NOT NULL"),
         ),
+        # Filter by local solar time and frame width (v2, stage 18B-2); NULLs are not indexed.
+        Index(
+            "ix_photos_rover_id_local_time",
+            "rover_id",
+            "local_time_s",
+            postgresql_where=text("local_time_s IS NOT NULL"),
+        ),
+        Index(
+            "ix_photos_rover_id_width",
+            "rover_id",
+            "width",
+            postgresql_where=text("width IS NOT NULL"),
+        ),
+        Index(
+            "ix_photos_rover_id_height",
+            "rover_id",
+            "height",
+            postgresql_where=text("height IS NOT NULL"),
+        ),
         # Filter by camera (v2).
         Index("ix_photos_rover_id_camera_id_sol", "rover_id", "camera_id", "sol"),
         # RSS feed (stage 16): photos stored by the regular sync, newest first.
@@ -163,6 +182,12 @@ class Photo(Base):
     updated_at: Mapped[datetime] = mapped_column(
         _TIMESTAMPTZ, server_default=func.now(), onupdate=func.now()
     )
+    # Filter columns derived from ``extra`` by ``photo_meta.stored_meta`` (stage 18B-2); the API
+    # still reads the values it returns from ``extra``. local_time_s: second of the local solar
+    # day (0-86399; LMST or LTST by rover); width / height: full frame in pixels.
+    local_time_s: Mapped[int | None] = mapped_column(Integer)
+    width: Mapped[int | None] = mapped_column(SmallInteger)
+    height: Mapped[int | None] = mapped_column(SmallInteger)
     # Set (= created_at) only when the regular (incremental) sync inserts the photo; the upsert
     # never changes it. NULL for backfill and imports. Feeds the RSS feed (stage 16).
     feed_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ)

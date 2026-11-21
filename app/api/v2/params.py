@@ -17,6 +17,7 @@ from app.core.params import parse_strict_int
 from app.services.v2 import SAMPLE_TYPES, PageRequest, PhotoSort
 
 MAX_SOL = 2**31 - 1
+MAX_FRAME_SIZE = 32_767
 MAX_PAGE = 1_000_000
 MAX_PER_PAGE = 100
 DEFAULT_PER_PAGE = 25
@@ -41,6 +42,16 @@ def _iso_date(value: object) -> object:
         return date.fromisoformat(value)
     except ValueError:
         raise ValueError("must be a valid calendar date") from None
+
+
+_TIME_PATTERN = r"^([01][0-9]|2[0-3]):[0-5][0-9]$"
+_TIME_RE = re.compile(_TIME_PATTERN)
+
+
+def _hhmm(value: object) -> object:
+    if isinstance(value, str) and _TIME_RE.fullmatch(value) is None:
+        raise ValueError("must be a time in HH:MM format, 00:00-23:59")
+    return value
 
 
 StrictInt = BeforeValidator(_strict_int)
@@ -98,6 +109,23 @@ RoversParam = Annotated[
     str | None,
     Query(description="Rover slugs separated by commas, case-insensitive; default: all rovers."),
 ]
+# Stage 18B-2: local solar time window, golden hour, minimum frame size.
+LocalTimeParam = Annotated[
+    str | None,
+    Query(
+        json_schema_extra={"pattern": _TIME_PATTERN},
+        description=(
+            "Local solar time HH:MM (00:00-23:59); the window is min <= t < max, "
+            "over midnight when min > max."
+        ),
+    ),
+    BeforeValidator(_hhmm),
+]
+MinSizeParam = Annotated[
+    int | None,
+    Query(ge=1, le=MAX_FRAME_SIZE, description="Full frame size in pixels, at least."),
+    StrictInt,
+]
 SampleTypeParam = Annotated[
     str | None,
     Query(description=f"One of {', '.join(SAMPLE_TYPES)} (case-insensitive); default: all."),
@@ -125,6 +153,13 @@ def _strict_bool(value: object) -> object:
 LatestParam = Annotated[
     bool,
     Query(description="true: only the last stop; not combinable with sol, from_sol, to_sol."),
+    BeforeValidator(_strict_bool),
+]
+
+
+GoldenHourParam = Annotated[
+    bool,
+    Query(description="true: local time 05:30-07:00 or 17:00-18:30; not with local_time_*."),
     BeforeValidator(_strict_bool),
 ]
 

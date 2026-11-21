@@ -286,6 +286,34 @@ When `compose.yml` itself changes in the repository, apply the change to the liv
 Stage 9 changes it: the db service gets the `./backups:/backups` mount that `backup.ps1` needs,
 and `FORWARDED_ALLOW_IPS` is no longer `*`. Run the client-IP checks of section 3 afterwards.
 
+#### Release 18B-2: migration 0013 and `backfill-meta`
+
+Migration 0013 adds `photos.local_time_s`, `width`, `height` and three partial indexes
+(`CREATE INDEX CONCURRENTLY`). The columns are then filled once from `extra` by
+`python -m app.cli backfill-meta` (~1.3M rows, ~2 min on dev, no network).
+
+1. Before updating: check free disk on the laptop. The backfill rewrites ~1.3M rows once, so the
+   `photos` table may grow by ~1-1.5 GB of dead tuples until autovacuum reuses the space
+   (do not run `VACUUM FULL`: it locks the table). Keep at least ~5 GB free (indexes + the backup of step 3).
+2. Run `update.ps1` as usual: `alembic upgrade head` is its step 4 (index builds take a while; the old version keeps serving).
+3. Pause the scheduler for the backfill: concurrent sync upserts can deadlock with the backfill
+   or rewrite overlapping sols once. Simplest: `docker compose -p mars stop app` (the API is down
+   for the ~2-3 minutes of the run). Alternative: skip the pause, run the backfill right after the update
+   and accept a possible retry. Note `docker compose run` containers do not start the scheduler, so
+   only the running `app` matters; `SYNC_ENABLED` is fixed to `"true"` in `compose.yml`.
+4. Run the backfill in a one-off container (rerun is idempotent: the second run reports 0 updates):
+   ```
+   docker compose -p mars run --rm app python -m app.cli backfill-meta
+   ```
+   Optional `--rover`, `--from-sol`, `--to-sol`, `--batch-sols N` to run it in pieces. If it fails
+   on a deadlock, just run it again.
+5. Refresh statistics (`max_parallel_maintenance_workers=0` because of the small Docker `/dev/shm`):
+   ```
+   docker compose -p mars exec db psql -U <db-user> -d <db-name> -c "SET max_parallel_maintenance_workers=0" -c "VACUUM ANALYZE photos"
+   ```
+   (Separate `-c` options share one session, so the `SET` applies, and `VACUUM` is not wrapped in a transaction.)
+6. Re-enable the scheduler: `docker compose -p mars up -d app` and check `GET /health/sync`.
+
 ### MER image cache
 
 `GET /api/v2/photos/{id}/image?size=full` for Spirit and Opportunity converts the PDS3 `.img`

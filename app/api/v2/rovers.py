@@ -15,7 +15,10 @@ from app.api.v2.params import (
     DriveParam,
     EarthDateParam,
     FlightNumberPath,
+    GoldenHourParam,
     LatestParam,
+    LocalTimeParam,
+    MinSizeParam,
     Pagination,
     SampleNumberPath,
     SampleTypeParam,
@@ -110,6 +113,11 @@ async def list_photos(
     site_min: SiteMinParam = None,
     site_max: SiteMaxParam = None,
     sort: SortParam = DEFAULT_SORT,
+    local_time_min: LocalTimeParam = None,
+    local_time_max: LocalTimeParam = None,
+    golden_hour: GoldenHourParam = False,
+    min_width: MinSizeParam = None,
+    min_height: MinSizeParam = None,
 ) -> FastJSONResponse:
     query = PhotoQuery(
         sol=sol,
@@ -126,6 +134,11 @@ async def list_photos(
         site_min=site_min,
         site_max=site_max,
         sort=sort,
+        local_time_min=local_time_min,
+        local_time_max=local_time_max,
+        golden_hour=golden_hour,
+        min_width=min_width,
+        min_height=min_height,
     )
     return FastJSONResponse(
         photos_body(

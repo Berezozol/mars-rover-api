@@ -6,10 +6,15 @@ from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, Literal
 
 from sqlalchemy import (
+    BigInteger,
     BindParameter,
+    ColumnElement,
+    DateTime,
     Integer,
     Select,
+    SmallInteger,
     Text,
+    and_,
     bindparam,
     delete,
     distinct,
@@ -18,6 +23,7 @@ from sqlalchemy import (
     literal_column,
     or_,
     select,
+    text,
     tuple_,
     union_all,
 )
@@ -30,8 +36,10 @@ from app.db.models import Camera, CameraSolCount, Photo, SolSummary
 from app.repositories._common import FRESH
 from app.repositories.rovers import get_or_create_cameras
 from app.sources.base import PhotoRecord
+from app.sources.photo_meta import STORED_META_PATHS, StoredMeta, stored_meta
 
 FULL_SAMPLE_TYPE = "full"
+SECONDS_PER_DAY = 86_400
 
 # Order of a photo list: sol first (``sol DESC, taken_at DESC, id DESC``) or capture time first.
 PhotoSort = Literal["-sol", "sol", "-taken_at", "taken_at"]
@@ -59,6 +67,9 @@ _DATA_COLUMNS = (
     "site",
     "drive",
     "extra",
+    "local_time_s",
+    "width",
+    "height",
 )
 
 _EMPTY_TEXT_ARRAY = literal_column("'{}'::text[]")
@@ -85,6 +96,12 @@ class PhotoFilter:
     date_max: date | None = None
     site_min: int | None = None
     site_max: int | None = None
+    # Local solar time windows [start, end) in seconds of the day, any of which matches; a
+    # window over midnight is given as two. Empty: no filter.
+    local_time_ranges: tuple[tuple[int, int], ...] = ()
+    # Full frame size at least this many pixels (photos without a size never match).
+    min_width: int | None = None
+    min_height: int | None = None
     # Plan hint for list queries, set by the caller that knows the filter matches few rows:
     # select the matching rows first, then sort them (see ``_keys_query``).
     narrow: bool = False
@@ -131,6 +148,7 @@ async def moved_from_sols(
 
 
 def _photo_row(rover_id: str, camera_id: int, record: PhotoRecord) -> dict[str, Any]:
+    meta = stored_meta(rover_id, record.extra)
     return {
         "rover_id": rover_id,
         "camera_id": camera_id,
@@ -151,6 +169,9 @@ def _photo_row(rover_id: str, camera_id: int, record: PhotoRecord) -> dict[str, 
         "site": record.site,
         "drive": record.drive,
         "extra": record.extra,
+        "local_time_s": meta.local_time_s,
+        "width": meta.width,
+        "height": meta.height,
     }
 
 
@@ -198,7 +219,31 @@ def _filtered(
         stmt = stmt.where(Photo.drive >= flt.drive_from)
     if flt.drive_to is not None:
         stmt = stmt.where(Photo.drive <= flt.drive_to)
+    return _meta_filtered(stmt, flt)
+
+
+def _meta_filtered(stmt: Select[Any], flt: PhotoFilter) -> Select[Any]:
+    """Local time windows and minimum frame size (columns filled from ``extra``)."""
+    if flt.local_time_ranges:
+        stmt = stmt.where(or_(*(_time_window(low, high) for low, high in flt.local_time_ranges)))
+    if flt.min_width is not None:
+        stmt = stmt.where(Photo.width >= flt.min_width)
+    if flt.min_height is not None:
+        stmt = stmt.where(Photo.height >= flt.min_height)
     return stmt
+
+
+def _time_window(low: int, high: int) -> ColumnElement[bool]:
+    """``low <= local_time_s < high``; a bound at the edge of the day is left out. A comparison
+    never matches NULL, and the partial index on local_time_s covers it."""
+    if low >= high:
+        return false()
+    bounds = []
+    if low > 0:
+        bounds.append(Photo.local_time_s >= low)
+    if high < SECONDS_PER_DAY:
+        bounds.append(Photo.local_time_s < high)
+    return and_(*bounds) if bounds else Photo.local_time_s.is_not(None)
 
 
 def _day_start(day: date, shift_days: int) -> datetime | None:
@@ -595,3 +640,90 @@ async def nearest_sols(
     before = await session.scalar(select(func.max(SolSummary.sol)).where(base, below))
     after = await session.scalar(select(func.min(SolSummary.sol)).where(base, above))
     return before, after
+
+
+def _extra_projection(paths: Sequence[tuple[str, ...]]) -> ColumnElement[Any]:
+    """JSONB object with only the given paths of ``photos.extra`` (missing values as null)."""
+    tree: dict[str, Any] = {}
+    for path in paths:
+        node = tree
+        for key in path[:-1]:
+            node = node.setdefault(key, {})
+        node[path[-1]] = tuple(path)
+
+    def build(level: dict[str, Any], prefix: tuple[str, ...]) -> ColumnElement[Any]:
+        args: list[Any] = []
+        for key, child in level.items():
+            args.append(key)
+            if isinstance(child, dict):
+                args.append(build(child, (*prefix, key)))
+            else:
+                args.append(Photo.extra.op("#>")(text("'{" + ",".join(child) + "}'")))
+        return func.jsonb_build_object(*args)
+
+    return build(tree, ())
+
+
+# The backfill reads these few values instead of the whole (about 1 KB) ``extra``.
+_META_EXTRA = _extra_projection(STORED_META_PATHS)
+
+# Locks the rows in id order first (the same order concurrent upserts take them in, so no
+# deadlock), then writes only rows that still carry the ``updated_at`` that was read: a row
+# upserted in between is skipped and picked up by the next run.
+_UPDATE_META = text(
+    "WITH locked AS MATERIALIZED ("
+    "SELECT id FROM photos WHERE id = ANY(:ids) ORDER BY id FOR UPDATE) "
+    "UPDATE photos AS p SET local_time_s = v.t, width = v.w, height = v.h "
+    "FROM unnest(:ids, :times, :widths, :heights, :stamps) AS v(id, t, w, h, u), locked "
+    "WHERE p.id = v.id AND locked.id = p.id AND p.updated_at = v.u "
+    "AND (p.local_time_s IS DISTINCT FROM v.t "
+    "OR p.width IS DISTINCT FROM v.w OR p.height IS DISTINCT FROM v.h)"
+).bindparams(
+    bindparam("ids", type_=ARRAY(BigInteger)),
+    bindparam("times", type_=ARRAY(Integer)),
+    bindparam("widths", type_=ARRAY(SmallInteger)),
+    bindparam("heights", type_=ARRAY(SmallInteger)),
+    bindparam("stamps", type_=ARRAY(DateTime(timezone=True))),
+)
+
+
+async def sol_bounds(session: AsyncSession, rover_id: str) -> tuple[int, int] | None:
+    """Lowest and highest sol with photos of the rover; None without photos."""
+    stmt = select(func.min(Photo.sol), func.max(Photo.sol)).where(Photo.rover_id == rover_id)
+    low, high = (await session.execute(stmt)).one()
+    return None if low is None else (low, high)
+
+
+async def meta_backfill_batch(
+    session: AsyncSession, rover_id: str, sol_from: int, sol_to: int
+) -> tuple[int, int]:
+    """Set the meta columns of the rover's photos in a sol range from ``extra``.
+
+    Recomputes every row of the range, so stale stored values are corrected too, and writes
+    only rows whose derived values differ from the stored ones (so a second run writes
+    nothing and bloats nothing). ``updated_at`` is not touched: the photos themselves did
+    not change. A row changed by a concurrent upsert since it was read is skipped (see
+    ``_UPDATE_META``). Returns ``(rows looked at, rows updated)``.
+    """
+    stmt = select(
+        Photo.id, _META_EXTRA, Photo.updated_at, Photo.local_time_s, Photo.width, Photo.height
+    ).where(Photo.rover_id == rover_id, Photo.sol >= sol_from, Photo.sol <= sol_to)
+    rows = (await session.execute(stmt)).all()
+    derived = [
+        (row.id, row.updated_at, stored_meta(rover_id, row[1]), StoredMeta(*row[3:]))
+        for row in rows
+    ]
+    values = [(i, stamp, new) for i, stamp, new, stored in derived if new != stored]
+    if not values:
+        return len(rows), 0
+    result = await session.execute(
+        _UPDATE_META,
+        {
+            "ids": [i for i, _, _ in values],
+            "stamps": [stamp for _, stamp, _ in values],
+            "times": [m.local_time_s for _, _, m in values],
+            "widths": [m.width for _, _, m in values],
+            "heights": [m.height for _, _, m in values],
+        },
+    )
+    return len(rows), int(result.rowcount)  # type: ignore[attr-defined]
