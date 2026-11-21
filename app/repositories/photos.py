@@ -1,8 +1,8 @@
 """Photos and per-sol summaries."""
 
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
-from datetime import date, datetime
+from dataclasses import dataclass, replace
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, Literal
 
 from sqlalchemy import (
@@ -19,6 +19,7 @@ from sqlalchemy import (
     or_,
     select,
     tuple_,
+    union_all,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, Insert, aggregate_order_by
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -31,6 +32,10 @@ from app.repositories.rovers import get_or_create_cameras
 from app.sources.base import PhotoRecord
 
 FULL_SAMPLE_TYPE = "full"
+
+# Order of a photo list: sol first (``sol DESC, taken_at DESC, id DESC``) or capture time first.
+PhotoSort = Literal["-sol", "sol", "-taken_at", "taken_at"]
+DEFAULT_SORT: PhotoSort = "-sol"
 
 # asyncpg allows at most 32767 bind parameters per statement (~20 per photo row).
 _UPSERT_CHUNK = 1000
@@ -66,11 +71,23 @@ class PhotoFilter:
     earth_date: date | None = None
     # Case-insensitive exact codes; an empty list matches nothing.
     camera_codes: Sequence[str] | None = None
+    # Camera ids for list queries; replace the camera_codes join when set.
+    camera_ids: Sequence[int] | None = None
     sample_type: str | None = None
     # Stop filter: ``site`` alone, or with an inclusive ``drive`` range (either end may be open).
     site: int | None = None
     drive_from: int | None = None
     drive_to: int | None = None
+    # Inclusive ranges; either end may be open.
+    sol_min: int | None = None
+    sol_max: int | None = None
+    date_min: date | None = None
+    date_max: date | None = None
+    site_min: int | None = None
+    site_max: int | None = None
+    # Plan hint for list queries, set by the caller that knows the filter matches few rows:
+    # select the matching rows first, then sort them (see ``_keys_query``).
+    narrow: bool = False
 
 
 async def upsert_photos(
@@ -150,14 +167,22 @@ def _upsert_statement(rows: list[dict[str, Any]]) -> Insert:
     )
 
 
-def _filtered(stmt: Select[Any], flt: PhotoFilter, *, joined_camera: bool = False) -> Select[Any]:
+def _filtered(
+    stmt: Select[Any],
+    flt: PhotoFilter,
+    *,
+    joined_camera: bool = False,
+    bound_taken_at: bool = True,
+) -> Select[Any]:
     """Apply the filter; joins cameras only for a non-empty camera filter (unless joined)."""
     stmt = stmt.where(Photo.rover_id == flt.rover_id)
     if flt.sol is not None:
         stmt = stmt.where(Photo.sol == flt.sol)
     if flt.earth_date is not None:
         stmt = stmt.where(Photo.earth_date == flt.earth_date)
-    if flt.camera_codes is not None:
+    if flt.camera_ids is not None:
+        stmt = stmt.where(Photo.camera_id.in_(list(flt.camera_ids)))
+    elif flt.camera_codes is not None:
         codes = [code.upper() for code in flt.camera_codes]
         if not codes:
             return stmt.where(false())
@@ -166,6 +191,7 @@ def _filtered(stmt: Select[Any], flt: PhotoFilter, *, joined_camera: bool = Fals
         stmt = stmt.where(Camera.code.in_(codes))
     if flt.sample_type is not None:
         stmt = stmt.where(Photo.sample_type == flt.sample_type.lower())
+    stmt = _ranged(stmt, flt, bound_taken_at)
     if flt.site is not None:
         stmt = stmt.where(Photo.site == flt.site)
     if flt.drive_from is not None:
@@ -175,14 +201,58 @@ def _filtered(stmt: Select[Any], flt: PhotoFilter, *, joined_camera: bool = Fals
     return stmt
 
 
+def _day_start(day: date, shift_days: int) -> datetime | None:
+    """UTC midnight of ``day + shift_days``; None past the calendar edge (no bound then)."""
+    try:
+        return datetime.combine(day + timedelta(days=shift_days), time.min, tzinfo=UTC)
+    except OverflowError:
+        return None
+
+
+def _ranged(stmt: Select[Any], flt: PhotoFilter, bound_taken_at: bool = True) -> Select[Any]:
+    """Sol, date and site ranges.
+
+    A date range also bounds ``taken_at`` by a day on each side: ``earth_date`` is the UTC date
+    of ``taken_at``, so the redundant bound never drops a row, and it lets the
+    (rover_id, taken_at) index serve both the filter and the order. Counts skip the bound
+    (``bound_taken_at=False``): ``earth_date`` alone is answered from its index.
+    """
+    if flt.sol_min is not None:
+        stmt = stmt.where(Photo.sol >= flt.sol_min)
+    if flt.sol_max is not None:
+        stmt = stmt.where(Photo.sol <= flt.sol_max)
+    if flt.date_min is not None:
+        stmt = stmt.where(Photo.earth_date >= flt.date_min)
+        if bound_taken_at and (lower := _day_start(flt.date_min, -1)) is not None:
+            stmt = stmt.where(Photo.taken_at >= lower)
+    if flt.date_max is not None:
+        stmt = stmt.where(Photo.earth_date <= flt.date_max)
+        if bound_taken_at and (upper := _day_start(flt.date_max, 2)) is not None:
+            stmt = stmt.where(Photo.taken_at < upper)
+    if flt.site_min is not None:
+        stmt = stmt.where(Photo.site >= flt.site_min)
+    if flt.site_max is not None:
+        stmt = stmt.where(Photo.site <= flt.site_max)
+    return stmt
+
+
+def _sort_order(sort: PhotoSort, sol: Any, taken_at: Any, photo_id: Any) -> list[Any]:
+    """ORDER BY clauses of the sort over the given columns (``id`` breaks every tie)."""
+    descending = sort.startswith("-")
+    keys = [taken_at, photo_id] if sort.endswith("taken_at") else [sol, taken_at, photo_id]
+    return [key.desc() if descending else key.asc() for key in keys]
+
+
 async def list_photos(
     session: AsyncSession,
     flt: PhotoFilter,
     *,
     order: Literal["legacy", "newest"] = "newest",
+    sort: PhotoSort = DEFAULT_SORT,
     limit: int | None = None,
     offset: int = 0,
 ) -> list[Photo]:
+    """Photos of one rover; ``order="legacy"`` is the v1 order (camera, id) and ignores sort."""
     if order == "legacy":
         # Ordering by camera needs the join anyway; reuse it to load Photo.camera.
         stmt = select(Photo).join(Photo.camera).options(contains_eager(Photo.camera))
@@ -190,21 +260,98 @@ async def list_photos(
         stmt = stmt.order_by(Camera.sort_order, Photo.id)
     else:
         stmt = _filtered(select(Photo).options(selectinload(Photo.camera)), flt)
-        stmt = stmt.order_by(Photo.sol.desc(), Photo.taken_at.desc(), Photo.id.desc())
+        stmt = stmt.order_by(*_sort_order(sort, Photo.sol, Photo.taken_at, Photo.id))
     stmt = stmt.limit(limit).offset(offset)
     return list(await session.scalars(stmt, execution_options=FRESH))
 
 
+async def list_photos_multi(
+    session: AsyncSession,
+    filters: Sequence[PhotoFilter],
+    sort: PhotoSort,
+    limit: int,
+    offset: int,
+) -> list[Photo]:
+    """One page of the merged list of one or several rovers (one filter per rover).
+
+    Two phases, also for a single filter: the sort keys (id, sol, taken_at) of the first
+    ``offset + limit`` photos of each rover are read from an index without touching the table
+    rows; the keys are merged and cut to the page; only those rows are loaded by id. Deep
+    pages therefore cost an index scan, not a fetch of every skipped row.
+    """
+    filters = [part for flt in filters for part in _per_camera(flt)]
+    if not filters:
+        return []
+    if len(filters) == 1:
+        keys_stmt = _keys_query(filters[0], sort, limit, offset, 0)
+        page_ids = [row.id for row in await session.execute(keys_stmt, execution_options=FRESH)]
+    else:
+        parts = [_keys_query(flt, sort, offset + limit, 0, n) for n, flt in enumerate(filters)]
+        merged = union_all(*parts).subquery()
+        ordered = _sort_order(sort, merged.c.sol, merged.c.taken_at, merged.c.id)
+        page_ids = list(
+            await session.scalars(
+                select(merged.c.id).order_by(*ordered).limit(limit).offset(offset),
+                execution_options=FRESH,
+            )
+        )
+    if not page_ids:
+        return []
+    stmt = select(Photo).where(Photo.id.in_(page_ids)).options(selectinload(Photo.camera))
+    by_id = {photo.id: photo for photo in await session.scalars(stmt, execution_options=FRESH)}
+    return [by_id[photo_id] for photo_id in page_ids if photo_id in by_id]
+
+
+def _per_camera(flt: PhotoFilter) -> list[PhotoFilter]:
+    """One filter per camera id: each part then reads the (rover_id, camera_id, ...) indexes
+    instead of filtering a scan of the whole rover by camera."""
+    if flt.camera_ids is None or flt.narrow:
+        # A narrow filter selects its few rows once, whatever their cameras.
+        return [flt]
+    return [replace(flt, camera_ids=[camera_id]) for camera_id in flt.camera_ids]
+
+
+def _keys_query(
+    flt: PhotoFilter, sort: PhotoSort, limit: int, offset: int, part: int
+) -> Select[Any]:
+    """Sort keys of the rover's photos ``offset .. offset + limit``, id first.
+
+    ``sol`` is selected only for the sol sorts: for ``taken_at`` sorts a constant is
+    selected instead, so the (rover_id, taken_at, id) index alone can answer the query.
+    Normally the planner walks the sort index and filters; with ``flt.narrow`` the matching
+    rows are selected first (a MATERIALIZED CTE, named by ``part`` to stay unique in a
+    union) and only then sorted, which is the right plan when they sit far from the start
+    of the sort order (e.g. an early date range under ``-sol``).
+    """
+    by_time = sort.endswith("taken_at")
+    sol = literal_column("0").label("sol") if by_time else Photo.sol
+    stmt = _filtered(select(Photo.id, sol, Photo.taken_at), flt)
+    if flt.narrow:
+        keys = stmt.cte(f"keys{part}").prefix_with("MATERIALIZED")
+        order = _sort_order(sort, keys.c.sol, keys.c.taken_at, keys.c.id)
+        stmt = select(keys.c.id, keys.c.sol, keys.c.taken_at).order_by(*order)
+    else:
+        stmt = stmt.order_by(*_sort_order(sort, sol, Photo.taken_at, Photo.id))
+    return stmt.limit(limit).offset(offset or None)
+
+
 async def count_photos(session: AsyncSession, flt: PhotoFilter) -> int:
-    stmt = _filtered(select(func.count(Photo.id)), flt)
+    stmt = _filtered(select(func.count()).select_from(Photo), flt, bound_taken_at=False)
     return await session.scalar(stmt) or 0
 
 
 async def camera_total_photos(
-    session: AsyncSession, rover_id: str, camera_codes: Sequence[str], *, full_only: bool = False
+    session: AsyncSession,
+    rover_id: str,
+    camera_codes: Sequence[str],
+    *,
+    full_only: bool = False,
+    sol_min: int | None = None,
+    sol_max: int | None = None,
 ) -> int:
-    """Photos of the cameras over all sols, summed from camera_sol_counts (full frames only
-    with ``full_only``); kept by the sync together with sol_summaries."""
+    """Photos of the cameras in the sol range (default: all sols), summed from
+    camera_sol_counts (full frames only with ``full_only``); kept by the sync together with
+    sol_summaries."""
     codes = [code.upper() for code in camera_codes]
     if not codes:
         return 0
@@ -214,6 +361,29 @@ async def camera_total_photos(
         .join(Camera, Camera.id == CameraSolCount.camera_id)
         .where(CameraSolCount.rover_id == rover_id, Camera.code.in_(codes))
     )
+    if sol_min is not None:
+        stmt = stmt.where(CameraSolCount.sol >= sol_min)
+    if sol_max is not None:
+        stmt = stmt.where(CameraSolCount.sol <= sol_max)
+    return int(await session.scalar(stmt) or 0)
+
+
+async def sol_range_total_photos(
+    session: AsyncSession,
+    rover_id: str,
+    sol_min: int | None,
+    sol_max: int | None,
+    *,
+    full_only: bool = False,
+) -> int:
+    """Photos of the rover in the sol range, from sol_summaries (full frames only with
+    ``full_only``)."""
+    column = SolSummary.full_photos if full_only else SolSummary.total_photos
+    stmt = select(func.coalesce(func.sum(column), 0)).where(SolSummary.rover_id == rover_id)
+    if sol_min is not None:
+        stmt = stmt.where(SolSummary.sol >= sol_min)
+    if sol_max is not None:
+        stmt = stmt.where(SolSummary.sol <= sol_max)
     return int(await session.scalar(stmt) or 0)
 
 

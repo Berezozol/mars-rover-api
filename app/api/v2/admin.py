@@ -77,7 +77,7 @@ _ERRORS: dict[int | str, dict[str, Any]] = {
     404: {"model": ErrorResponse, "description": "rover_not_found"},
     422: {"model": ErrorResponse, "description": "validation_error"},
     429: {"model": ErrorResponse, "description": "rate_limited"},
-    503: {"model": ErrorResponse, "description": "db_unavailable"},
+    503: {"model": ErrorResponse, "description": "db_unavailable / service_busy"},
 }
 
 _SYNC_BODY = {

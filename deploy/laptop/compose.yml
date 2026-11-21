@@ -24,6 +24,11 @@ services:
       POSTGRES_USER: mars
       POSTGRES_DB: mars
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    # Docker's default /dev/shm is 64 MB; parallel query workers allocate dynamic shared
+    # memory there and fail with "could not resize shared memory segment".
+    shm_size: 256m
+    # Cap temporary files per session so one runaway query cannot fill the disk.
+    command: ["postgres", "-c", "temp_file_limit=2GB"]
     # No published ports: only the app container reaches the database.
     volumes:
       - pgdata:/var/lib/postgresql/data

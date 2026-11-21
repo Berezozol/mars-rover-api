@@ -17,6 +17,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import DBAPIError, InterfaceError, OperationalError
+from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 logger = logging.getLogger(__name__)
@@ -26,6 +27,10 @@ LEGACY_PREFIXES: tuple[str, ...] = ("/api/v1", "/mars-photos/api/v1")
 VALIDATION_MESSAGE = "Request validation failed"
 RATE_LIMITED_MESSAGE = "Rate limit exceeded"
 DB_UNAVAILABLE_MESSAGE = "Database unavailable"
+SERVICE_BUSY_MESSAGE = "Server is busy, retry later"
+# The v1 text (docs/LEGACY-API.md): {"errors": "Server is busy"}.
+LEGACY_SERVICE_BUSY_MESSAGE = "Server is busy"
+BUSY_RETRY_AFTER_SECONDS = 5
 
 # Echoed user input in error messages is cut to this length.
 _MAX_ECHO = 64
@@ -290,6 +295,32 @@ def _validation_details(exc: RequestValidationError) -> list[dict[str, str]]:
     return details
 
 
+def is_db_busy(exc: BaseException) -> bool:
+    """True when the database work did not fit its limit: no free pooled connection within
+    ``DB_POOL_TIMEOUT_SECONDS``, or a statement cancelled by ``statement_timeout``."""
+    if isinstance(exc, PoolTimeoutError):
+        return True
+    if not isinstance(exc, DBAPIError):
+        return False
+    # 57014 (statement timeout) or class 53 (disk full, out of memory, too many connections).
+    state = db_sqlstate(exc)
+    return state == "57014" or state.startswith("53")
+
+
+def db_sqlstate(exc: BaseException) -> str:
+    """SQLSTATE of a DBAPIError ("" if unknown); asyncpg errors are the cause of the adapted
+    DBAPI error."""
+    if not isinstance(exc, DBAPIError):
+        return ""
+    cause: BaseException | None = exc.orig
+    while cause is not None:
+        state = getattr(cause, "sqlstate", None)
+        if isinstance(state, str):
+            return state
+        cause = cause.__cause__
+    return ""
+
+
 def is_db_unavailable(exc: BaseException) -> bool:
     """True for database connectivity failures; SQL, integrity and other errors are False."""
     if isinstance(exc, _DB_UNAVAILABLE_TYPES):
@@ -337,7 +368,16 @@ async def _handle_validation_error(request: Request, exc: RequestValidationError
 
 
 async def _handle_unexpected_error(request: Request, exc: Exception) -> JSONResponse:
-    logger.exception("Unhandled error path=%s", request.url.path)
+    if isinstance(exc, DBAPIError):
+        # Not logger.exception: the message would carry the statement text and parameters.
+        logger.error(
+            "Database error path=%s type=%s sqlstate=%s",
+            request.url.path,
+            type(exc).__name__,
+            db_sqlstate(exc) or "unknown",
+        )
+    else:
+        logger.exception("Unhandled error path=%s", request.url.path)
     # Rendered by the outermost ServerErrorMiddleware, outside the caching middleware.
     return error_response(
         request,
@@ -349,7 +389,26 @@ async def _handle_unexpected_error(request: Request, exc: Exception) -> JSONResp
 
 
 async def _handle_db_error(request: Request, exc: Exception) -> JSONResponse:
-    """503 db_unavailable for connectivity failures; any other DB error stays a 500."""
+    """503 service_busy for limit overruns, 503 db_unavailable for connectivity failures;
+    any other DB error stays a 500."""
+    if is_db_busy(exc):
+        logger.warning(
+            "Database busy path=%s error=%s sqlstate=%s",
+            request.url.path,
+            type(exc).__name__,
+            db_sqlstate(exc) or "none",
+        )
+        return error_response(
+            request,
+            status_code=503,
+            code="service_busy",
+            message=(
+                LEGACY_SERVICE_BUSY_MESSAGE
+                if is_legacy_path(request.url.path)
+                else SERVICE_BUSY_MESSAGE
+            ),
+            headers={"Retry-After": str(BUSY_RETRY_AFTER_SECONDS), "Cache-Control": NO_STORE},
+        )
     if not is_db_unavailable(exc):
         return await _handle_unexpected_error(request, exc)
     logger.warning("Database unavailable path=%s error=%s", request.url.path, type(exc).__name__)
@@ -366,6 +425,6 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(StarletteHTTPException, _handle_http_error)  # type: ignore[arg-type]
     app.add_exception_handler(RequestValidationError, _handle_validation_error)  # type: ignore[arg-type]
     # DBAPIError covers OperationalError/InterfaceError; the handler checks connection_invalidated.
-    for exc_type in (DBAPIError, *_DB_UNAVAILABLE_TYPES):
+    for exc_type in (DBAPIError, PoolTimeoutError, *_DB_UNAVAILABLE_TYPES):
         app.add_exception_handler(exc_type, _handle_db_error)
     app.add_exception_handler(Exception, _handle_unexpected_error)

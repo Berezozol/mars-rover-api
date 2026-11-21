@@ -423,7 +423,7 @@
             }
           },
           "503": {
-            "description": "db_unavailable",
+            "description": "db_unavailable / service_busy",
             "content": {
               "application/json": {
                 "schema": {
@@ -485,7 +485,7 @@
             }
           },
           "503": {
-            "description": "db_unavailable",
+            "description": "db_unavailable / service_busy",
             "content": {
               "application/json": {
                 "schema": {
@@ -565,7 +565,7 @@
             }
           },
           "503": {
-            "description": "db_unavailable",
+            "description": "db_unavailable / service_busy",
             "content": {
               "application/json": {
                 "schema": {
@@ -644,10 +644,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Exact camera code, case-insensitive (see /cameras).",
+              "description": "Up to 10 camera codes separated by commas, case-insensitive.",
               "title": "Camera"
             },
-            "description": "Exact camera code, case-insensitive (see /cameras)."
+            "description": "Up to 10 camera codes separated by commas, case-insensitive."
           },
           {
             "name": "sample_type",
@@ -724,6 +724,142 @@
             }
           },
           {
+            "name": "sol_min",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2147483647,
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "First sol, inclusive; not combinable with sol.",
+              "title": "Sol Min"
+            },
+            "description": "First sol, inclusive; not combinable with sol."
+          },
+          {
+            "name": "sol_max",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2147483647,
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Last sol, inclusive; not combinable with sol.",
+              "title": "Sol Max"
+            },
+            "description": "Last sol, inclusive; not combinable with sol."
+          },
+          {
+            "name": "date_min",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "First real capture date (UTC), YYYY-MM-DD, inclusive.",
+              "title": "Date Min"
+            },
+            "description": "First real capture date (UTC), YYYY-MM-DD, inclusive."
+          },
+          {
+            "name": "date_max",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Last real capture date (UTC), YYYY-MM-DD, inclusive.",
+              "title": "Date Max"
+            },
+            "description": "Last real capture date (UTC), YYYY-MM-DD, inclusive."
+          },
+          {
+            "name": "site_min",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2147483647,
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "First stop, inclusive.",
+              "title": "Site Min"
+            },
+            "description": "First stop, inclusive."
+          },
+          {
+            "name": "site_max",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2147483647,
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Last stop, inclusive.",
+              "title": "Site Max"
+            },
+            "description": "Last stop, inclusive."
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "-sol",
+                "sol",
+                "-taken_at",
+                "taken_at"
+              ],
+              "type": "string",
+              "description": "-sol: sol DESC, taken_at DESC, id DESC (default); sol: ascending; -taken_at: taken_at DESC, id DESC; taken_at: ascending.",
+              "default": "-sol",
+              "title": "Sort"
+            },
+            "description": "-sol: sol DESC, taken_at DESC, id DESC (default); sol: ascending; -taken_at: taken_at DESC, id DESC; taken_at: ascending."
+          },
+          {
             "name": "page",
             "in": "query",
             "required": false,
@@ -780,7 +916,7 @@
             }
           },
           "503": {
-            "description": "db_unavailable",
+            "description": "db_unavailable / service_busy",
             "content": {
               "application/json": {
                 "schema": {
@@ -902,7 +1038,7 @@
             }
           },
           "503": {
-            "description": "db_unavailable",
+            "description": "db_unavailable / service_busy",
             "content": {
               "application/json": {
                 "schema": {
@@ -1000,7 +1136,7 @@
             }
           },
           "503": {
-            "description": "db_unavailable",
+            "description": "db_unavailable / service_busy",
             "content": {
               "application/json": {
                 "schema": {
@@ -1062,7 +1198,7 @@
             }
           },
           "503": {
-            "description": "db_unavailable",
+            "description": "db_unavailable / service_busy",
             "content": {
               "application/json": {
                 "schema": {
@@ -1135,7 +1271,7 @@
             }
           },
           "503": {
-            "description": "db_unavailable",
+            "description": "db_unavailable / service_busy",
             "content": {
               "application/json": {
                 "schema": {
@@ -1197,7 +1333,7 @@
             }
           },
           "503": {
-            "description": "db_unavailable",
+            "description": "db_unavailable / service_busy",
             "content": {
               "application/json": {
                 "schema": {
@@ -1270,7 +1406,7 @@
             }
           },
           "503": {
-            "description": "db_unavailable",
+            "description": "db_unavailable / service_busy",
             "content": {
               "application/json": {
                 "schema": {
@@ -1398,7 +1534,7 @@
             }
           },
           "503": {
-            "description": "db_unavailable",
+            "description": "db_unavailable / service_busy",
             "content": {
               "application/json": {
                 "schema": {
@@ -1465,7 +1601,7 @@
             }
           },
           "503": {
-            "description": "db_unavailable",
+            "description": "db_unavailable / service_busy",
             "content": {
               "application/json": {
                 "schema": {
@@ -1595,7 +1731,357 @@
             }
           },
           "503": {
-            "description": "db_unavailable",
+            "description": "db_unavailable / service_busy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/photos": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "summary": "List All Photos",
+        "operationId": "list_all_photos_api_v2_photos_get",
+        "parameters": [
+          {
+            "name": "rovers",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Rover slugs separated by commas, case-insensitive; default: all rovers.",
+              "title": "Rovers"
+            },
+            "description": "Rover slugs separated by commas, case-insensitive; default: all rovers."
+          },
+          {
+            "name": "sol",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2147483647,
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sol"
+            }
+          },
+          {
+            "name": "sol_min",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2147483647,
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "First sol, inclusive; not combinable with sol.",
+              "title": "Sol Min"
+            },
+            "description": "First sol, inclusive; not combinable with sol."
+          },
+          {
+            "name": "sol_max",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2147483647,
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Last sol, inclusive; not combinable with sol.",
+              "title": "Sol Max"
+            },
+            "description": "Last sol, inclusive; not combinable with sol."
+          },
+          {
+            "name": "earth_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Real capture date (UTC), YYYY-MM-DD; not combinable with sol.",
+              "title": "Earth Date"
+            },
+            "description": "Real capture date (UTC), YYYY-MM-DD; not combinable with sol."
+          },
+          {
+            "name": "date_min",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "First real capture date (UTC), YYYY-MM-DD, inclusive.",
+              "title": "Date Min"
+            },
+            "description": "First real capture date (UTC), YYYY-MM-DD, inclusive."
+          },
+          {
+            "name": "date_max",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Last real capture date (UTC), YYYY-MM-DD, inclusive.",
+              "title": "Date Max"
+            },
+            "description": "Last real capture date (UTC), YYYY-MM-DD, inclusive."
+          },
+          {
+            "name": "camera",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Up to 10 camera codes separated by commas, case-insensitive.",
+              "title": "Camera"
+            },
+            "description": "Up to 10 camera codes separated by commas, case-insensitive."
+          },
+          {
+            "name": "sample_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "One of full, subframe, downsampled (case-insensitive); default: all.",
+              "title": "Sample Type"
+            },
+            "description": "One of full, subframe, downsampled (case-insensitive); default: all."
+          },
+          {
+            "name": "site",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2147483647,
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Stop number.",
+              "title": "Site"
+            },
+            "description": "Stop number."
+          },
+          {
+            "name": "drive_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2147483647,
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Drive From"
+            }
+          },
+          {
+            "name": "drive_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2147483647,
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Drive To"
+            }
+          },
+          {
+            "name": "site_min",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2147483647,
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "First stop, inclusive.",
+              "title": "Site Min"
+            },
+            "description": "First stop, inclusive."
+          },
+          {
+            "name": "site_max",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2147483647,
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Last stop, inclusive.",
+              "title": "Site Max"
+            },
+            "description": "Last stop, inclusive."
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "-sol",
+                "sol",
+                "-taken_at",
+                "taken_at"
+              ],
+              "type": "string",
+              "description": "-sol: sol DESC, taken_at DESC, id DESC (default); sol: ascending; -taken_at: taken_at DESC, id DESC; taken_at: ascending.",
+              "default": "-sol",
+              "title": "Sort"
+            },
+            "description": "-sol: sol DESC, taken_at DESC, id DESC (default); sol: ascending; -taken_at: taken_at DESC, id DESC; taken_at: ascending."
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000000,
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Per Page"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhotoListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "db_unavailable / service_busy",
             "content": {
               "application/json": {
                 "schema": {
@@ -1693,7 +2179,7 @@
             }
           },
           "503": {
-            "description": "db_unavailable",
+            "description": "db_unavailable / service_busy",
             "content": {
               "application/json": {
                 "schema": {
@@ -1776,7 +2262,7 @@
             }
           },
           "503": {
-            "description": "db_unavailable / converter_busy",
+            "description": "db_unavailable / service_busy / converter_busy",
             "content": {
               "application/json": {
                 "schema": {
@@ -2513,6 +2999,37 @@
           "samples"
         ],
         "title": "PhotoDetailOut"
+      },
+      "PhotoListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/app__api__v2__schemas__PhotoOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "per_page": {
+            "type": "integer",
+            "title": "Per Page"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "page",
+          "per_page",
+          "total"
+        ],
+        "title": "PhotoListResponse"
       },
       "PhotoLocationOut": {
         "properties": {

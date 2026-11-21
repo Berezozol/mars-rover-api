@@ -63,9 +63,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     check_admin_token(settings.admin_token)
     configure_logging(settings.log_level)
 
+    # Requests get a statement timeout and a short pool wait; the sync service, alerts and
+    # loaders use their own engine without a statement limit (long upserts and backfills).
     engine = create_engine(
         settings.database_url,
         connect_timeout=settings.db_connect_timeout_seconds,
+        statement_timeout=settings.db_statement_timeout_seconds,
+        pool_timeout=settings.db_pool_timeout_seconds,
+    )
+    worker_engine = create_engine(
+        settings.database_url, connect_timeout=settings.db_connect_timeout_seconds
     )
 
     @asynccontextmanager
@@ -87,7 +94,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     finally:
                         await _stop_sync(app)
             finally:
-                await engine.dispose()
+                try:
+                    await engine.dispose()
+                finally:
+                    await worker_engine.dispose()
 
     app = FastAPI(
         title=settings.app_name,
@@ -101,7 +111,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = settings
     app.state.engine = engine
+    app.state.worker_engine = worker_engine
     app.state.session_factory = create_session_factory(engine)
+    app.state.worker_session_factory = create_session_factory(worker_engine)
     app.state.upstream_client = None
     app.state.scheduler = None
     # Set when the scheduler starts (SYNC_ENABLED): the rover position loader.
@@ -109,7 +121,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Set at the same time: the samples page loader.
     app.state.sample_sync_service = None
     # One service for the scheduler and the admin endpoints.
-    app.state.sync_service = SyncService(app.state.session_factory, settings)
+    app.state.sync_service = SyncService(app.state.worker_session_factory, settings)
     app.state.adapter_factory = _default_adapter_factory(app, settings)
     app.state.sync_tasks = set()
     app.state.alert_monitor = _alert_monitor(app, settings)
@@ -124,7 +136,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(CachingMiddleware)
     if settings.rate_limit_enabled:
         app.state.rate_limiter = RateLimiter(
-            [(settings.rate_limit_per_minute, 60), (settings.rate_limit_per_hour, 3600)]
+            [(settings.rate_limit_per_minute, 60), (settings.rate_limit_per_hour, 3600)],
+            max_concurrent=settings.rate_limit_concurrent,
         )
         # Inside CORS (browsers can read the 429), outside caching (304s count too).
         app.add_middleware(RateLimitMiddleware)
@@ -182,7 +195,7 @@ def _alert_monitor(app: FastAPI, settings: Settings) -> AlertMonitor | None:
     notifier = TelegramNotifier.from_settings(settings)
     if notifier is None:
         return None
-    monitor = AlertMonitor(app.state.session_factory, settings, notifier)
+    monitor = AlertMonitor(app.state.worker_session_factory, settings, notifier)
     app.state.sync_service.add_listener(monitor.on_sync_finished)
     return monitor
 
@@ -206,9 +219,9 @@ def _stop_alerts(app: FastAPI) -> None:
 
 def _start_scheduler(app: FastAPI, settings: Settings) -> None:
     """Start the periodic sync on the shared client and service."""
-    locations = LocationSyncService(app.state.engine, app.state.upstream_client, settings)
+    locations = LocationSyncService(app.state.worker_engine, app.state.upstream_client, settings)
     app.state.location_sync_service = locations
-    samples = SampleSyncService(app.state.engine, app.state.upstream_client, settings)
+    samples = SampleSyncService(app.state.worker_engine, app.state.upstream_client, settings)
     app.state.sample_sync_service = samples
     app.state.scheduler = SyncScheduler(
         app.state.sync_service, app.state.upstream_client, settings, locations, samples

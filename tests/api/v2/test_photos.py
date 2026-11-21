@@ -128,7 +128,7 @@ async def test_photos_rover_without_data_return_empty_list(
 
 
 async def test_photos_unknown_params_are_ignored(client: httpx.AsyncClient, world: World) -> None:
-    ids = await list_ids(client, "perseverance", foo="bar", api_key="DEMO_KEY", sort="asc")
+    ids = await list_ids(client, "perseverance", foo="bar", api_key="DEMO_KEY", order="asc")
 
     assert ids == world.ids(PERSEVERANCE_ORDER)
 

@@ -105,6 +105,8 @@ class Photo(Base):
             text("taken_at DESC"),
             text("id DESC"),
         ),
+        # Order by capture time and date ranges across rovers (v2, stage 18B).
+        Index("ix_photos_rover_id_taken_at", "rover_id", text("taken_at DESC"), text("id DESC")),
         # Filter by real earth_date (v2).
         Index("ix_photos_rover_id_earth_date", "rover_id", "earth_date"),
         # Filter by stop (site, drive range) (v2); photos without a position are not indexed.

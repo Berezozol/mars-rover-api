@@ -252,7 +252,7 @@ _FEED_RESPONSES: dict[int | str, dict[str, Any]] = {
     200: {"description": "RSS 2.0 feed", "content": {"application/rss+xml": {}}},
     404: {"model": ErrorResponse, "description": "rover_not_found / not_found (archive rover)"},
     422: {"model": ErrorResponse, "description": "validation_error"},
-    503: {"model": ErrorResponse, "description": "db_unavailable"},
+    503: {"model": ErrorResponse, "description": "db_unavailable / service_busy"},
 }
 
 

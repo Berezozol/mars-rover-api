@@ -374,6 +374,25 @@ Logs rotate at 5 x 10 MB per container (they survive restarts, not `docker compo
 Docker Desktop shows the same in Containers -> `mars`. Sync runs are also visible via
 admin: `GET /api/v2/admin/sync/runs` with the `X-Admin-Token` header.
 
+### 8. Database tuning (shm_size, temp_file_limit)
+
+The `db` service in `deploy/laptop/compose.yml` sets two things:
+
+- `shm_size: 256m`: Docker gives containers 64 MB of `/dev/shm` by default. Heavy parallel
+  queries use it for dynamic shared memory and fail with `could not resize shared memory
+  segment ... No space left on device`. 256 MB removes that failure.
+- `-c temp_file_limit=2GB`: caps temporary files (sorts, hashes spilling to disk) per
+  session, so one runaway query errors out instead of filling the disk.
+
+Apply: copy the updated `compose.yml` to `%USERPROFILE%\mars-server`, then
+`docker compose up -d db`. This recreates the db container (a few seconds of downtime, the
+app reconnects); the `pgdata` volume is untouched. Check:
+`docker compose exec db psql -U mars -d mars -c "show temp_file_limit"` and
+`docker compose exec db df -h /dev/shm`.
+
+The root `docker-compose.yml` (local development) is not changed here; it needs the same
+`shm_size` if the problem shows up locally (owner: backend-dev).
+
 ## Monitoring
 
 Two independent channels, both to Telegram:

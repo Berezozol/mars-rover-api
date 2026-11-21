@@ -22,7 +22,7 @@ Dataset:
 """
 
 from collections.abc import AsyncIterator, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -35,6 +35,7 @@ from sqlalchemy.pool import NullPool
 
 from app.repositories.photos import recompute_sol_summaries, upsert_photos
 from app.repositories.rovers import refresh_rover_stats
+from tests.api.v2._multi import ALL_ROVERS, Multi, build_rows, record_of
 from tests.conftest import SEED_CAMERA_COUNTS, _clean_database, build_record
 
 V2 = "/api/v2"
@@ -594,3 +595,30 @@ def assert_validation_error(response: httpx.Response, *fields: str) -> list[dict
     named = {item["field"] for item in details}
     assert named and named <= set(fields), (named, fields)
     return details
+
+
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
+async def multi_world(migrated_db: str) -> AsyncIterator[Multi]:
+    """The 18B-1 dataset (tests/api/v2/_multi.py), committed once per module."""
+    engine = create_async_engine(migrated_db, poolclass=NullPool)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        await _clean_database(factory)
+        rows = build_rows()
+        for rover in ALL_ROVERS:
+            records = [record_of(r) for r in rows if r.rover == rover]
+            await _seed(factory, rover, records, one_by_one=False)
+        async with factory() as session:
+            id_of = dict((await session.execute(text("SELECT source_id, id FROM photos"))).all())
+            names = {
+                (rover, code): name
+                for rover, code, name in await session.execute(
+                    text("SELECT rover_id, code, name FROM cameras")
+                )
+            }
+        yield Multi(rows=[replace(r, id=id_of[r.source_id]) for r in rows], cameras=names)
+    finally:
+        try:
+            await _clean_database(factory)
+        finally:
+            await engine.dispose()

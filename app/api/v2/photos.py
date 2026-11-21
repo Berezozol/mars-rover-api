@@ -7,13 +7,88 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.home import request_origin
-from app.api.v2.params import CameraParam, PhotoIdPath, SampleTypeParam
-from app.api.v2.schemas import ErrorResponse, PhotoDetailOut, photo_detail_out
+from app.api.responses import FastJSONResponse
+from app.api.v2.params import (
+    CameraListParam,
+    CameraParam,
+    DateMaxParam,
+    DateMinParam,
+    DriveParam,
+    EarthDateParam,
+    Pagination,
+    PhotoIdPath,
+    RoversParam,
+    SampleTypeParam,
+    SiteMaxParam,
+    SiteMinParam,
+    SiteParam,
+    SolMaxParam,
+    SolMinParam,
+    SolParam,
+    SortParam,
+)
+from app.api.v2.schemas import (
+    ErrorResponse,
+    PhotoDetailOut,
+    PhotoListResponse,
+    photo_detail_out,
+    photo_list_body,
+)
 from app.db.session import get_session
 from app.services import v2
 from app.services.mer_images import MerImageService
+from app.services.v2 import DEFAULT_SORT, MultiPhotoQuery
 
 router = APIRouter()
+
+
+@router.get(
+    "/photos",
+    response_model=PhotoListResponse,
+    responses={
+        422: {"model": ErrorResponse, "description": "validation_error"},
+        503: {"model": ErrorResponse, "description": "db_unavailable / service_busy"},
+    },
+)
+async def list_all_photos(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    pagination: Pagination,
+    rovers: RoversParam = None,
+    sol: SolParam = None,
+    sol_min: SolMinParam = None,
+    sol_max: SolMaxParam = None,
+    earth_date: EarthDateParam = None,
+    date_min: DateMinParam = None,
+    date_max: DateMaxParam = None,
+    camera: CameraListParam = None,
+    sample_type: SampleTypeParam = None,
+    site: SiteParam = None,
+    drive_from: DriveParam = None,
+    drive_to: DriveParam = None,
+    site_min: SiteMinParam = None,
+    site_max: SiteMaxParam = None,
+    sort: SortParam = DEFAULT_SORT,
+) -> FastJSONResponse:
+    query = MultiPhotoQuery(
+        rovers=rovers,
+        sol=sol,
+        sol_min=sol_min,
+        sol_max=sol_max,
+        earth_date=earth_date,
+        date_min=date_min,
+        date_max=date_max,
+        camera=camera,
+        sample_type=sample_type,
+        site=site,
+        drive_from=drive_from,
+        drive_to=drive_to,
+        site_min=site_min,
+        site_max=site_max,
+        sort=sort,
+    )
+    result = await v2.search_photos_multi(session, query, pagination)
+    return FastJSONResponse(photo_list_body(result, request_origin(request)))
 
 
 # Non-integer id → 422; an integer outside 1..2**63-1 → 404 photo_not_found.
@@ -23,7 +98,7 @@ router = APIRouter()
     responses={
         404: {"model": ErrorResponse, "description": "photo_not_found"},
         422: {"model": ErrorResponse, "description": "validation_error"},
-        503: {"model": ErrorResponse, "description": "db_unavailable"},
+        503: {"model": ErrorResponse, "description": "db_unavailable / service_busy"},
     },
 )
 async def get_photo(
@@ -54,7 +129,10 @@ IMAGE_CACHE_CONTROL = "public, max-age=86400"
         404: {"model": ErrorResponse, "description": "photo_not_found"},
         422: {"model": ErrorResponse, "description": "validation_error"},
         502: {"model": ErrorResponse, "description": "upstream_error"},
-        503: {"model": ErrorResponse, "description": "db_unavailable / converter_busy"},
+        503: {
+            "model": ErrorResponse,
+            "description": "db_unavailable / service_busy / converter_busy",
+        },
         504: {"model": ErrorResponse, "description": "upstream_timeout"},
     },
 )

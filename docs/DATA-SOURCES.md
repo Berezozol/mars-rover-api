@@ -417,3 +417,11 @@ PDS-данные открыты (общественное достояние NAS
 - Новые диапазоны — по листингу корня или `inventory.csv` (0,7–1,5 МБ).
 
 **Авторство:** LID `urn:nasa:pds:mars2020_meda:data_derived_env`, `urn:nasa:pds:msl_rems:data_calibrated`; инструменты MEDA и REMS; DOI в метках не нашёл [не проверено, нужен `collection_*.xml`]. Условия использования в ответах не указаны; данные PDS открыты [из памяти].
+
+## Покрытие полей для фильтров этапа 18B (2026-11-20, офлайн: dev-база)
+
+- Мачта: Curiosity `extended.mast_az/mast_el` (строки-числа) у 386 882 из 791 788 (49%); Perseverance `extended.mastAz/mastEl` у 545 390 из 579 518 (94%); у MER и Ingenuity нет.
+- `xyz` (локальная СК, не широта/долгота): Curiosity 387 909, Perseverance 555 438; `attitude` (кватернион строкой): 395 222 и 555 438. Широты/долготы в снимках нет нигде.
+- `site`/`drive`: Curiosity 397 402 (50%), Perseverance, Opportunity, Spirit 100%, Ingenuity null. Различных пар: 45 074 / 1 239 / 11 163 / 6 400.
+- Perseverance: `date_taken_mars` в dev-базе 0 строк (история загружена до правки адаптера); Ingenuity 14 553 (100%).
+- `rover_waypoints` в dev-базе пуста (0 строк); близость измерена на синтетике, см. `docs/reports/stage-18b-fields.md`.

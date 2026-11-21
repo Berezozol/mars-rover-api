@@ -14,7 +14,7 @@ from fastapi import Depends, Path, Query
 from pydantic import BeforeValidator
 
 from app.core.params import parse_strict_int
-from app.services.v2 import SAMPLE_TYPES, PageRequest
+from app.services.v2 import SAMPLE_TYPES, PageRequest, PhotoSort
 
 MAX_SOL = 2**31 - 1
 MAX_PAGE = 1_000_000
@@ -53,6 +53,50 @@ EarthDateParam = Annotated[
 ]
 CameraParam = Annotated[
     str | None, Query(description="Exact camera code, case-insensitive (see /cameras).")
+]
+# Stage 18B: ranges, sort, several cameras and rovers (docs/API.md, GET /photos).
+SolMinParam = Annotated[
+    int | None,
+    Query(ge=0, le=MAX_SOL, description="First sol, inclusive; not combinable with sol."),
+    StrictInt,
+]
+SolMaxParam = Annotated[
+    int | None,
+    Query(ge=0, le=MAX_SOL, description="Last sol, inclusive; not combinable with sol."),
+    StrictInt,
+]
+DateMinParam = Annotated[
+    date | None,
+    Query(description="First real capture date (UTC), YYYY-MM-DD, inclusive."),
+    BeforeValidator(_iso_date),
+]
+DateMaxParam = Annotated[
+    date | None,
+    Query(description="Last real capture date (UTC), YYYY-MM-DD, inclusive."),
+    BeforeValidator(_iso_date),
+]
+SiteMinParam = Annotated[
+    int | None, Query(ge=0, le=MAX_SOL, description="First stop, inclusive."), StrictInt
+]
+SiteMaxParam = Annotated[
+    int | None, Query(ge=0, le=MAX_SOL, description="Last stop, inclusive."), StrictInt
+]
+CameraListParam = Annotated[
+    str | None,
+    Query(description="Up to 10 camera codes separated by commas, case-insensitive."),
+]
+SortParam = Annotated[
+    PhotoSort,
+    Query(
+        description=(
+            "-sol: sol DESC, taken_at DESC, id DESC (default); sol: ascending; "
+            "-taken_at: taken_at DESC, id DESC; taken_at: ascending."
+        )
+    ),
+]
+RoversParam = Annotated[
+    str | None,
+    Query(description="Rover slugs separated by commas, case-insensitive; default: all rovers."),
 ]
 SampleTypeParam = Annotated[
     str | None,

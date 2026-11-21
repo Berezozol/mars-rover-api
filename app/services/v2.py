@@ -11,13 +11,20 @@ from typing import Literal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import FlightNotFound, InvalidParam, NotFoundError, PhotoNotFound
+from app.core.errors import (
+    VALIDATION_MESSAGE,
+    FlightNotFound,
+    InvalidParam,
+    NotFoundError,
+    PhotoNotFound,
+    ValidationAppError,
+)
 from app.db.models import Camera, IngenuityFlight, Photo, Rover, SolSummary
 from app.repositories import flights as flights_repo
 from app.repositories import photos as photos_repo
 from app.repositories import rovers as rovers_repo
 from app.repositories import samples as samples_repo
-from app.repositories.photos import PhotoFilter
+from app.repositories.photos import DEFAULT_SORT, PhotoFilter, PhotoSort
 from app.services.locations import PhotoLocation, photo_location
 from app.services.rover_lookup import find_rover
 from app.sources import photo_meta as meta_parser
@@ -27,6 +34,18 @@ from app.sources.samples import SAMPLES_ROVER
 
 # Values for the ``sample_type`` filter; other source values are only visible unfiltered.
 SAMPLE_TYPES: tuple[str, ...] = ("full", "subframe", "downsampled")
+
+# Every rover, for the ``rovers`` parameter of GET /photos (stage 18B).
+ROVER_SLUGS: tuple[str, ...] = ("curiosity", "ingenuity", "opportunity", "perseverance", "spirit")
+MAX_ROVERS_LENGTH = 200
+
+# Camera codes per request, and the deepest window (page * per_page) of GET /photos.
+MAX_CAMERA_CODES = 10
+MAX_RESULT_WINDOW = 10_000
+
+# A rover's sol / date / site range matching at most this many photos is selected before
+# sorting (``PhotoFilter.narrow``); see ``_hint_narrow``.
+_NARROW_MATCHES = 100_000
 
 # Sizes of /photos/{id}/image; a missing size falls back to "full".
 IMAGE_SIZES: tuple[str, ...] = ("full", "large", "medium", "small")
@@ -76,6 +95,21 @@ class PhotoQuery:
     site: int | None = None
     drive_from: int | None = None
     drive_to: int | None = None
+    # Inclusive ranges (stage 18B); either end may be open.
+    sol_min: int | None = None
+    sol_max: int | None = None
+    date_min: date | None = None
+    date_max: date | None = None
+    site_min: int | None = None
+    site_max: int | None = None
+    sort: PhotoSort = DEFAULT_SORT
+
+
+@dataclass(frozen=True)
+class MultiPhotoQuery(PhotoQuery):
+    """GET /photos: the filters of one rover's list plus a comma-separated ``rovers``."""
+
+    rovers: str | None = None
 
 
 @dataclass(frozen=True)
@@ -160,28 +194,48 @@ async def list_cameras(
 async def search_photos(
     session: AsyncSession, slug: str, query: PhotoQuery, page: PageRequest
 ) -> PhotoPage:
-    """Photos by optional sol / real earth_date / camera / sample type, newest first."""
-    if query.sol is not None and query.earth_date is not None:
-        raise InvalidParam("earth_date", "sol and earth_date cannot be used together")
-    _check_drive_range(query)
+    """Photos of one rover by the query's filters, in the order of ``query.sort``."""
+    _check_query(query)
+    if query.camera is not None and "," in query.camera:
+        _check_window(page)
     rover = await find_rover(session, slug)
-    flt = PhotoFilter(
-        rover_id=rover.id,
-        sol=query.sol,
-        earth_date=query.earth_date,
-        camera_codes=await _camera_codes(session, rover.id, query.camera),
-        sample_type=_sample_type(query.sample_type),
-        site=query.site,
-        drive_from=query.drive_from,
-        drive_to=query.drive_to,
-    )
-    result = await _photo_page(session, rover, flt, page)
+    codes = await _camera_filters(session, [rover.id], query.camera)
+    flt = _rover_filter(rover.id, query, None if codes is None else codes[rover.id])
+    result = await _photo_page(session, rover, flt, page, query.sort)
     if result.total == 0 and (query.sol is not None or query.earth_date is not None):
         before, after = await photos_repo.nearest_sols(
             session, rover.id, sol=query.sol, earth_date=query.earth_date
         )
         result = replace(result, nearest_sols=NearestSols(before, after))
     return result
+
+
+async def search_photos_multi(
+    session: AsyncSession, query: MultiPhotoQuery, page: PageRequest
+) -> PhotoPage:
+    """Photos of several rovers (all by default) as one list in the order of ``query.sort``."""
+    rover_ids = parse_rovers(query.rovers)
+    _check_query(query)
+    _check_site_scope(query, rover_ids)
+    _check_window(page)
+    codes = await _camera_filters(session, rover_ids, query.camera)
+    filters = [
+        _rover_filter(rover_id, query, None if codes is None else codes[rover_id])
+        for rover_id in rover_ids
+        if codes is None or codes[rover_id]
+    ]
+    total = 0
+    hinted: list[PhotoFilter] = []
+    for flt in filters:
+        found = await _total(session, flt.rover_id, flt)
+        total += found
+        hinted.append(_hint_narrow(flt, found))
+    items: list[Photo] = []
+    if page.offset < total:
+        items = await photos_repo.list_photos_multi(
+            session, hinted, query.sort, page.per_page, page.offset
+        )
+    return PhotoPage(items, page.page, page.per_page, total)
 
 
 async def latest_photos(
@@ -335,6 +389,154 @@ async def _flight_rover(session: AsyncSession, slug: str) -> Rover:
     return rover
 
 
+def _check_window(page: PageRequest) -> None:
+    """Deep pages are capped: every skipped row is read from an index."""
+    if page.page * page.per_page > MAX_RESULT_WINDOW:
+        raise InvalidParam(
+            "page", f"page * per_page must not exceed {MAX_RESULT_WINDOW}; narrow the filters"
+        )
+
+
+def parse_rovers(value: str | None) -> list[str]:
+    """Slugs of the ``rovers`` parameter: case-insensitive, repeats collapsed; None → all."""
+    if value is None:
+        return list(ROVER_SLUGS)
+    message = f"Must be a comma-separated list of rovers: {', '.join(ROVER_SLUGS)}"
+    if len(value) > MAX_ROVERS_LENGTH:
+        raise InvalidParam("rovers", message)
+    slugs: list[str] = []
+    for part in value.split(","):
+        # ASCII only: str.lower() would map e.g. "K" (Kelvin sign) onto a Latin letter.
+        slug = part.lower() if part.isascii() else ""
+        if slug not in ROVER_SLUGS:
+            raise InvalidParam("rovers", message)
+        if slug not in slugs:
+            slugs.append(slug)
+    return slugs
+
+
+def _check_query(query: PhotoQuery) -> None:
+    """Combinations of filters that need no database."""
+    if query.sol is not None and query.earth_date is not None:
+        raise InvalidParam("earth_date", "sol and earth_date cannot be used together")
+    _check_drive_range(query)
+    has_sol_range = query.sol_min is not None or query.sol_max is not None
+    has_date_range = query.date_min is not None or query.date_max is not None
+    if query.sol is not None and has_sol_range:
+        raise InvalidParam("sol", "sol cannot be used with sol_min or sol_max")
+    if query.earth_date is not None and has_date_range:
+        raise InvalidParam("earth_date", "earth_date cannot be used with date_min or date_max")
+    if (query.sol is not None or has_sol_range) and (
+        query.earth_date is not None or has_date_range
+    ):
+        # The first date parameter that was actually sent.
+        sent = (("earth_date", query.earth_date), ("date_min", query.date_min))
+        field = next((name for name, value in sent if value is not None), "date_max")
+        raise InvalidParam(field, "Sol and date filters cannot be used together")
+    _check_order(query.sol_min, query.sol_max, "sol_min", "sol_max")
+    _check_order(query.date_min, query.date_max, "date_min", "date_max")
+    _check_order(query.site_min, query.site_max, "site_min", "site_max")
+    if query.site is not None and (query.site_min is not None or query.site_max is not None):
+        raise InvalidParam("site", "site cannot be used with site_min or site_max")
+
+
+def _hint_narrow(flt: PhotoFilter, matches: int) -> PhotoFilter:
+    """Mark a range filter that matches few photos, so the rows are selected before sorting.
+
+    Walking the sort index and filtering is fastest when matches are dense, but a range whose
+    photos sit far from the start of the sort order (late sols under ``sort=taken_at``, an
+    early year under ``-sol``, old stops) makes the planner read the whole rover: 0.3-1 s.
+    Selecting and sorting the matches costs about 0.5 ms per thousand rows, so up to
+    ``_NARROW_MATCHES`` (about 50 ms) it is the safe choice; wider ranges are dense enough
+    that the index walk finds a page quickly. ``matches`` is the already computed total.
+    """
+    ranged = (
+        any(value is not None for value in (flt.sol_min, flt.sol_max, flt.date_min, flt.date_max))
+        or flt.site_min is not None
+        or flt.site_max is not None
+    )
+    return replace(flt, narrow=ranged and matches <= _NARROW_MATCHES)
+
+
+def _check_order(low: object, high: object, low_name: str, high_name: str) -> None:
+    if low is not None and high is not None and low > high:  # type: ignore[operator]
+        raise InvalidParam(low_name, f"{low_name} must be less than or equal to {high_name}")
+
+
+def _check_site_scope(query: PhotoQuery, rover_ids: list[str]) -> None:
+    """Stop filters name a rover's own stops, so they need exactly one rover."""
+    if len(rover_ids) == 1:
+        return
+    for name in ("site", "site_min", "site_max"):
+        if getattr(query, name) is not None:
+            raise InvalidParam(name, f"{name} needs exactly one rover in rovers")
+
+
+def _rover_filter(rover_id: str, query: PhotoQuery, cameras: list[Camera] | None) -> PhotoFilter:
+    return PhotoFilter(
+        rover_id=rover_id,
+        sol=query.sol,
+        earth_date=query.earth_date,
+        camera_codes=None if cameras is None else [c.code for c in cameras],
+        camera_ids=None if cameras is None else [c.id for c in cameras],
+        sample_type=_sample_type(query.sample_type),
+        site=query.site,
+        drive_from=query.drive_from,
+        drive_to=query.drive_to,
+        sol_min=query.sol_min,
+        sol_max=query.sol_max,
+        date_min=query.date_min,
+        date_max=query.date_max,
+        site_min=query.site_min,
+        site_max=query.site_max,
+    )
+
+
+async def _camera_filters(
+    session: AsyncSession, rover_ids: list[str], camera: str | None
+) -> dict[str, list[Camera]] | None:
+    """Cameras of the comma-separated ``camera`` per rover (may be empty for a rover).
+
+    Every code must exist for at least one of the rovers; otherwise ``422`` listing the
+    allowed codes (by rover when there are several). Matching is case-insensitive, ASCII only.
+    """
+    if camera is None:
+        return None
+    wanted = camera.split(",")
+    if len(wanted) > MAX_CAMERA_CODES:
+        raise InvalidParam("camera", f"At most {MAX_CAMERA_CODES} camera codes")
+    upper = [code.upper() if code.isascii() else "" for code in wanted]
+    cameras = await rovers_repo.list_cameras_of(session, rover_ids)
+    allowed = {rover_id: sorted(c.code for c in found) for rover_id, found in cameras.items()}
+    known = {code for codes in allowed.values() for code in codes}
+    if any(code not in known for code in upper):
+        _raise_unknown_camera(allowed)
+    return {
+        rover_id: sorted((c for c in found if c.code in upper), key=_camera_code)
+        for rover_id, found in cameras.items()
+    }
+
+
+def _camera_code(camera: Camera) -> str:
+    return camera.code
+
+
+def _raise_unknown_camera(allowed: dict[str, list[str]]) -> None:
+    if len(allowed) == 1:
+        ((rover_id, codes),) = allowed.items()
+        raise InvalidParam(
+            "camera", f"Unknown camera for rover {rover_id}; allowed: {', '.join(codes) or 'none'}"
+        )
+    details = [
+        {
+            "field": "camera",
+            "message": f"Unknown camera code; allowed for {rover_id}: {', '.join(codes) or 'none'}",
+        }
+        for rover_id, codes in allowed.items()
+    ]
+    raise ValidationAppError(VALIDATION_MESSAGE, details=details)
+
+
 def _check_drive_range(query: PhotoQuery) -> None:
     has_drive = query.drive_from is not None or query.drive_to is not None
     if has_drive and query.site is None:
@@ -394,38 +596,66 @@ resolve_camera_codes = _camera_codes
 normalize_sample_type = _sample_type
 
 
-async def _total(session: AsyncSession, rover: Rover, flt: PhotoFilter) -> int:
+async def _sol_range_total(session: AsyncSession, rover_id: str, flt: PhotoFilter) -> int:
+    """Total of a sol range from the per-sol counts when they answer it exactly."""
+    sample_type = flt.sample_type.lower() if flt.sample_type is not None else None
+    if sample_type not in (None, photos_repo.FULL_SAMPLE_TYPE):
+        return await photos_repo.count_photos(session, flt)
+    full_only = sample_type is not None
+    if flt.camera_codes is not None:
+        return await photos_repo.camera_total_photos(
+            session,
+            rover_id,
+            flt.camera_codes,
+            full_only=full_only,
+            sol_min=flt.sol_min,
+            sol_max=flt.sol_max,
+        )
+    return await photos_repo.sol_range_total_photos(
+        session, rover_id, flt.sol_min, flt.sol_max, full_only=full_only
+    )
+
+
+async def _total(session: AsyncSession, rover_id: str, flt: PhotoFilter) -> int:
     """Total for the filter, read from sol_summaries when they answer it exactly.
 
     Not rovers.total_photos: that cache is refreshed only when a sync finishes, while photos
     and summaries are committed per sol, so it lags during a sync or after a crash.
     """
-    if flt.site is not None:
+    stops = flt.site is not None or flt.site_min is not None or flt.site_max is not None
+    dates = flt.date_min is not None or flt.date_max is not None
+    if stops or dates:
         return await photos_repo.count_photos(session, flt)
+    if flt.sol_min is not None or flt.sol_max is not None:
+        return await _sol_range_total(session, rover_id, flt)
     by_date = flt.sol is not None or flt.earth_date is not None
     sample_type = flt.sample_type.lower() if flt.sample_type is not None else None
     full_or_any = sample_type in (None, photos_repo.FULL_SAMPLE_TYPE)
     if flt.camera_codes is not None and not by_date and full_or_any:
         # Camera alone, or camera + full: summed from camera_sol_counts, no photos scan.
         return await photos_repo.camera_total_photos(
-            session, rover.id, flt.camera_codes, full_only=sample_type is not None
+            session, rover_id, flt.camera_codes, full_only=sample_type is not None
         )
     narrowed = flt.earth_date is not None or flt.camera_codes is not None
     if narrowed or flt.sample_type is not None:
         return await photos_repo.count_photos(session, flt)
     if flt.sol is None:
-        return await photos_repo.rover_total_photos_from_summaries(session, rover.id)
-    return await photos_repo.sol_total_photos(session, rover.id, flt.sol)
+        return await photos_repo.rover_total_photos_from_summaries(session, rover_id)
+    return await photos_repo.sol_total_photos(session, rover_id, flt.sol)
 
 
 async def _photo_page(
-    session: AsyncSession, rover: Rover, flt: PhotoFilter, page: PageRequest
+    session: AsyncSession,
+    rover: Rover,
+    flt: PhotoFilter,
+    page: PageRequest,
+    sort: PhotoSort = DEFAULT_SORT,
 ) -> PhotoPage:
     """Total first; the list query runs only when the page can hold rows."""
-    total = await _total(session, rover, flt)
+    total = await _total(session, rover.id, flt)
     items: list[Photo] = []
     if page.offset < total:
-        items = await photos_repo.list_photos(
-            session, flt, order="newest", limit=page.per_page, offset=page.offset
+        items = await photos_repo.list_photos_multi(
+            session, [_hint_narrow(flt, total)], sort, page.per_page, page.offset
         )
     return PhotoPage(items, page.page, page.per_page, total)

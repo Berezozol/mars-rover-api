@@ -266,6 +266,13 @@ class PhotosResponse(BaseModel):
     nearest_sols: NearestSolsOut | None
 
 
+class PhotoListResponse(BaseModel):
+    items: list[PhotoOut]
+    page: int
+    per_page: int
+    total: int
+
+
 class LatestPhotosResponse(BaseModel):
     sol: int | None
     items: list[PhotoOut]
@@ -488,6 +495,16 @@ def photos_body(result: PhotoPage, origin: str) -> Json:
         "per_page": result.per_page,
         "total": result.total,
         "nearest_sols": _nearest_sols_dict(result.nearest_sols),
+    }
+
+
+def photo_list_body(result: PhotoPage, origin: str) -> Json:
+    """List of photos without ``nearest_sols`` (GET /photos)."""
+    return {
+        "items": [photo_dict(photo, origin) for photo in result.items],
+        "page": result.page,
+        "per_page": result.per_page,
+        "total": result.total,
     }
 
 

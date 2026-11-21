@@ -8,7 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.home import request_origin
 from app.api.responses import FastJSONResponse, GeoJSONResponse
 from app.api.v2.params import (
+    CameraListParam,
     CameraParam,
+    DateMaxParam,
+    DateMinParam,
     DriveParam,
     EarthDateParam,
     FlightNumberPath,
@@ -16,8 +19,13 @@ from app.api.v2.params import (
     Pagination,
     SampleNumberPath,
     SampleTypeParam,
+    SiteMaxParam,
+    SiteMinParam,
     SiteParam,
+    SolMaxParam,
+    SolMinParam,
     SolParam,
+    SortParam,
 )
 from app.api.v2.schemas import (
     CamerasResponse,
@@ -48,14 +56,14 @@ from app.api.v2.schemas import (
 from app.db.session import get_session
 from app.services import locations, v2
 from app.services import samples as samples_service
-from app.services.v2 import PhotoQuery
+from app.services.v2 import DEFAULT_SORT, PhotoQuery
 
 router = APIRouter()
 
 Session = Annotated[AsyncSession, Depends(get_session)]
 
 _UNAVAILABLE: dict[int | str, dict[str, Any]] = {
-    503: {"model": ErrorResponse, "description": "db_unavailable"}
+    503: {"model": ErrorResponse, "description": "db_unavailable / service_busy"}
 }
 # Declaring 422 also replaces FastAPI's default HTTPValidationError schema.
 _ERRORS: dict[int | str, dict[str, Any]] = {
@@ -90,11 +98,18 @@ async def list_photos(
     pagination: Pagination,
     sol: SolParam = None,
     earth_date: EarthDateParam = None,
-    camera: CameraParam = None,
+    camera: CameraListParam = None,
     sample_type: SampleTypeParam = None,
     site: SiteParam = None,
     drive_from: DriveParam = None,
     drive_to: DriveParam = None,
+    sol_min: SolMinParam = None,
+    sol_max: SolMaxParam = None,
+    date_min: DateMinParam = None,
+    date_max: DateMaxParam = None,
+    site_min: SiteMinParam = None,
+    site_max: SiteMaxParam = None,
+    sort: SortParam = DEFAULT_SORT,
 ) -> FastJSONResponse:
     query = PhotoQuery(
         sol=sol,
@@ -104,6 +119,13 @@ async def list_photos(
         site=site,
         drive_from=drive_from,
         drive_to=drive_to,
+        sol_min=sol_min,
+        sol_max=sol_max,
+        date_min=date_min,
+        date_max=date_max,
+        site_min=site_min,
+        site_max=site_max,
+        sort=sort,
     )
     return FastJSONResponse(
         photos_body(

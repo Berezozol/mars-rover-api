@@ -124,6 +124,13 @@ export interface PhotoDetailOut {
   width: number | null;
 }
 
+export interface PhotoListResponse {
+  items: app__api__v2__schemas__PhotoOut[];
+  page: number;
+  per_page: number;
+  total: number;
+}
+
 export interface PhotoLocationOut {
   drive: number;
   elev_geoid: number | null;

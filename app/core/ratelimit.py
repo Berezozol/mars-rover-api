@@ -90,6 +90,7 @@ class RateLimiter:
         clock: Clock = time.monotonic,
         *,
         max_keys: int = DEFAULT_MAX_KEYS,
+        max_concurrent: int | None = None,
     ) -> None:
         if not windows:
             raise ValueError("At least one window is required")
@@ -100,6 +101,29 @@ class RateLimiter:
         self.clock = clock
         self._keys: OrderedDict[str, list[_Counter]] = OrderedDict()
         self._next_sweep: float | None = None
+        # Requests being served per key; None = no concurrency limit.
+        self.max_concurrent = max_concurrent
+        self._in_flight: dict[str, int] = {}
+
+    def enter(self, key: str) -> bool:
+        """Take a concurrency slot; False if the key already has ``max_concurrent`` requests
+        in flight. Every True must be paired with ``leave``."""
+        running = self._in_flight.get(key, 0)
+        if self.max_concurrent is not None and running >= self.max_concurrent:
+            return False
+        self._in_flight[key] = running + 1
+        return True
+
+    def leave(self, key: str) -> None:
+        running = self._in_flight.get(key, 0) - 1
+        if running > 0:
+            self._in_flight[key] = running
+        else:
+            self._in_flight.pop(key, None)
+
+    def peek(self, key: str) -> RateState:
+        """The window state without counting a hit (``wait`` is None)."""
+        return self._state(key, self.clock(), None)
 
     def acquire(self, key: str) -> RateState:
         """Count a hit if allowed (a rejected one is not counted); return the window state."""

@@ -1,6 +1,6 @@
 """Rovers and cameras."""
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 
 from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -25,6 +25,21 @@ async def get_rover(session: AsyncSession, rover_id: str) -> Rover | None:
 async def list_cameras(session: AsyncSession, rover_id: str) -> list[Camera]:
     stmt = select(Camera).where(Camera.rover_id == rover_id).order_by(Camera.sort_order)
     return list(await session.scalars(stmt, execution_options=FRESH))
+
+
+async def list_cameras_of(
+    session: AsyncSession, rover_ids: Sequence[str]
+) -> dict[str, list[Camera]]:
+    """Cameras of the given rovers in one query, by rover, each list ordered by sort_order."""
+    stmt = (
+        select(Camera)
+        .where(Camera.rover_id.in_(list(rover_ids)))
+        .order_by(Camera.rover_id, Camera.sort_order)
+    )
+    found: dict[str, list[Camera]] = {rover_id: [] for rover_id in rover_ids}
+    for camera in await session.scalars(stmt, execution_options=FRESH):
+        found[camera.rover_id].append(camera)
+    return found
 
 
 async def list_all_cameras(session: AsyncSession) -> list[Camera]:
