@@ -9,8 +9,9 @@ tells the agent to describe the needed change in its report instead.
 from __future__ import annotations
 
 import json
+import os
 import sys
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 
 # Path prefixes (relative to the project root, forward slashes) each role may write to.
 ZONES: dict[str, tuple[str, ...]] = {
@@ -61,7 +62,9 @@ def main() -> int:
         payload = json.load(sys.stdin)
         role = payload.get("agent_type") or ""
         path = (payload.get("tool_input") or {}).get("file_path") or ""
-        root = payload.get("cwd") or ""
+        # The project root, not the session's cwd: a cwd inside frontend/ would turn
+        # frontend/src/x into src/x and misattribute the file to another role.
+        root = os.environ.get("CLAUDE_PROJECT_DIR") or str(Path(__file__).resolve().parents[2])
     except ValueError:
         return 0
     if role not in ZONES or not path:

@@ -373,6 +373,28 @@ details.more .chips {
   color: var(--on-accent);
   border-color: var(--accent);
 }
+.goto-page {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+}
+.goto-page input {
+  width: 6rem;
+  min-height: 32px;
+}
+.goto-page input[aria-invalid="true"] {
+  border-color: var(--err);
+  box-shadow: 0 0 0 1px var(--err);
+}
+.goto-page-err {
+  flex-basis: 100%;
+  text-align: center;
+  color: var(--err);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
 .empty {
   text-align: center;
   padding: var(--s7) var(--s4);
