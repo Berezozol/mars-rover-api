@@ -273,6 +273,32 @@ class PhotoListResponse(BaseModel):
     total: int
 
 
+class PhotoBatchResponse(BaseModel):
+    items: list[PhotoOut]
+    missing: list[int]
+
+
+class PhotoStatsGroupOut(BaseModel):
+    rover: str
+    camera: str | None
+    period: str | None
+    total_photos: int
+    sols_with_photos: int
+    first_sol: int
+    last_sol: int
+    first_date: date
+    last_date: date
+
+
+class PhotoStatsResponse(BaseModel):
+    group_by: Literal["rover", "camera", "year", "month"]
+    total_photos: int
+    sols_with_photos: int
+    first_date: date | None
+    last_date: date | None
+    groups: list[PhotoStatsGroupOut]
+
+
 class LatestPhotosResponse(BaseModel):
     sol: int | None
     items: list[PhotoOut]
@@ -505,6 +531,34 @@ def photo_list_body(result: PhotoPage, origin: str) -> Json:
         "page": result.page,
         "per_page": result.per_page,
         "total": result.total,
+    }
+
+
+def photo_batch_body(photos: list[Photo], missing: list[int], origin: str) -> Json:
+    return {"items": [photo_dict(photo, origin) for photo in photos], "missing": missing}
+
+
+def photo_stats_body(stats: v2.PhotoStats) -> Json:
+    return {
+        "group_by": stats.group_by,
+        "total_photos": stats.total_photos,
+        "sols_with_photos": stats.sols_with_photos,
+        "first_date": stats.first_date,
+        "last_date": stats.last_date,
+        "groups": [
+            {
+                "rover": g.rover_id,
+                "camera": g.camera,
+                "period": g.period,
+                "total_photos": g.total_photos,
+                "sols_with_photos": g.sols_with_photos,
+                "first_sol": g.first_sol,
+                "last_sol": g.last_sol,
+                "first_date": g.first_date,
+                "last_date": g.last_date,
+            }
+            for g in stats.groups
+        ],
     }
 
 

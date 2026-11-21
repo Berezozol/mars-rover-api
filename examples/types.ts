@@ -97,6 +97,11 @@ export interface NearestSolsOut {
   before: number | null;
 }
 
+export interface PhotoBatchResponse {
+  items: app__api__v2__schemas__PhotoOut[];
+  missing: number[];
+}
+
 export interface PhotoDetailOut {
   camera: app__api__v2__schemas__PhotoCameraOut;
   caption: string | null;
@@ -143,6 +148,27 @@ export interface PhotoLocationOut {
 
 export interface PhotoResponse {
   photo: app__api__legacy__schemas__PhotoOut;
+}
+
+export interface PhotoStatsGroupOut {
+  camera: string | null;
+  first_date: string;
+  first_sol: number;
+  last_date: string;
+  last_sol: number;
+  period: string | null;
+  rover: string;
+  sols_with_photos: number;
+  total_photos: number;
+}
+
+export interface PhotoStatsResponse {
+  first_date: string | null;
+  group_by: "camera" | "month" | "rover" | "year";
+  groups: PhotoStatsGroupOut[];
+  last_date: string | null;
+  sols_with_photos: number;
+  total_photos: number;
 }
 
 export interface RoverCameraOut {

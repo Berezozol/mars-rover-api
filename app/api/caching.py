@@ -40,6 +40,7 @@ FEED_CACHE_CONTROL = "public, max-age=900"
 NO_STORE = "no-store"
 
 _LOCATION_SEGMENTS = frozenset({"location", "traverse"})
+_LIST_PHOTO_SEGMENTS = frozenset({"stats", "batch"})
 _CACHED_METHODS = frozenset({"GET", "HEAD"})
 # Headers that describe the body; a 304 does not carry them.
 _BODY_HEADERS = ("content-length", "content-type", "content-encoding")
@@ -57,7 +58,9 @@ def cache_control_for(path: str) -> str:
     """Cache-Control of a 200 response under an API prefix."""
     prefix = _api_prefix(path) or ""
     parts = path[len(prefix) :].split("/")
-    # "/photos/{id}" -> ["", "photos", "{id}"]
+    # "/photos/{id}" -> ["", "photos", "{id}"]; "/photos/stats" and "/photos/batch" are lists.
+    if len(parts) == 3 and parts[1] == "photos" and parts[2] in _LIST_PHOTO_SEGMENTS:
+        return LIST_CACHE_CONTROL
     if len(parts) == 3 and parts[1] == "photos" and parts[2]:
         return DETAIL_CACHE_CONTROL
     # "/photos/{id}/image" answered 200: a converted image (the redirect is a 302).

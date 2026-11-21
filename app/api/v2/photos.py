@@ -32,19 +32,30 @@ from app.api.v2.params import (
     SolMinParam,
     SolParam,
     SortParam,
+    StatsDateMaxParam,
+    StatsDateMinParam,
+    StatsGroupByParam,
+    StatsSampleTypeParam,
+    StatsSolMaxParam,
+    StatsSolMinParam,
 )
 from app.api.v2.schemas import (
     ErrorResponse,
+    PhotoBatchResponse,
     PhotoDetailOut,
     PhotoListResponse,
+    PhotoStatsResponse,
+    photo_batch_body,
     photo_detail_out,
     photo_list_body,
+    photo_stats_body,
 )
+from app.core.errors import InvalidParam
 from app.core.overload import HeavyQueryGate
 from app.db.session import get_session
 from app.services import v2
 from app.services.mer_images import MerImageService
-from app.services.v2 import DEFAULT_SORT, MultiPhotoQuery
+from app.services.v2 import DEFAULT_SORT, MultiPhotoQuery, StatsQuery
 
 router = APIRouter()
 
@@ -112,6 +123,76 @@ async def list_all_photos(
     )
     result = await v2.search_photos_multi(session, query, pagination, gate=gate, client=client)
     return FastJSONResponse(photo_list_body(result, request_origin(request)))
+
+
+# Declared before /photos/{id}: "stats" and "batch" must not be read as ids.
+@router.get(
+    "/photos/stats",
+    response_model=PhotoStatsResponse,
+    responses={
+        422: {"model": ErrorResponse, "description": "validation_error"},
+        503: {"model": ErrorResponse, "description": "db_unavailable / service_busy"},
+    },
+)
+async def stats_photos(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    rovers: RoversParam = None,
+    camera: CameraListParam = None,
+    sol_min: StatsSolMinParam = None,
+    sol_max: StatsSolMaxParam = None,
+    date_min: StatsDateMinParam = None,
+    date_max: StatsDateMaxParam = None,
+    sample_type: StatsSampleTypeParam = None,
+    group_by: StatsGroupByParam = "rover",
+) -> FastJSONResponse:
+    query = StatsQuery(
+        rovers=rovers,
+        camera=camera,
+        sol_min=sol_min,
+        sol_max=sol_max,
+        date_min=date_min,
+        date_max=date_max,
+        sample_type=sample_type,
+        group_by=group_by,
+    )
+    return FastJSONResponse(photo_stats_body(await v2.photo_stats(session, query)))
+
+
+# ``ids`` is read from the raw query so a missing or repeated value gets our own 422; the
+# parameter is declared here, as required, for OpenAPI only.
+_BATCH_IDS_OPENAPI = {
+    "parameters": [
+        {
+            "name": "ids",
+            "in": "query",
+            "required": True,
+            "description": (
+                "1 to 100 photo ids separated by commas (19 digits max each, 2000 chars max)."
+            ),
+            "schema": {"type": "string", "examples": ["3,1,2"]},
+        }
+    ]
+}
+
+
+@router.get(
+    "/photos/batch",
+    response_model=PhotoBatchResponse,
+    openapi_extra=_BATCH_IDS_OPENAPI,
+    responses={
+        422: {"model": ErrorResponse, "description": "validation_error"},
+        503: {"model": ErrorResponse, "description": "db_unavailable / service_busy"},
+    },
+)
+async def batch_photos(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> FastJSONResponse:
+    values = request.query_params.getlist("ids")
+    if len(values) != 1:
+        raise InvalidParam("ids", "ids is required and must be given once")
+    photos, missing = await v2.photos_by_ids(session, values[0])
+    return FastJSONResponse(photo_batch_body(photos, missing, request_origin(request)))
 
 
 # Non-integer id → 422; an integer outside 1..2**63-1 → 404 photo_not_found.

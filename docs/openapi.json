@@ -2359,6 +2359,257 @@
         }
       }
     },
+    "/api/v2/photos/stats": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "summary": "Stats Photos",
+        "operationId": "stats_photos_api_v2_photos_stats_get",
+        "parameters": [
+          {
+            "name": "rovers",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Rover slugs separated by commas, case-insensitive; default: all rovers.",
+              "title": "Rovers"
+            },
+            "description": "Rover slugs separated by commas, case-insensitive; default: all rovers."
+          },
+          {
+            "name": "camera",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Up to 10 camera codes separated by commas, case-insensitive.",
+              "title": "Camera"
+            },
+            "description": "Up to 10 camera codes separated by commas, case-insensitive."
+          },
+          {
+            "name": "sol_min",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2147483647,
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "First sol, inclusive; not combinable with date_min/date_max.",
+              "title": "Sol Min"
+            },
+            "description": "First sol, inclusive; not combinable with date_min/date_max."
+          },
+          {
+            "name": "sol_max",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2147483647,
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Last sol, inclusive; not combinable with date_min/date_max.",
+              "title": "Sol Max"
+            },
+            "description": "Last sol, inclusive; not combinable with date_min/date_max."
+          },
+          {
+            "name": "date_min",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "First date of the sol, YYYY-MM-DD, inclusive: the earliest capture date of the sol (as in the manifest), not the date of each photo; not combinable with sol_min/sol_max.",
+              "title": "Date Min"
+            },
+            "description": "First date of the sol, YYYY-MM-DD, inclusive: the earliest capture date of the sol (as in the manifest), not the date of each photo; not combinable with sol_min/sol_max."
+          },
+          {
+            "name": "date_max",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Last date of the sol, YYYY-MM-DD, inclusive: the earliest capture date of the sol (as in the manifest), not the date of each photo; not combinable with sol_min/sol_max.",
+              "title": "Date Max"
+            },
+            "description": "Last date of the sol, YYYY-MM-DD, inclusive: the earliest capture date of the sol (as in the manifest), not the date of each photo; not combinable with sol_min/sol_max."
+          },
+          {
+            "name": "sample_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only full (full frames); default: all sample types.",
+              "enum": [
+                "full"
+              ],
+              "title": "Sample Type"
+            },
+            "description": "Only full (full frames); default: all sample types."
+          },
+          {
+            "name": "group_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "rover (default), camera, year or month (by the sol's date).",
+              "enum": [
+                "rover",
+                "camera",
+                "year",
+                "month"
+              ],
+              "default": "rover",
+              "title": "Group By"
+            },
+            "description": "rover (default), camera, year or month (by the sol's date)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhotoStatsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "db_unavailable / service_busy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/photos/batch": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "summary": "Batch Photos",
+        "operationId": "batch_photos_api_v2_photos_batch_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhotoBatchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "db_unavailable / service_busy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "ids",
+            "in": "query",
+            "required": true,
+            "description": "1 to 100 photo ids separated by commas (19 digits max each, 2000 chars max).",
+            "schema": {
+              "type": "string",
+              "examples": [
+                "3,1,2"
+              ]
+            }
+          }
+        ]
+      }
+    },
     "/api/v2/photos/{id}": {
       "get": {
         "tags": [
@@ -3062,6 +3313,30 @@
         ],
         "title": "NearestSolsOut"
       },
+      "PhotoBatchResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/app__api__v2__schemas__PhotoOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "missing": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Missing"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "missing"
+        ],
+        "title": "PhotoBatchResponse"
+      },
       "PhotoDetailOut": {
         "properties": {
           "id": {
@@ -3358,6 +3633,138 @@
           "photo"
         ],
         "title": "PhotoResponse"
+      },
+      "PhotoStatsGroupOut": {
+        "properties": {
+          "rover": {
+            "type": "string",
+            "title": "Rover"
+          },
+          "camera": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Camera"
+          },
+          "period": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period"
+          },
+          "total_photos": {
+            "type": "integer",
+            "title": "Total Photos"
+          },
+          "sols_with_photos": {
+            "type": "integer",
+            "title": "Sols With Photos"
+          },
+          "first_sol": {
+            "type": "integer",
+            "title": "First Sol"
+          },
+          "last_sol": {
+            "type": "integer",
+            "title": "Last Sol"
+          },
+          "first_date": {
+            "type": "string",
+            "format": "date",
+            "title": "First Date"
+          },
+          "last_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Last Date"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rover",
+          "camera",
+          "period",
+          "total_photos",
+          "sols_with_photos",
+          "first_sol",
+          "last_sol",
+          "first_date",
+          "last_date"
+        ],
+        "title": "PhotoStatsGroupOut"
+      },
+      "PhotoStatsResponse": {
+        "properties": {
+          "group_by": {
+            "type": "string",
+            "enum": [
+              "rover",
+              "camera",
+              "year",
+              "month"
+            ],
+            "title": "Group By"
+          },
+          "total_photos": {
+            "type": "integer",
+            "title": "Total Photos"
+          },
+          "sols_with_photos": {
+            "type": "integer",
+            "title": "Sols With Photos"
+          },
+          "first_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Date"
+          },
+          "last_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Date"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/PhotoStatsGroupOut"
+            },
+            "type": "array",
+            "title": "Groups"
+          }
+        },
+        "type": "object",
+        "required": [
+          "group_by",
+          "total_photos",
+          "sols_with_photos",
+          "first_date",
+          "last_date",
+          "groups"
+        ],
+        "title": "PhotoStatsResponse"
       },
       "RoverCameraOut": {
         "properties": {

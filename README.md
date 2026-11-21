@@ -15,6 +15,16 @@ Rate limit: 60 requests per minute and 2000 per hour per client IP, no API key n
 
 Not affiliated with or endorsed by NASA or JPL. Images courtesy of NASA/JPL-Caltech and instrument partners.
 
+## v2 endpoints for summaries and bulk lookups
+
+Two v2 endpoints for summaries and bulk lookups:
+
+- `GET /api/v2/photos/stats` — photo and sol counts with first and last date, grouped by rover, camera, year or month
+  (`/api/v2/photos/stats?rovers=perseverance&group_by=month`). `sample_type` accepts only `full`;
+  `date_min`/`date_max` filter by the date of the sol, not of each photo.
+- `GET /api/v2/photos/batch?ids=1,2,3` — up to 100 photos by id in one request. Ids that are not found
+  are listed in `missing` (no `404`).
+
 ## Quick start
 
 Requirements: Python 3.13+, [uv](https://docs.astral.sh/uv/), Docker.

@@ -916,3 +916,119 @@ async def _photo_page(
             session, [_hint_narrow(flt, total)], sort, page.per_page, page.offset
         )
     return PhotoPage(items, page.page, page.per_page, total)
+
+
+# --- GET /photos/stats and /photos/batch (stage 18C) ---------------------------------------
+
+STATS_GROUP_BY: tuple[str, ...] = ("rover", "camera", "year", "month")
+BATCH_MAX_IDS = 100
+BATCH_IDS_MAX_LEN = 2000
+_ID_RE = re.compile(r"[0-9]{1,19}")
+
+
+@dataclass(frozen=True)
+class StatsQuery:
+    rovers: str | None = None
+    camera: str | None = None
+    sol_min: int | None = None
+    sol_max: int | None = None
+    date_min: date | None = None
+    date_max: date | None = None
+    sample_type: str | None = None
+    group_by: str = "rover"
+
+
+@dataclass(frozen=True)
+class PhotoStats:
+    group_by: str
+    total_photos: int
+    sols_with_photos: int
+    first_date: date | None
+    last_date: date | None
+    groups: list[photos_repo.StatsRow]
+
+
+def _check_stats_query(query: StatsQuery) -> None:
+    has_sols = query.sol_min is not None or query.sol_max is not None
+    if has_sols and (query.date_min is not None or query.date_max is not None):
+        field = "date_min" if query.date_min is not None else "date_max"
+        raise InvalidParam(field, "Sol and date filters cannot be used together")
+    _check_order(query.sol_min, query.sol_max, "sol_min", "sol_max")
+    _check_order(query.date_min, query.date_max, "date_min", "date_max")
+    if query.group_by not in STATS_GROUP_BY:
+        raise InvalidParam("group_by", f"Must be one of: {', '.join(STATS_GROUP_BY)}")
+    if query.sample_type is not None and query.sample_type.lower() != "full":
+        raise InvalidParam("sample_type", "Must be: full")
+
+
+async def _stats_rows(
+    session: AsyncSession,
+    query: StatsQuery,
+    rover_ids: list[str],
+    camera_ids: list[int] | None,
+    group_by: Literal["rover", "camera", "year", "month"],
+) -> list[photos_repo.StatsRow]:
+    return await photos_repo.summary_stats(
+        session,
+        rover_ids,
+        camera_ids,
+        query.sol_min,
+        query.sol_max,
+        query.date_min,
+        query.date_max,
+        query.sample_type is not None,
+        group_by,
+    )
+
+
+def _rover_rank(rovers: Sequence[Rover]) -> dict[str, int]:
+    return {rover.id: index for index, rover in enumerate(rovers)}
+
+
+async def photo_stats(session: AsyncSession, query: StatsQuery) -> PhotoStats:
+    """Counts by rover / camera / year / month from the per-sol summaries only (no photos)."""
+    rover_ids = parse_rovers(query.rovers)
+    _check_stats_query(query)
+    codes = await _camera_filters(session, rover_ids, query.camera)
+    camera_ids = None if codes is None else [c.id for found in codes.values() for c in found]
+    group_by: Literal["rover", "camera", "year", "month"] = query.group_by  # type: ignore[assignment]
+    groups = await _stats_rows(session, query, rover_ids, camera_ids, group_by)
+    # A sol belongs to one rover and one period, so those groups add up to the totals; only
+    # camera groups overlap (a sol has several cameras) and need the per-rover query.
+    totals = (
+        await _stats_rows(session, query, rover_ids, camera_ids, "rover")
+        if group_by == "camera"
+        else groups
+    )
+    # SQL orders camera code / period within a rover (stable sort keeps it); rovers by slug.
+    rank = _rover_rank(sorted(await rovers_repo.list_rovers(session), key=_slug))
+    groups = sorted(groups, key=lambda g: rank.get(g.rover_id, len(rank)))
+    return PhotoStats(
+        group_by=group_by,
+        total_photos=sum(t.total_photos for t in totals),
+        sols_with_photos=sum(t.sols_with_photos for t in totals),
+        first_date=min((t.first_date for t in totals), default=None),
+        last_date=max((t.last_date for t in totals), default=None),
+        groups=groups,
+    )
+
+
+def parse_ids(value: str) -> list[int]:
+    """``ids`` of GET /photos/batch: 1..100 comma-separated ids of 1..19 digits; repeats
+    collapse, first-occurrence order is kept. Values beyond bigint are kept (they end up in
+    ``missing``)."""
+    message = f"Must be 1 to {BATCH_MAX_IDS} comma-separated ids of 1 to 19 digits"
+    if not value or len(value) > BATCH_IDS_MAX_LEN:
+        raise InvalidParam("ids", message)
+    parts = value.split(",")
+    if len(parts) > BATCH_MAX_IDS or any(_ID_RE.fullmatch(part) is None for part in parts):
+        raise InvalidParam("ids", message)
+    return list(dict.fromkeys(int(part) for part in parts))
+
+
+async def photos_by_ids(session: AsyncSession, raw_ids: str) -> tuple[list[Photo], list[int]]:
+    """Found photos in request order and the ids that were not found (also in request order)."""
+    ids = parse_ids(raw_ids)
+    candidates = [i for i in ids if 0 < i <= _MAX_INT8]
+    found = {p.id: p for p in await photos_repo.get_photos_by_ids(session, candidates)}
+    return [found[i] for i in ids if i in found], [i for i in ids if i not in found]

@@ -10,6 +10,7 @@ from sqlalchemy import (
     BindParameter,
     ColumnElement,
     DateTime,
+    FromClause,
     Integer,
     Select,
     SmallInteger,
@@ -31,7 +32,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import ARRAY, Insert, aggregate_order_by
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import contains_eager, selectinload
+from sqlalchemy.orm import InstrumentedAttribute, contains_eager, joinedload, selectinload
 
 from app.db.models import Camera, CameraSolCount, Photo, RoverWaypoint, SolSummary
 from app.repositories._common import FRESH
@@ -542,6 +543,136 @@ async def rover_total_photos_from_summaries(session: AsyncSession, rover_id: str
 async def get_photo(session: AsyncSession, photo_id: int) -> Photo | None:
     stmt = select(Photo).where(Photo.id == photo_id).options(selectinload(Photo.camera))
     return await session.scalar(stmt, execution_options=FRESH)
+
+
+async def get_photos_by_ids(session: AsyncSession, ids: Sequence[int]) -> list[Photo]:
+    """Photos with the given ids in one primary-key query (camera joined); unordered."""
+    if not ids:
+        return []
+    # One array parameter: the SQL text does not vary with the number of ids.
+    ids_param = bindparam("ids", value=list(ids), type_=ARRAY(BigInteger))
+    stmt = select(Photo).options(joinedload(Photo.camera)).where(Photo.id == func.any(ids_param))
+    return list((await session.scalars(stmt, execution_options=FRESH)).all())
+
+
+@dataclass(frozen=True)
+class StatsRow:
+    """One group of ``summary_stats``; ``camera`` / ``period`` as grouped."""
+
+    rover_id: str
+    camera: str | None
+    period: str | None
+    total_photos: int
+    sols_with_photos: int
+    first_sol: int
+    last_sol: int
+    first_date: date
+    last_date: date
+
+
+@dataclass(frozen=True)
+class _StatsSource:
+    """FROM and base WHERE of a stats query."""
+
+    from_clause: FromClause
+    where: list[ColumnElement[bool]]
+    base: type[CameraSolCount] | type[SolSummary]
+    count: InstrumentedAttribute[int]
+
+
+def _stats_source(
+    rover_ids: Sequence[str],
+    camera_ids: Sequence[int] | None,
+    *,
+    by_camera: bool,
+    full_only: bool,
+) -> _StatsSource:
+    """Source of a stats query.
+
+    Per-camera counts come from camera_sol_counts, otherwise from sol_summaries; the sol's date
+    always comes from sol_summaries (joined by its primary key). cameras is joined only to
+    group by camera code.
+    """
+    if by_camera or camera_ids is not None:
+        count = CameraSolCount.full_photos if full_only else CameraSolCount.total_photos
+        from_clause: FromClause = CameraSolCount.__table__.join(
+            SolSummary.__table__,
+            and_(
+                SolSummary.rover_id == CameraSolCount.rover_id,
+                SolSummary.sol == CameraSolCount.sol,
+            ),
+        )
+        if by_camera:
+            from_clause = from_clause.join(Camera.__table__, Camera.id == CameraSolCount.camera_id)
+        where = [CameraSolCount.rover_id.in_(list(rover_ids)), count > 0]
+        if camera_ids is not None:
+            where.append(CameraSolCount.camera_id.in_(list(camera_ids)))
+        return _StatsSource(from_clause, where, CameraSolCount, count)
+    count = SolSummary.full_photos if full_only else SolSummary.total_photos
+    where = [SolSummary.rover_id.in_(list(rover_ids)), count > 0]
+    return _StatsSource(SolSummary.__table__, where, SolSummary, count)
+
+
+_PERIOD_FORMATS = {"year": "'YYYY'", "month": "'YYYY-MM'"}
+
+
+async def summary_stats(
+    session: AsyncSession,
+    rover_ids: Sequence[str],
+    camera_ids: Sequence[int] | None,
+    sol_min: int | None,
+    sol_max: int | None,
+    date_min: date | None,
+    date_max: date | None,
+    full_only: bool,
+    group_by: Literal["rover", "camera", "year", "month"],
+) -> list[StatsRow]:
+    """Photos, sols and bounds per group, only from sol_summaries / camera_sol_counts.
+
+    One ``GROUP BY`` statement; groups without photos do not appear. Rows are ordered by
+    camera code / period within a rover. Never reads the photos table.
+    """
+    by_camera = group_by == "camera"
+    src = _stats_source(rover_ids, camera_ids, by_camera=by_camera, full_only=full_only)
+    sol = src.base.sol
+    where = list(src.where)
+    if sol_min is not None:
+        where.append(sol >= sol_min)
+    if sol_max is not None:
+        where.append(sol <= sol_max)
+    if date_min is not None:
+        where.append(SolSummary.earth_date >= date_min)
+    if date_max is not None:
+        where.append(SolSummary.earth_date <= date_max)
+    camera_col: ColumnElement[Any] = Camera.code if by_camera else literal_column("NULL::text")
+    period_col: ColumnElement[Any] = literal_column("NULL::text")
+    if group_by in _PERIOD_FORMATS:
+        # Format strings are literals: a bound format would not match its twin in GROUP BY.
+        period_col = func.to_char(SolSummary.earth_date, literal_column(_PERIOD_FORMATS[group_by]))
+    keys: list[ColumnElement[Any]] = [src.base.rover_id]
+    if by_camera:
+        keys.append(Camera.code)
+    elif group_by in _PERIOD_FORMATS:
+        keys.append(period_col)
+    stmt = (
+        select(
+            src.base.rover_id,
+            camera_col,
+            period_col,
+            func.sum(src.count),
+            func.count(sol.distinct()),
+            func.min(sol),
+            func.max(sol),
+            func.min(SolSummary.earth_date),
+            func.max(SolSummary.earth_date),
+        )
+        .select_from(src.from_clause)
+        .where(*where)
+        .group_by(*keys)
+        .order_by(*keys[1:])
+    )
+    rows = (await session.execute(stmt)).all()
+    return [StatsRow(*row) for row in rows]
 
 
 async def max_sol(session: AsyncSession, rover_id: str, *, full_only: bool = False) -> int | None:

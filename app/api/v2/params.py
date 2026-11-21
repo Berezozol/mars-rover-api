@@ -170,6 +170,61 @@ SampleTypeParam = Annotated[
     str | None,
     Query(description=f"One of {', '.join(SAMPLE_TYPES)} (case-insensitive); default: all."),
 ]
+# Stage 18C: summary statistics and the batch lookup.
+StatsSampleTypeParam = Annotated[
+    str | None,
+    Query(
+        json_schema_extra={"enum": ["full"]},
+        description="Only full (full frames); default: all sample types.",
+    ),
+]
+StatsGroupByParam = Annotated[
+    str,
+    Query(
+        json_schema_extra={"enum": ["rover", "camera", "year", "month"]},
+        description="rover (default), camera, year or month (by the sol's date).",
+    ),
+]
+StatsSolMinParam = Annotated[
+    int | None,
+    Query(
+        ge=0,
+        le=MAX_SOL,
+        description="First sol, inclusive; not combinable with date_min/date_max.",
+    ),
+    StrictInt,
+]
+StatsSolMaxParam = Annotated[
+    int | None,
+    Query(
+        ge=0,
+        le=MAX_SOL,
+        description="Last sol, inclusive; not combinable with date_min/date_max.",
+    ),
+    StrictInt,
+]
+StatsDateMinParam = Annotated[
+    date | None,
+    Query(
+        description=(
+            "First date of the sol, YYYY-MM-DD, inclusive: the earliest capture date of the "
+            "sol (as in the manifest), not the date of each photo; not combinable with "
+            "sol_min/sol_max."
+        )
+    ),
+    BeforeValidator(_iso_date),
+]
+StatsDateMaxParam = Annotated[
+    date | None,
+    Query(
+        description=(
+            "Last date of the sol, YYYY-MM-DD, inclusive: the earliest capture date of the "
+            "sol (as in the manifest), not the date of each photo; not combinable with "
+            "sol_min/sol_max."
+        )
+    ),
+    BeforeValidator(_iso_date),
+]
 # A stop of the rover: ``site`` and an inclusive ``drive`` range (docs/API.md, /photos).
 SiteParam = Annotated[int | None, Query(ge=0, le=MAX_SOL, description="Stop number."), StrictInt]
 DriveParam = Annotated[int | None, Query(ge=0, le=MAX_SOL), StrictInt]

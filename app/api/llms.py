@@ -49,6 +49,23 @@ and `{origin}/mars-photos/api/v1` serve the same API.
 - [Photos]({origin}/api/v2/rovers/perseverance/photos?sol=100&per_page=50): \
 `GET /api/v2/rovers/{{rover}}/photos`, `GET /api/v2/rovers/{{rover}}/photos/latest`, \
 `GET /api/v2/photos/{{id}}`
+- [Search]({origin}/api/v2/photos?rovers=curiosity,perseverance&date_min=2026-11-06\
+&sort=-taken_at): \
+`GET /api/v2/photos` searches several rovers at once: `rovers` (comma-separated, default all), \
+`sol`/`sol_min`/`sol_max` or `earth_date`/`date_min`/`date_max`, `camera` (up to 10 codes), \
+`sort` (`-sol`, `sol`, `-taken_at`, `taken_at`), \
+`local_time_min`/`local_time_max` or `golden_hour`, \
+`min_width`/`min_height`, `near=LAT,LON` with `radius_km` \
+(one rover only: curiosity or perseverance); `page` x `per_page` at most 10000. \
+Heavy searches may get `503 service_busy` with `Retry-After`: retry later
+- [Stats]({origin}/api/v2/photos/stats?rovers=perseverance&group_by=month): \
+`GET /api/v2/photos/stats` (photo and sol counts with first and last date; `rovers`, `camera`, \
+`sol_min`/`sol_max` or `date_min`/`date_max`, `sample_type=full` only, \
+`group_by=rover|camera|year|month`). Dates filter by the date of the sol, not of each photo
+- [Batch]({origin}/api/v2/photos/batch?ids=81234,81235): \
+`GET /api/v2/photos/batch?ids=1,2,3` (1 to 100 ids, comma-separated; \
+returns `items` and `missing`, \
+unknown ids are not an error)
 - [Manifest]({origin}/api/v2/rovers/perseverance/manifest): \
 `GET /api/v2/rovers/{{rover}}/manifest`
 - [Location]({origin}/api/v2/rovers/perseverance/location?latest=true): \

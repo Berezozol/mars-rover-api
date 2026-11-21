@@ -83,7 +83,24 @@ curl "$origin/mars-photos/api/v1/rovers/perseverance/latest_photos"
 curl "$origin/mars-photos/api/v1/manifests/opportunity"</pre>
 <p>v2, the new API:</p>
 <pre>curl "$origin/api/v2/rovers"
-curl "$origin/api/v2/rovers/perseverance/photos?sol=100&amp;per_page=50"</pre>
+curl "$origin/api/v2/rovers/perseverance/photos?sol=100&amp;per_page=50"
+curl "$origin/api/v2/photos?rovers=curiosity,perseverance&amp;date_min=2026-11-06&amp;sort=-taken_at&amp;per_page=50"
+curl "$origin/api/v2/photos/stats?rovers=perseverance&amp;group_by=month"
+curl "$origin/api/v2/photos/batch?ids=81234,81235,900000000"</pre>
+<p>Stats counts photos and sols with the first and last date, grouped by rover, camera, year or month
+(<code>group_by</code>). <code>sample_type</code> accepts only <code>full</code>;
+<code>date_min</code>/<code>date_max</code> filter by the date of the sol, not of each photo.
+Batch takes 1 to 100 comma-separated ids; ids that are not found are returned in
+<code>missing</code> instead of a <code>404</code>.</p>
+<p><code>GET /api/v2/photos</code> searches several rovers at once: <code>rovers</code> (comma-separated slugs;
+default all), <code>sol</code>/<code>sol_min</code>/<code>sol_max</code> or
+<code>earth_date</code>/<code>date_min</code>/<code>date_max</code> (not both), <code>camera</code> (up to 10 codes),
+<code>sort</code> (<code>-sol</code>, <code>sol</code>, <code>-taken_at</code>, <code>taken_at</code>),
+<code>local_time_min</code>/<code>local_time_max</code> or <code>golden_hour=true</code>,
+<code>min_width</code>/<code>min_height</code>, and <code>near=LAT,LON</code> with <code>radius_km</code>
+(one rover only: <code>curiosity</code> or <code>perseverance</code>). <code>page &times; per_page</code> must not
+exceed 10&nbsp;000. Heavy searches (for example date, local-time or size filters without <code>sol</code>)
+may answer <code>503 service_busy</code> with a <code>Retry-After</code> header; retry later or narrow the query.</p>
 <p>Interactive documentation of every endpoint: <a href="/docs">/docs</a>.
 Machine-readable: <a href="/openapi.json">/openapi.json</a>, and a short reference for
 LLM assistants: <a href="/llms.txt">/llms.txt</a>.</p>
