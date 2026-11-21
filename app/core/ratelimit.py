@@ -56,12 +56,12 @@ class _Counter:
         while self.buckets and self.buckets[0][0] + length <= now:
             self.total -= int(self.buckets.popleft()[1])
 
-    def add(self, now: float, granularity: float) -> None:
+    def add(self, now: float, granularity: float, hits: int = 1) -> None:
         if self.buckets and now - self.buckets[-1][0] < granularity:
-            self.buckets[-1][1] += 1
+            self.buckets[-1][1] += hits
         else:
-            self.buckets.append([now, 1])
-        self.total += 1
+            self.buckets.append([now, hits])
+        self.total += hits
 
     def reset_in(self, now: float, window: _Window) -> int:
         """Whole seconds (rounded up) until the oldest hit leaves the window; 0 if empty."""
@@ -145,6 +145,12 @@ class RateLimiter:
         """Count a hit without checking the limit."""
         self._add(key, self.clock())
 
+    def charge(self, key: str, hits: int) -> None:
+        """Count ``hits`` extra hits in every window without checking the limit (a response
+        that cost more than one request); ``hits <= 0`` does nothing."""
+        if hits > 0:
+            self._add(key, self.clock(), hits)
+
     def reset(self) -> None:
         self._keys.clear()
         self._next_sweep = None
@@ -186,7 +192,7 @@ class RateLimiter:
                 best = state
         return best
 
-    def _add(self, key: str, now: float) -> None:
+    def _add(self, key: str, now: float, hits: int = 1) -> None:
         counters = self._keys.get(key)
         if counters is None:
             counters = [_Counter() for _ in self._windows]
@@ -195,7 +201,7 @@ class RateLimiter:
         else:
             self._keys.move_to_end(key)
         for counter, window in zip(counters, self._windows, strict=True):
-            _expired(counter, now, window).add(now, window.granularity)
+            _expired(counter, now, window).add(now, window.granularity, hits)
 
     def _evict_overflow(self) -> None:
         while len(self._keys) > self._max_keys:

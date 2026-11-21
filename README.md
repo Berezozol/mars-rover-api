@@ -11,7 +11,7 @@ This service ingests JPL raw-image feeds into PostgreSQL and serves them through
 
 Status: public beta at <https://mars-api.sungrazing-menkent.ts.net> (stage 9). See `docs/PLAN.md`.
 
-Rate limit: 60 requests per minute and 2000 per hour per client IP, no API key needed. Over the limit the API answers `429` with a `Retry-After` header (seconds). Interactive docs: `/docs`; migration guide: `/`.
+Rate limit: 60 requests per minute and 2000 per hour per client IP, no API key needed. Over the limit the API answers `429` with a `Retry-After` header (seconds). On v1 paths a response costs one request per started 256 KiB of the body as sent to the client (after gzip compression), at least one; v2 responses always cost one request. A whole-sol v1 request without `page` for Curiosity (about 8 MB) costs about 31 requests uncompressed, but one request with `Accept-Encoding: gzip`, so use gzip or `page` for such requests. Interactive docs: `/docs`; migration guide: `/`.
 
 Not affiliated with or endorsed by NASA or JPL. Images courtesy of NASA/JPL-Caltech and instrument partners.
 
