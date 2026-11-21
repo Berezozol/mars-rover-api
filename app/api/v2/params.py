@@ -54,6 +54,22 @@ def _hhmm(value: object) -> object:
     return value
 
 
+_DECIMAL_RE = re.compile(r"[0-9]{1,10}(?:\.[0-9]{1,10})?")
+
+# Same language as the strict check of ``app.services.v2.parse_near`` (shown in OpenAPI only:
+# validation stays there so the error keeps its message and field).
+_NEAR_PATTERN = r"^[+-]?[0-9]{1,3}(\.[0-9]{1,15})?,[+-]?[0-9]{1,3}(\.[0-9]{1,15})?$"
+
+
+def _plain_decimal(value: object) -> object:
+    """Unsigned plain decimal ("1", "0.5") → float; no exponent, "nan", "inf" or "_"."""
+    if not isinstance(value, str):
+        return value
+    if _DECIMAL_RE.fullmatch(value) is None:
+        raise ValueError("must be a decimal number, e.g. 1 or 0.5")
+    return float(value)
+
+
 StrictInt = BeforeValidator(_strict_int)
 
 SolParam = Annotated[int | None, Query(ge=0, le=MAX_SOL), StrictInt]
@@ -125,6 +141,30 @@ MinSizeParam = Annotated[
     int | None,
     Query(ge=1, le=MAX_FRAME_SIZE, description="Full frame size in pixels, at least."),
     StrictInt,
+]
+# Stage 18B-3: photos taken near a point (curiosity / perseverance only).
+NearParam = Annotated[
+    str | None,
+    Query(
+        json_schema_extra={"pattern": _NEAR_PATTERN, "maxLength": 64},
+        description=(
+            "LAT,LON in degrees (lat -90..90, lon -180..180, east positive): photos taken at "
+            "stops within radius_km of the point; one rover (curiosity or perseverance)."
+        ),
+        examples=["18.4327,77.4414"],
+    ),
+]
+RadiusKmParam = Annotated[
+    float | None,
+    Query(
+        ge=0.01,
+        le=50,
+        description=(
+            "Radius in km for near, 0.01-50 (default 1); not without near. A plain decimal "
+            "such as 1 or 0.5: no sign, exponent, nan or inf (422 otherwise)."
+        ),
+    ),
+    BeforeValidator(_plain_decimal),
 ]
 SampleTypeParam = Annotated[
     str | None,

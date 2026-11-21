@@ -24,6 +24,7 @@ from sqlalchemy import (
     or_,
     select,
     text,
+    true,
     tuple_,
     union_all,
 )
@@ -32,7 +33,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import contains_eager, selectinload
 
-from app.db.models import Camera, CameraSolCount, Photo, SolSummary
+from app.db.models import Camera, CameraSolCount, Photo, RoverWaypoint, SolSummary
 from app.repositories._common import FRESH
 from app.repositories.rovers import get_or_create_cameras
 from app.sources.base import PhotoRecord
@@ -72,6 +73,13 @@ _DATA_COLUMNS = (
     "height",
 )
 
+# Mean radius of Mars (km) for the great-circle distance between stops and the point.
+MARS_RADIUS_KM = 3389.5
+# Upper bound for the drive range of a site's last stop. It is int4 max, so a photo whose drive
+# is exactly 2147483647 (the column is integer) would be excluded by the strict "<"; no real
+# drive count comes anywhere near it.
+_MAX_DRIVE = 2_147_483_647
+
 _EMPTY_TEXT_ARRAY = literal_column("'{}'::text[]")
 
 
@@ -102,6 +110,8 @@ class PhotoFilter:
     # Full frame size at least this many pixels (photos without a size never match).
     min_width: int | None = None
     min_height: int | None = None
+    # Photos taken at stops within a radius: ``(lat, lon, radius_km)``, one rover with stops.
+    near: tuple[float, float, float] | None = None
     # Plan hint for list queries, set by the caller that knows the filter matches few rows:
     # select the matching rows first, then sort them (see ``_keys_query``).
     narrow: bool = False
@@ -327,6 +337,7 @@ async def list_photos_multi(
     filters = [part for flt in filters for part in _per_camera(flt)]
     if not filters:
         return []
+    await _near_session_setup(session, filters)
     if len(filters) == 1:
         keys_stmt = _keys_query(filters[0], sort, limit, offset, 0)
         page_ids = [row.id for row in await session.execute(keys_stmt, execution_options=FRESH)]
@@ -350,8 +361,9 @@ async def list_photos_multi(
 def _per_camera(flt: PhotoFilter) -> list[PhotoFilter]:
     """One filter per camera id: each part then reads the (rover_id, camera_id, ...) indexes
     instead of filtering a scan of the whole rover by camera."""
-    if flt.camera_ids is None or flt.narrow:
-        # A narrow filter selects its few rows once, whatever their cameras.
+    if flt.camera_ids is None or flt.narrow or flt.near is not None:
+        # A narrow filter selects its few rows once, whatever their cameras; a near filter
+        # joins the photos to the stops once.
         return [flt]
     return [replace(flt, camera_ids=[camera_id]) for camera_id in flt.camera_ids]
 
@@ -370,6 +382,8 @@ def _keys_query(
     """
     by_time = sort.endswith("taken_at")
     sol = literal_column("0").label("sol") if by_time else Photo.sol
+    if flt.near is not None:
+        return _near_keys_query(flt, sort, sol, limit, offset)
     stmt = _filtered(select(Photo.id, sol, Photo.taken_at), flt)
     if flt.narrow:
         keys = stmt.cte(f"keys{part}").prefix_with("MATERIALIZED")
@@ -381,8 +395,99 @@ def _keys_query(
 
 
 async def count_photos(session: AsyncSession, flt: PhotoFilter) -> int:
+    if flt.near is not None:
+        await _near_session_setup(session, [flt])
+        return await session.scalar(_near_count_query(flt)) or 0
     stmt = _filtered(select(func.count()).select_from(Photo), flt, bound_taken_at=False)
     return await session.scalar(stmt) or 0
+
+
+async def _near_session_setup(session: AsyncSession, filters: Sequence[PhotoFilter]) -> None:
+    """JIT adds 160-210 ms of compilation to a near query even when it finds nothing; turn
+    it off for the current transaction (the session's, which the request's queries share).
+    Done once per transaction: ``session.info`` keeps the transaction it was issued in, so
+    after a commit or rollback the next call issues it again."""
+    if all(flt.near is None for flt in filters):
+        return
+    if session.info.get("jit_off_tx") is not None and (
+        session.info["jit_off_tx"] is session.get_transaction()
+    ):
+        return
+    await session.execute(text("SET LOCAL jit = off"))
+    session.info["jit_off_tx"] = session.get_transaction()
+
+
+def _stops_in_radius(flt: PhotoFilter) -> Any:
+    """CTE of the rover's stops within the radius, each with the drive of the next stop of
+    its site (the end of its photo range).
+
+    ``LEAD`` is computed over all stops of the rover BEFORE the radius filter: a photo belongs
+    to the last stop of its site at or below its drive, whether or not that stop is in the
+    radius. MATERIALIZED, so the planner knows it is a small, finished set.
+    """
+    if flt.near is None:
+        raise ValueError("near filter required")
+    lat, lon, radius_km = flt.near
+    w = RoverWaypoint
+    all_stops = (
+        select(
+            w.site,
+            w.drive,
+            w.lat,
+            w.lon,
+            func.lead(w.drive).over(partition_by=w.site, order_by=w.drive).label("next_drive"),
+        )
+        .where(w.rover_id == flt.rover_id)
+        .cte("stops")
+    )
+    dlat = func.radians(all_stops.c.lat - lat) / 2
+    dlon = func.radians(all_stops.c.lon - lon) / 2
+    a = func.power(func.sin(dlat), 2) + (
+        func.cos(func.radians(lat))
+        * func.cos(func.radians(all_stops.c.lat))
+        * func.power(func.sin(dlon), 2)
+    )
+    distance = 2 * MARS_RADIUS_KM * func.asin(func.sqrt(func.least(1.0, a)))
+    chosen = select(all_stops.c.site, all_stops.c.drive, all_stops.c.next_drive).where(
+        distance <= radius_km
+    )
+    return chosen.cte("near_stops").prefix_with("MATERIALIZED")
+
+
+def _photos_of_stops(
+    stops: Any, columns: Sequence[Any], flt: PhotoFilter, *, bound_taken_at: bool
+) -> Any:
+    """Lateral subquery: the photos of each stop, through ``ix_photos_near_cover``.
+
+    ``OFFSET 0`` stops the planner from flattening it into a plain join (which it plans as a
+    scan of the rover's photos filtered by the stops: seconds); the upper bound of the drive
+    range stays in the index condition.
+    """
+    stmt = _filtered(select(*columns), flt, bound_taken_at=bound_taken_at).where(
+        Photo.site == stops.c.site,
+        Photo.drive >= stops.c.drive,
+        Photo.drive < func.coalesce(stops.c.next_drive, _MAX_DRIVE),
+    )
+    return stmt.correlate(stops).offset(0).lateral("p")
+
+
+def _near_keys_query(
+    flt: PhotoFilter, sort: PhotoSort, sol: Any, limit: int, offset: int
+) -> Select[Any]:
+    """Sort keys of the photos of stops in the radius (see ``_keys_query``)."""
+    stops = _stops_in_radius(flt)
+    photos = _photos_of_stops(stops, [Photo.id, sol, Photo.taken_at], flt, bound_taken_at=True)
+    stmt = (
+        select(photos.c.id, photos.c.sol, photos.c.taken_at).select_from(stops).join(photos, true())
+    )
+    stmt = stmt.order_by(*_sort_order(sort, photos.c.sol, photos.c.taken_at, photos.c.id))
+    return stmt.limit(limit).offset(offset or None)
+
+
+def _near_count_query(flt: PhotoFilter) -> Select[Any]:
+    stops = _stops_in_radius(flt)
+    photos = _photos_of_stops(stops, [Photo.id], flt, bound_taken_at=False)
+    return select(func.count()).select_from(stops).join(photos, true())
 
 
 async def camera_total_photos(

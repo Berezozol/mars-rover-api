@@ -15,7 +15,8 @@ from tests.integration.test_migrations_roundtrip import _db_state, _execute, _fe
 
 pytestmark = [pytest.mark.integration, pytest.mark.migrations_roundtrip]
 
-INDEX = "ix_photos_rover_id_site_drive"
+INDEX = "ix_photos_rover_id_site_drive"  # created by 0009, replaced by 0014
+NEAR_INDEX = "ix_photos_near_cover"  # created by 0014
 SEED_CAMERAS_BEFORE = 17 + 7 + 6 + 6
 
 
@@ -68,15 +69,38 @@ def _count(url: str, table: str, rover: str) -> int:
 def test_migration_0009_downgrade_drops_the_index_and_upgrade_recreates_it(
     migrated_db: str, alembic_cfg: AlembicConfig
 ) -> None:
+    """At head the 0009 index is replaced by the covering one (0014); at 0009 it is back."""
     try:
-        assert INDEX in _index_names(migrated_db)
+        names = _index_names(migrated_db)
+        assert NEAR_INDEX in names
+        assert INDEX not in names
         command.downgrade(alembic_cfg, "0008")
         assert asyncio.run(_db_state(migrated_db))["versions"] == ["0008"]
-        assert INDEX not in _index_names(migrated_db)
+        names = _index_names(migrated_db)
+        assert INDEX not in names
+        assert NEAR_INDEX not in names
         # 0008 stays: the seed and the flight log survive.
         assert asyncio.run(_db_state(migrated_db))["counts"]["rovers"] == 5
         command.upgrade(alembic_cfg, "0009")
         assert INDEX in _index_names(migrated_db)
+        assert NEAR_INDEX not in _index_names(migrated_db)
+    finally:
+        command.upgrade(alembic_cfg, "head")
+
+
+def test_migration_0014_downgrade_restores_the_plain_index_and_upgrade_replaces_it(
+    migrated_db: str, alembic_cfg: AlembicConfig
+) -> None:
+    try:
+        command.downgrade(alembic_cfg, "0013")
+        assert asyncio.run(_db_state(migrated_db))["versions"] == ["0013"]
+        names = _index_names(migrated_db)
+        assert INDEX in names
+        assert NEAR_INDEX not in names
+        command.upgrade(alembic_cfg, "0014")
+        names = _index_names(migrated_db)
+        assert NEAR_INDEX in names
+        assert INDEX not in names
     finally:
         command.upgrade(alembic_cfg, "head")
 

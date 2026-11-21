@@ -229,16 +229,19 @@ async def test_flight_number_is_smallint_and_numeric_columns_have_contract_types
     assert {name for name, r in info.items() if r.is_nullable == "YES"} == {"route_to"}
 
 
-# --- 0009: the (rover_id, site, drive) index -----------------------------------------------------
+# --- 0009 / 0014: the (rover_id, site, drive) index ----------------------------------------------
 
 
-async def test_photos_site_drive_index_exists_valid_and_partial(db_session: AsyncSession) -> None:
+async def test_photos_site_drive_index_is_covering_valid_and_partial(
+    db_session: AsyncSession,
+) -> None:
+    """0014 replaced `ix_photos_rover_id_site_drive` with a covering index on the same key."""
     rows = (
         await db_session.execute(
             text(
                 "SELECT i.indisvalid, i.indisready, pg_get_indexdef(i.indexrelid) AS indexdef "
                 "FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid "
-                "WHERE c.relname = 'ix_photos_rover_id_site_drive'"
+                "WHERE c.relname = 'ix_photos_near_cover'"
             )
         )
     ).all()
@@ -246,9 +249,18 @@ async def test_photos_site_drive_index_exists_valid_and_partial(db_session: Asyn
     assert len(rows) == 1
     assert rows[0].indisvalid and rows[0].indisready
     definition = rows[0].indexdef
-    assert "(rover_id, site, drive)" in definition
+    assert "(rover_id, site, drive) INCLUDE (sol, taken_at, id)" in definition
     assert "WHERE (site IS NOT NULL)" in definition
     assert "ON public.photos" in definition
+
+
+async def test_photos_old_site_drive_index_is_gone(db_session: AsyncSession) -> None:
+    rows = (
+        await db_session.execute(
+            text("SELECT 1 FROM pg_class WHERE relname = 'ix_photos_rover_id_site_drive'")
+        )
+    ).all()
+    assert rows == []
 
 
 async def test_rover_unique_legacy_id_blocks_a_duplicate(db_session: AsyncSession) -> None:

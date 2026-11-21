@@ -109,12 +109,14 @@ class Photo(Base):
         Index("ix_photos_rover_id_taken_at", "rover_id", text("taken_at DESC"), text("id DESC")),
         # Filter by real earth_date (v2).
         Index("ix_photos_rover_id_earth_date", "rover_id", "earth_date"),
-        # Filter by stop (site, drive range) (v2); photos without a position are not indexed.
+        # Filter by stop (site, drive range) (v2) and the near search, which reads the sort keys
+        # from it (index-only scan); photos without a position are not indexed.
         Index(
-            "ix_photos_rover_id_site_drive",
+            "ix_photos_near_cover",
             "rover_id",
             "site",
             "drive",
+            postgresql_include=["sol", "taken_at", "id"],
             postgresql_where=text("site IS NOT NULL"),
         ),
         # Filter by local solar time and frame width (v2, stage 18B-2); NULLs are not indexed.

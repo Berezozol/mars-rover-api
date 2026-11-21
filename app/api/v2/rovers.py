@@ -19,7 +19,9 @@ from app.api.v2.params import (
     LatestParam,
     LocalTimeParam,
     MinSizeParam,
+    NearParam,
     Pagination,
+    RadiusKmParam,
     SampleNumberPath,
     SampleTypeParam,
     SiteMaxParam,
@@ -118,6 +120,8 @@ async def list_photos(
     golden_hour: GoldenHourParam = False,
     min_width: MinSizeParam = None,
     min_height: MinSizeParam = None,
+    near: NearParam = None,
+    radius_km: RadiusKmParam = None,
 ) -> FastJSONResponse:
     query = PhotoQuery(
         sol=sol,
@@ -139,6 +143,8 @@ async def list_photos(
         golden_hour=golden_hour,
         min_width=min_width,
         min_height=min_height,
+        near=near,
+        radius_km=radius_km,
     )
     return FastJSONResponse(
         photos_body(

@@ -18,8 +18,10 @@ from app.api.v2.params import (
     GoldenHourParam,
     LocalTimeParam,
     MinSizeParam,
+    NearParam,
     Pagination,
     PhotoIdPath,
+    RadiusKmParam,
     RoversParam,
     SampleTypeParam,
     SiteMaxParam,
@@ -77,6 +79,8 @@ async def list_all_photos(
     golden_hour: GoldenHourParam = False,
     min_width: MinSizeParam = None,
     min_height: MinSizeParam = None,
+    near: NearParam = None,
+    radius_km: RadiusKmParam = None,
 ) -> FastJSONResponse:
     query = MultiPhotoQuery(
         rovers=rovers,
@@ -99,6 +103,8 @@ async def list_all_photos(
         golden_hour=golden_hour,
         min_width=min_width,
         min_height=min_height,
+        near=near,
+        radius_km=radius_km,
     )
     result = await v2.search_photos_multi(session, query, pagination)
     return FastJSONResponse(photo_list_body(result, request_origin(request)))

@@ -5,8 +5,11 @@ codes. Parameters arrive already typed and range-checked by the router; this mod
 what needs the database (rover, camera codes) and combinations of parameters.
 """
 
+import math
+import re
 from dataclasses import dataclass, field, replace
 from datetime import date
+from functools import lru_cache
 from typing import Literal
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,6 +31,7 @@ from app.repositories.photos import DEFAULT_SORT, PhotoFilter, PhotoSort
 from app.services.locations import PhotoLocation, photo_location
 from app.services.rover_lookup import find_rover
 from app.sources import photo_meta as meta_parser
+from app.sources.locations import LOCATION_MISSIONS
 from app.sources.photo_meta import LocalTime
 from app.sources.registry import SYNCABLE_ROVERS
 from app.sources.samples import SAMPLES_ROVER
@@ -49,6 +53,13 @@ _NARROW_MATCHES = 100_000
 
 # Golden hour in seconds of the local day: 05:30-07:00 and 17:00-18:30.
 GOLDEN_HOUR_WINDOWS: tuple[tuple[int, int], ...] = ((19_800, 25_200), (61_200, 66_600))
+
+# Stage 18B-3: rovers with stops (waypoints) to search around, and the default radius.
+NEAR_ROVERS: frozenset[str] = frozenset(LOCATION_MISSIONS)
+DEFAULT_RADIUS_KM = 1.0
+
+# A coordinate: optional sign, digits, optional fraction; no exponent, "nan" or "inf".
+_COORD_RE = re.compile(r"[+-]?[0-9]{1,3}(?:\.[0-9]{1,15})?")
 
 # Sizes of /photos/{id}/image; a missing size falls back to "full".
 IMAGE_SIZES: tuple[str, ...] = ("full", "large", "medium", "small")
@@ -113,6 +124,9 @@ class PhotoQuery:
     golden_hour: bool = False
     min_width: int | None = None
     min_height: int | None = None
+    # Stage 18B-3: "LAT,LON" (format checked by ``parse_near``) and the radius in km.
+    near: str | None = None
+    radius_km: float | None = None
 
 
 @dataclass(frozen=True)
@@ -206,9 +220,10 @@ async def search_photos(
 ) -> PhotoPage:
     """Photos of one rover by the query's filters, in the order of ``query.sort``."""
     _check_query(query)
-    if query.camera is not None and "," in query.camera:
+    if (query.camera is not None and "," in query.camera) or query.near is not None:
         _check_window(page)
     rover = await find_rover(session, slug)
+    _check_near_scope(query, [rover.id])
     codes = await _camera_filters(session, [rover.id], query.camera)
     flt = _rover_filter(rover.id, query, None if codes is None else codes[rover.id])
     result = await _photo_page(session, rover, flt, page, query.sort)
@@ -227,6 +242,7 @@ async def search_photos_multi(
     rover_ids = parse_rovers(query.rovers)
     _check_query(query)
     _check_site_scope(query, rover_ids)
+    _check_near_scope(query, rover_ids)
     _check_window(page)
     codes = await _camera_filters(session, rover_ids, query.camera)
     filters = [
@@ -452,8 +468,47 @@ def _check_query(query: PhotoQuery) -> None:
     _check_order(query.date_min, query.date_max, "date_min", "date_max")
     _check_order(query.site_min, query.site_max, "site_min", "site_max")
     _check_local_time(query)
+    _check_near(query)
     if query.site is not None and (query.site_min is not None or query.site_max is not None):
         raise InvalidParam("site", "site cannot be used with site_min or site_max")
+
+
+@lru_cache(maxsize=256)
+def parse_near(value: str) -> tuple[float, float]:
+    """``LAT,LON`` in degrees → ``(lat, lon)``; anything else is a 422 on ``near``.
+
+    Cached: the request validates ``near`` early and builds the filter later, so each distinct
+    value is parsed once (errors are not cached, they are raised again).
+    """
+    parts = value.split(",")
+    message = "near must be LAT,LON in degrees: lat -90..90, lon -180..180, e.g. 18.43,77.44"
+    if len(parts) != 2 or any(_COORD_RE.fullmatch(part) is None for part in parts):
+        raise InvalidParam("near", message)
+    lat, lon = float(parts[0]), float(parts[1])
+    if not (math.isfinite(lat) and math.isfinite(lon)) or abs(lat) > 90 or abs(lon) > 180:
+        raise InvalidParam("near", message)
+    return lat, lon
+
+
+def _check_near(query: PhotoQuery) -> None:
+    if query.near is None:
+        if query.radius_km is not None:
+            raise InvalidParam("radius_km", "radius_km needs near")
+        return
+    parse_near(query.near)
+
+
+def _check_near_scope(query: PhotoQuery, rover_ids: list[str]) -> None:
+    """Only a single rover that has stops can be searched around a point."""
+    if query.near is not None and (len(rover_ids) != 1 or rover_ids[0] not in NEAR_ROVERS):
+        raise InvalidParam("near", "near needs exactly one rover: curiosity or perseverance")
+
+
+def _near_filter(query: PhotoQuery) -> tuple[float, float, float] | None:
+    if query.near is None:
+        return None
+    lat, lon = parse_near(query.near)
+    return lat, lon, DEFAULT_RADIUS_KM if query.radius_km is None else query.radius_km
 
 
 def _seconds(value: str | None) -> int | None:
@@ -547,6 +602,7 @@ def _rover_filter(rover_id: str, query: PhotoQuery, cameras: list[Camera] | None
         local_time_ranges=_local_time_ranges(query),
         min_width=query.min_width,
         min_height=query.min_height,
+        near=_near_filter(query),
     )
 
 
@@ -682,7 +738,7 @@ async def _total(session: AsyncSession, rover_id: str, flt: PhotoFilter) -> int:
     """
     stops = flt.site is not None or flt.site_min is not None or flt.site_max is not None
     dates = flt.date_min is not None or flt.date_max is not None
-    if stops or dates or _has_meta_filter(flt):
+    if stops or dates or flt.near is not None or _has_meta_filter(flt):
         return await photos_repo.count_photos(session, flt)
     if flt.sol_min is not None or flt.sol_max is not None:
         return await _sol_range_total(session, rover_id, flt)
