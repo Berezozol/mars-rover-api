@@ -31,7 +31,7 @@ def check_items(items: list[dict[str, Any]], world: MetaWorld) -> None:
     assert items
     for item in items:
         assert list(item) == PHOTO_KEYS
-        assert list(item)[-1] == "local_time"
+        assert list(item)[-2:] == ["local_time", "mast"]
         assert item["local_time"] == expected(by_id[item["id"]]), item["id"]
 
 
@@ -137,7 +137,8 @@ async def test_local_time_photo_detail_key_order_is_unchanged_apart_from_planet(
     keys = list(body)
     assert keys == PHOTO_DETAIL_KEYS
     assert keys.index("location") + 1 == keys.index("local_time")
-    assert keys.index("local_time") + 1 == keys.index("in_sol")
+    assert keys.index("local_time") + 1 == keys.index("mast")  # stage 19
+    assert keys.index("mast") + 1 == keys.index("in_sol")
     assert list(body["local_time"]) == ["time", "kind", "planet"]
 
 

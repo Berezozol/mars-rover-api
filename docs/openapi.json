@@ -1015,6 +1015,25 @@
               "default": 25,
               "title": "Per Page"
             }
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 300
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Photo keys to return in each item, comma-separated, lower case, no spaces: id, rover, sol, earth_date, taken_at, camera, sample_type, title, img_src, images, credit, source, width, height, local_time, mast, near_stop. id and credit are always included; keys keep the usual Photo order; no nested paths. near_stop appears only with near. The response wrapper is unchanged. Reduces response size only; it does not speed up the search.",
+              "title": "Fields"
+            },
+            "description": "Photo keys to return in each item, comma-separated, lower case, no spaces: id, rover, sol, earth_date, taken_at, camera, sample_type, title, img_src, images, credit, source, width, height, local_time, mast, near_stop. id and credit are always included; keys keep the usual Photo order; no nested paths. near_stop appears only with near. The response wrapper is unchanged. Reduces response size only; it does not speed up the search."
           }
         ],
         "responses": {
@@ -1137,6 +1156,25 @@
               "default": 25,
               "title": "Per Page"
             }
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 300
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Photo keys to return in each item, comma-separated, lower case, no spaces: id, rover, sol, earth_date, taken_at, camera, sample_type, title, img_src, images, credit, source, width, height, local_time, mast, near_stop. id and credit are always included; keys keep the usual Photo order; no nested paths. near_stop appears only with near. The response wrapper is unchanged. Reduces response size only; it does not speed up the search.",
+              "title": "Fields"
+            },
+            "description": "Photo keys to return in each item, comma-separated, lower case, no spaces: id, rover, sol, earth_date, taken_at, camera, sample_type, title, img_src, images, credit, source, width, height, local_time, mast, near_stop. id and credit are always included; keys keep the usual Photo order; no nested paths. near_stop appears only with near. The response wrapper is unchanged. Reduces response size only; it does not speed up the search."
           }
         ],
         "responses": {
@@ -2323,6 +2361,25 @@
               "default": 25,
               "title": "Per Page"
             }
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 300
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Photo keys to return in each item, comma-separated, lower case, no spaces: id, rover, sol, earth_date, taken_at, camera, sample_type, title, img_src, images, credit, source, width, height, local_time, mast, near_stop. id and credit are always included; keys keep the usual Photo order; no nested paths. near_stop appears only with near. The response wrapper is unchanged. Reduces response size only; it does not speed up the search.",
+              "title": "Fields"
+            },
+            "description": "Photo keys to return in each item, comma-separated, lower case, no spaces: id, rover, sol, earth_date, taken_at, camera, sample_type, title, img_src, images, credit, source, width, height, local_time, mast, near_stop. id and credit are always included; keys keep the usual Photo order; no nested paths. near_stop appears only with near. The response wrapper is unchanged. Reduces response size only; it does not speed up the search."
           }
         ],
         "responses": {
@@ -2605,6 +2662,16 @@
               "examples": [
                 "3,1,2"
               ]
+            }
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "description": "Photo keys to return in each item, comma-separated, lower case, no spaces: id, rover, sol, earth_date, taken_at, camera, sample_type, title, img_src, images, credit, source, width, height, local_time, mast, near_stop. id and credit are always included; keys keep the usual Photo order; no nested paths. near_stop appears only with near. The response wrapper is unchanged. Reduces response size only; it does not speed up the search.",
+            "schema": {
+              "type": "string",
+              "maxLength": 300
             }
           }
         ]
@@ -3287,6 +3354,24 @@
         ],
         "title": "ManifestSolOut"
       },
+      "MastOut": {
+        "properties": {
+          "azimuth": {
+            "type": "number",
+            "title": "Azimuth"
+          },
+          "elevation": {
+            "type": "number",
+            "title": "Elevation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "azimuth",
+          "elevation"
+        ],
+        "title": "MastOut"
+      },
       "NearStopOut": {
         "properties": {
           "sol": {
@@ -3534,6 +3619,16 @@
               }
             ]
           },
+          "mast": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MastOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "in_sol": {
             "$ref": "#/components/schemas/InSolOut"
           },
@@ -3579,6 +3674,7 @@
           "extra",
           "location",
           "local_time",
+          "mast",
           "in_sol",
           "flight",
           "samples"
@@ -4830,6 +4926,16 @@
               }
             ]
           },
+          "mast": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MastOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "near_stop": {
             "$ref": "#/components/schemas/NearStopOut",
             "title": "Near Stop"
@@ -4851,7 +4957,8 @@
           "source",
           "width",
           "height",
-          "local_time"
+          "local_time",
+          "mast"
         ],
         "title": "PhotoOut"
       },

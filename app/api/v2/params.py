@@ -10,11 +10,19 @@ import re
 from datetime import date
 from typing import Annotated
 
-from fastapi import Depends, Path, Query
+from fastapi import Depends, Path, Query, Request
 from pydantic import BeforeValidator
 
+from app.core.errors import InvalidParam
 from app.core.params import parse_strict_int
-from app.services.v2 import SAMPLE_TYPES, PageRequest, PhotoSort
+from app.services.v2 import (
+    FIELDS_MAX_LENGTH,
+    PHOTO_FIELDS,
+    SAMPLE_TYPES,
+    PageRequest,
+    PhotoSort,
+    parse_fields,
+)
 
 MAX_SOL = 2**31 - 1
 MAX_FRAME_SIZE = 32_767
@@ -267,3 +275,32 @@ def page_request(
 
 
 Pagination = Annotated[PageRequest, Depends(page_request)]
+
+
+FIELDS_DESCRIPTION = (
+    "Photo keys to return in each item, comma-separated, lower case, no spaces: "
+    + ", ".join(PHOTO_FIELDS)
+    + ". id and credit are always included; keys keep the usual Photo order; no nested paths. "
+    "near_stop appears only with near. The response wrapper is unchanged. "
+    "Reduces response size only; it does not speed up the search."
+)
+
+
+def read_fields(request: Request, raw: str | None) -> frozenset[str] | None:
+    """Parse ``fields``; a repeated parameter is rejected rather than reduced to its last value."""
+    if len(request.query_params.getlist("fields")) > 1:
+        raise InvalidParam("fields", "fields must be given once")
+    return parse_fields(raw)
+
+
+def _fields_param(
+    request: Request,
+    fields: Annotated[
+        str | None,
+        Query(max_length=FIELDS_MAX_LENGTH, description=FIELDS_DESCRIPTION),
+    ] = None,
+) -> frozenset[str] | None:
+    return read_fields(request, fields)
+
+
+FieldsParam = Annotated[frozenset[str] | None, Depends(_fields_param)]

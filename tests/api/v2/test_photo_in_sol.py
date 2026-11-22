@@ -469,7 +469,7 @@ async def test_photo_list_items_carry_width_height_and_local_time_but_no_in_sol(
     assert (by_source["p2031-tie1"]["width"], by_source["p2031-tie1"]["height"]) == (1648, 1200)
     assert (by_source["p2031-a"]["width"], by_source["p2031-a"]["height"]) == (None, None)
     for item in body["items"]:
-        assert list(item)[-1] == "local_time"
+        assert list(item)[-2:] == ["local_time", "mast"]
         assert "in_sol" not in item
     assert by_source["p2031-tie1"]["local_time"] == {
         "time": "11:30:55",

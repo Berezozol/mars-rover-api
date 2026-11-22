@@ -15,6 +15,7 @@ from app.api.v2.params import (
     DateMinParam,
     DriveParam,
     EarthDateParam,
+    FieldsParam,
     FlightNumberPath,
     GoldenHourParam,
     LatestParam,
@@ -126,6 +127,7 @@ async def list_photos(
     min_height: MinSizeParam = None,
     near: NearParam = None,
     radius_km: RadiusKmParam = None,
+    fields: FieldsParam = None,
 ) -> FastJSONResponse:
     query = PhotoQuery(
         sol=sol,
@@ -154,6 +156,7 @@ async def list_photos(
         photos_body(
             await v2.search_photos(session, rover, query, pagination, gate=gate, client=client),
             request_origin(request),
+            fields,
         )
     )
 
@@ -166,9 +169,10 @@ async def latest_photos(
     pagination: Pagination,
     camera: CameraParam = None,
     sample_type: SampleTypeParam = None,
+    fields: FieldsParam = None,
 ) -> FastJSONResponse:
     result = await v2.latest_photos(session, rover, camera, pagination, sample_type)
-    return FastJSONResponse(latest_body(result, request_origin(request)))
+    return FastJSONResponse(latest_body(result, request_origin(request), fields))
 
 
 @router.get("/rovers/{rover}/manifest", response_model=ManifestResponse, responses=_ERRORS)

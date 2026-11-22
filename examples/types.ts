@@ -93,6 +93,11 @@ export interface ManifestSolOut {
   total_photos: number;
 }
 
+export interface MastOut {
+  azimuth: number;
+  elevation: number;
+}
+
 export interface NearStopOut {
   distance_km: number;
   drive: number;
@@ -127,6 +132,7 @@ export interface PhotoDetailOut {
   in_sol: InSolOut;
   local_time: LocalTimeOut | null;
   location: PhotoLocationOut | null;
+  mast: MastOut | null;
   received_at: string | null;
   rover: string;
   sample_type: string;
@@ -348,6 +354,7 @@ export interface app__api__v2__schemas__PhotoOut {
   images: ImagesOut;
   img_src: string;
   local_time: LocalTimeOut | null;
+  mast: MastOut | null;
   near_stop?: NearStopOut;
   rover: string;
   sample_type: string;

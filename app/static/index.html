@@ -108,6 +108,13 @@ time <em>on Mars</em> where the rover stood: <code>lmst</code> (mean time) for C
 With <code>near</code>, each item also has <code>near_stop</code>: the rover stop the photo is tied to
 (<code>sol</code>, <code>site</code>, <code>drive</code>, <code>lat</code>, <code>lon</code>) and
 <code>distance_km</code> to your point.</p>
+<p>Photo lists (<code>/api/v2/photos</code>, <code>/api/v2/rovers/{rover}/photos</code>, <code>.../photos/latest</code>,
+<code>/api/v2/photos/batch</code>) accept <code>fields</code>, a comma-separated list of photo keys in lower case
+(for example <code>fields=sol,img_src,camera</code>). <code>id</code> and <code>credit</code> are always included.
+It only shrinks the response: it does not speed up searches or change rate limits. An unknown key gives <code>422</code>.
+Each photo also has <code>mast</code>: the camera direction as <code>azimuth</code> (0 to 360) and <code>elevation</code>
+(-90 to 90) in degrees. The angles are relative to the rover body, not to north, so they are not a compass bearing.
+It is <code>null</code> when the source gives no angles.</p>
 <p>Interactive documentation of every endpoint: <a href="/docs">/docs</a>.
 Machine-readable: <a href="/openapi.json">/openapi.json</a>, and a short reference for
 LLM assistants: <a href="/llms.txt">/llms.txt</a>.</p>

@@ -37,7 +37,7 @@ from app.services.locations import PhotoLocation, photo_location
 from app.services.rover_lookup import _ROVER_SLUG_RE, find_rover
 from app.sources import photo_meta as meta_parser
 from app.sources.locations import LOCATION_MISSIONS
-from app.sources.photo_meta import LocalTime
+from app.sources.photo_meta import LocalTime, MastAngles
 from app.sources.registry import SYNCABLE_ROVERS
 from app.sources.samples import SAMPLES_ROVER
 
@@ -168,13 +168,54 @@ class PhotoMeta:
     width: int | None
     height: int | None
     local_time: LocalTime | None
+    mast: MastAngles | None
 
 
 def photo_meta(photo: Photo) -> PhotoMeta:
     extra = photo.extra or {}
     size = meta_parser.frame_size(photo.rover_id, extra)
     width, height = size if size is not None else (None, None)
-    return PhotoMeta(width, height, meta_parser.local_time(photo.rover_id, extra))
+    return PhotoMeta(
+        width,
+        height,
+        meta_parser.local_time(photo.rover_id, extra),
+        meta_parser.mast_angles(photo.rover_id, extra),
+    )
+
+
+PHOTO_FIELDS: tuple[str, ...] = (
+    "id",
+    "rover",
+    "sol",
+    "earth_date",
+    "taken_at",
+    "camera",
+    "sample_type",
+    "title",
+    "img_src",
+    "images",
+    "credit",
+    "source",
+    "width",
+    "height",
+    "local_time",
+    "mast",
+    "near_stop",
+)
+FIELDS_MAX_LENGTH = 300
+
+
+def parse_fields(raw: str | None) -> frozenset[str] | None:
+    """The set of Photo keys asked for with ``fields``; None when the parameter is absent."""
+    if raw is None:
+        return None
+    if len(raw) > FIELDS_MAX_LENGTH:
+        raise InvalidParam("fields", f"fields must be at most {FIELDS_MAX_LENGTH} characters")
+    names = raw.split(",")
+    if any(name not in PHOTO_FIELDS for name in names):
+        allowed = ", ".join(PHOTO_FIELDS)
+        raise InvalidParam("fields", f"Unknown or empty field; allowed: {allowed}")
+    return frozenset(names)
 
 
 def data_source(rover_id: str) -> Literal["sync", "archive"]:

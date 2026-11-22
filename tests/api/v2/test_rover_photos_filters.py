@@ -369,6 +369,7 @@ def expected_photo(world: Multi, row: Row) -> dict[str, Any]:
         "width": None,
         "height": None,
         "local_time": None,  # the dataset has no local time in `extra`
+        "mast": None,  # nor mast angles (stage 19)
     }
 
 

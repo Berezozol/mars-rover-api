@@ -25,6 +25,7 @@ from app.services.v2 import (
     RoverInfo,
     SolPosition,
 )
+from app.sources.photo_meta import MastAngles
 
 
 def _utc_z(value: datetime) -> str:
@@ -115,6 +116,11 @@ class LocalTimeOut(BaseModel):
     planet: Literal["mars"]
 
 
+class MastOut(BaseModel):
+    azimuth: float
+    elevation: float
+
+
 class NearStopOut(BaseModel):
     sol: int
     site: int
@@ -126,6 +132,7 @@ class NearStopOut(BaseModel):
 
 class PhotoOut(PhotoBase):
     local_time: LocalTimeOut | None
+    mast: MastOut | None
     # Only in a search with ``near``; the key is absent otherwise.
     near_stop: NearStopOut | SkipJsonSchema[None] = None
 
@@ -156,6 +163,7 @@ class PhotoDetailOut(PhotoBase):
     extra: dict[str, Any]
     location: PhotoLocationOut | None
     local_time: LocalTimeOut | None
+    mast: MastOut | None
     in_sol: InSolOut
     flight: int | None
     samples: list[int]
@@ -344,6 +352,8 @@ class ManifestResponse(BaseModel):
 
 Json = dict[str, Any]
 
+ALWAYS_FIELDS = frozenset({"id", "credit"})
+
 
 def _utc_z_or_none(value: datetime | None) -> str | None:
     return _utc_z(value) if value is not None else None
@@ -392,9 +402,24 @@ def photo_dict(photo: Photo, origin: str, near_stop: NearStop | None = None) -> 
     meta = v2.photo_meta(photo)
     item = photo_base_dict(photo, origin, meta)
     item["local_time"] = _local_time_dict(meta.local_time)
+    item["mast"] = _mast_dict(meta.mast)
     if near_stop is not None:
         item["near_stop"] = _near_stop_dict(near_stop)
     return item
+
+
+def _mast_dict(value: MastAngles | None) -> Json | None:
+    if value is None:
+        return None
+    return {"azimuth": value.azimuth, "elevation": value.elevation}
+
+
+def select_fields(item: Json, fields: frozenset[str] | None) -> Json:
+    """Keep the chosen keys of a Photo (``id`` and ``credit`` always), in Photo order."""
+    if fields is None:
+        return item
+    keep = fields | ALWAYS_FIELDS
+    return {key: value for key, value in item.items() if key in keep}
 
 
 def _local_time_dict(value: LocalTime | None) -> Json | None:
@@ -467,6 +492,7 @@ def photo_detail_out(detail: PhotoDetail, origin: str) -> PhotoDetailOut:
         extra=photo.extra or {},
         location=photo_location_out(detail.location),
         local_time=_local_time_out(meta.local_time),
+        mast=_mast_out(meta.mast),
         in_sol=_in_sol_out(detail.in_sol),
         flight=detail.flight,
         samples=detail.samples,
@@ -547,6 +573,10 @@ def _local_time_out(value: LocalTime | None) -> LocalTimeOut | None:
     )
 
 
+def _mast_out(value: MastAngles | None) -> MastOut | None:
+    return MastOut(azimuth=value.azimuth, elevation=value.elevation) if value else None
+
+
 def _in_sol_out(value: SolPosition) -> InSolOut:
     return InSolOut(
         position=value.position,
@@ -562,16 +592,20 @@ def _nearest_sols_dict(value: NearestSols | None) -> Json | None:
     return {"before": value.before, "after": value.after}
 
 
-def _photo_items(result: PhotoPage, origin: str) -> list[Json]:
+def _photo_items(
+    result: PhotoPage, origin: str, fields: frozenset[str] | None = None
+) -> list[Json]:
     stops = result.near_stops
     if stops is None:
-        return [photo_dict(photo, origin) for photo in result.items]
-    return [photo_dict(photo, origin, stops[photo.id]) for photo in result.items]
+        return [select_fields(photo_dict(photo, origin), fields) for photo in result.items]
+    return [
+        select_fields(photo_dict(photo, origin, stops[photo.id]), fields) for photo in result.items
+    ]
 
 
-def photos_body(result: PhotoPage, origin: str) -> Json:
+def photos_body(result: PhotoPage, origin: str, fields: frozenset[str] | None = None) -> Json:
     return {
-        "items": _photo_items(result, origin),
+        "items": _photo_items(result, origin, fields),
         "page": result.page,
         "per_page": result.per_page,
         "total": result.total,
@@ -579,18 +613,21 @@ def photos_body(result: PhotoPage, origin: str) -> Json:
     }
 
 
-def photo_list_body(result: PhotoPage, origin: str) -> Json:
+def photo_list_body(result: PhotoPage, origin: str, fields: frozenset[str] | None = None) -> Json:
     """List of photos without ``nearest_sols`` (GET /photos)."""
     return {
-        "items": _photo_items(result, origin),
+        "items": _photo_items(result, origin, fields),
         "page": result.page,
         "per_page": result.per_page,
         "total": result.total,
     }
 
 
-def photo_batch_body(photos: list[Photo], missing: list[int], origin: str) -> Json:
-    return {"items": [photo_dict(photo, origin) for photo in photos], "missing": missing}
+def photo_batch_body(
+    photos: list[Photo], missing: list[int], origin: str, fields: frozenset[str] | None = None
+) -> Json:
+    items = [select_fields(photo_dict(photo, origin), fields) for photo in photos]
+    return {"items": items, "missing": missing}
 
 
 def photo_stats_body(stats: v2.PhotoStats) -> Json:
@@ -617,11 +654,11 @@ def photo_stats_body(stats: v2.PhotoStats) -> Json:
     }
 
 
-def latest_body(result: LatestPhotos, origin: str) -> Json:
+def latest_body(result: LatestPhotos, origin: str, fields: frozenset[str] | None = None) -> Json:
     page = result.photos
     return {
         "sol": result.sol,
-        "items": [photo_dict(photo, origin) for photo in page.items],
+        "items": [select_fields(photo_dict(photo, origin), fields) for photo in page.items],
         "page": page.page,
         "per_page": page.per_page,
         "total": page.total,

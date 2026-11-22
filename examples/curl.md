@@ -38,6 +38,9 @@ curl "$BASE/api/v2/rovers/perseverance/photos?sol=100&per_page=50"
 # Photos taken within 2 km of a point (one rover: curiosity or perseverance)
 curl "$BASE/api/v2/photos?rovers=perseverance&near=18.44,77.39&radius_km=2&per_page=5"
 
+# Only some keys of each photo (id and credit are always included)
+curl "$BASE/api/v2/photos?rovers=perseverance&sol=1000&fields=sol,img_src,camera"
+
 # Manifest
 curl "$BASE/api/v2/rovers/perseverance/manifest"
 
@@ -61,6 +64,13 @@ Perseverance, Ingenuity) or `ltst` (true time: Spirit, Opportunity). It is `null
 
 With `near`, each item also has `near_stop`: the rover stop the photo is tied to and its distance to your point,
 `{"sol": 2020, "site": 93, "drive": 1840, "lat": 18.4447, "lon": 77.3951, "distance_km": 0.42}`.
+
+`mast` is the camera direction at the time of the shot: `{"azimuth": 309.89, "elevation": 16.9}` in degrees,
+measured from the rover body, not from north (0 is roughly forward, so it is not a compass bearing).
+It is `null` when the source gives no angles.
+
+`fields=` trims the response to the listed photo keys (comma-separated, lower case). It saves size only: it does not
+make searches faster or change rate limits.
 
 ## Reference
 

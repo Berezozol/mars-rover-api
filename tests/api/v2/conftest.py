@@ -134,12 +134,13 @@ PHOTO_KEYS = [
     "source",
     "width",
     "height",
-    "local_time",  # last key of Photo
+    "local_time",
+    "mast",  # stage 19, last key of Photo
 ]
 # Stage 11: `location`; in PhotoDetail `local_time` keeps its place after `location` (not at the
-# end of the Photo part) and `in_sol` follows it.
+# end of the Photo part), then `mast` (stage 19), and `in_sol` follows them.
 PHOTO_DETAIL_KEYS = [
-    *[key for key in PHOTO_KEYS if key != "local_time"],
+    *[key for key in PHOTO_KEYS if key not in ("local_time", "mast")],
     "caption",
     "received_at",
     "site",
@@ -147,12 +148,14 @@ PHOTO_DETAIL_KEYS = [
     "extra",
     "location",
     "local_time",
+    "mast",
     "in_sol",
     "flight",  # stage 12
     "samples",  # stage 13, last key
 ]
 IN_SOL_KEYS = ["position", "total", "newer_id", "older_id"]
 LOCAL_TIME_KEYS = ["time", "kind", "planet"]
+MAST_KEYS = ["azimuth", "elevation"]
 NEAREST_SOLS_KEYS = ["before", "after"]
 LIST_KEYS = ["items", "page", "per_page", "total", "nearest_sols"]
 LATEST_KEYS = ["sol", "items", "page", "per_page", "total"]
@@ -377,6 +380,10 @@ EXPECTED_LOCAL_TIME: dict[str, dict[str, str]] = {
     "o-05": {"time": "12:45:26", "kind": "ltst", "planet": "mars"},
 }
 
+# No photo of the shared dataset has mast angles in `extra`: `mast` is null everywhere here
+# (angles are covered by tests/api/v2/test_photo_mast.py with its own data).
+EXPECTED_MAST: dict[str, dict[str, float]] = {}
+
 # Rover cache fields over ALL sample types: (max_sol, max_date, total_photos).
 STATS: dict[str, tuple[int | None, str | None, int]] = {
     # max_date = earliest real earth_date of sol 2031 (sol_summaries.earth_date).
@@ -445,6 +452,7 @@ class World:
             "width": EXPECTED_SIZE.get(source_id, (None, None))[0],
             "height": EXPECTED_SIZE.get(source_id, (None, None))[1],
             "local_time": EXPECTED_LOCAL_TIME.get(source_id),
+            "mast": EXPECTED_MAST.get(source_id),
         }
 
     def in_sol(
@@ -485,7 +493,7 @@ class World:
     def detail(self, source_id: str) -> dict[str, Any]:
         _, record = self.records[source_id]
         photo = self.photo(source_id)
-        del photo["local_time"]  # PhotoDetail keeps it after `location`
+        del photo["local_time"], photo["mast"]  # PhotoDetail keeps them after `location`
         return {
             **photo,
             "caption": record.caption,
@@ -496,6 +504,7 @@ class World:
             # No waypoints in the shared dataset: the location is always null here.
             "location": None,
             "local_time": EXPECTED_LOCAL_TIME.get(source_id),
+            "mast": EXPECTED_MAST.get(source_id),
             "in_sol": self.in_sol(source_id),
             "flight": None,  # only Ingenuity photos can have a flight
             "samples": [],  # no samples loaded in the shared dataset
@@ -645,6 +654,137 @@ async def meta_world(migrated_db: str) -> AsyncIterator[MetaWorld]:
         async with factory() as session:
             id_of = dict((await session.execute(text("SELECT source_id, id FROM photos"))).all())
         yield MetaWorld(rows=[replace(r, id=id_of[r.source_id]) for r in rows])
+    finally:
+        try:
+            await _clean_database(factory)
+        finally:
+            await engine.dispose()
+
+
+# --- stage 19: mast angles dataset (tests/api/v2/test_photo_mast.py, test_photos_fields.py) ------
+
+# source_id -> (rover, sol, camera, minute of the day, `extra`, expected `mast`).
+# Raw strings as the sources give them; the expected values follow docs/API.md (azimuth in
+# [0, 360), both angles rounded to 0.01, null unless both angles are usable).
+MAST_ROWS: dict[str, tuple[str, int, str, int, dict[str, Any], dict[str, float] | None]] = {
+    "c-mast": (
+        "curiosity",
+        5000,
+        "FHAZ",
+        1,
+        {"extended": {"mast_az": "328.438", "mast_el": "-44.4084"}},
+        {"azimuth": 328.44, "elevation": -44.41},
+    ),
+    "c-none": ("curiosity", 5000, "NAVCAM", 2, {}, None),
+    "c-only-az": ("curiosity", 5000, "NAVCAM", 3, {"extended": {"mast_az": "10"}}, None),
+    "p-neg": (
+        "perseverance",
+        600,
+        "NAVCAM_LEFT",
+        1,
+        {"extended": {"mastAz": "-50.1149", "mastEl": "16.9037"}},
+        {"azimuth": 309.89, "elevation": 16.9},
+    ),
+    "p-360": (
+        "perseverance",
+        600,
+        "NAVCAM_LEFT",
+        2,
+        {"extended": {"mastAz": "360", "mastEl": "0"}},
+        {"azimuth": 0.0, "elevation": 0.0},
+    ),
+    "p-exp": (
+        "perseverance",
+        600,
+        "NAVCAM_RIGHT",
+        3,
+        {"extended": {"mastAz": "-2.93157e-05", "mastEl": "-0.5"}},
+        {"azimuth": 0.0, "elevation": -0.5},
+    ),
+    "p-late": (
+        "perseverance",
+        800,
+        "NAVCAM_LEFT",
+        1,
+        {"extended": {"mastAz": "-170", "mastEl": "5"}},
+        {"azimuth": 190.0, "elevation": 5.0},
+    ),
+    "p-bad": (
+        "perseverance",
+        800,
+        "NAVCAM_RIGHT",
+        2,
+        {"extended": {"mastAz": "abc", "mastEl": "1"}},
+        None,
+    ),
+    "s-1": ("spirit", 3, "PANCAM", 1, {"line_samples": 8, "lines": 8}, None),
+    "s-keys": (
+        "spirit",
+        3,
+        "PANCAM",
+        2,
+        {"extended": {"mastAz": "10", "mastEl": "10", "mast_az": "10", "mast_el": "10"}},
+        None,
+    ),
+    "i-unk": (
+        "ingenuity",
+        100,
+        "HELI_NAV",
+        1,
+        {"extended": {"mastAz": "UNK", "mastEl": "10"}},
+        None,
+    ),
+    "i-keys": (
+        "ingenuity",
+        100,
+        "HELI_NAV",
+        2,
+        {"extended": {"mastAz": "10", "mastEl": "10"}},
+        None,
+    ),
+}
+MAST_ROVERS = ["curiosity", "perseverance", "spirit", "ingenuity"]
+
+
+@dataclass
+class MastWorld:
+    ids: dict[str, int]  # source_id -> photos.id
+
+    def rows_of(self, rover: str) -> list[str]:
+        return [s for s, row in MAST_ROWS.items() if row[0] == rover]
+
+    def expected_mast(self, photo_id: int) -> dict[str, float] | None:
+        source_id = next(s for s, i in self.ids.items() if i == photo_id)
+        return MAST_ROWS[source_id][5]
+
+    def source_of(self, photo_id: int) -> str:
+        return next(s for s, i in self.ids.items() if i == photo_id)
+
+
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
+async def mast_world(migrated_db: str) -> AsyncIterator[MastWorld]:
+    """Photos with and without mast angles in `extra`, committed once per module."""
+    engine = create_async_engine(migrated_db, poolclass=NullPool)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        await _clean_database(factory)
+        for source_id, (rover, sol, camera, minute, extra, _) in MAST_ROWS.items():
+            taken = datetime(2021, 6, 1, 10, minute, tzinfo=UTC)
+            record = build_record(
+                source_id=source_id,
+                sol=sol,
+                camera_code=camera,
+                taken_at=taken,
+                earth_date=taken.date(),
+                img_full=_img(source_id, ".jpg"),
+                credit=f"credit of {rover}",
+                extra=extra,
+            )
+            await _seed(factory, rover, [record], one_by_one=True)
+        async with factory() as session:
+            rows = await session.execute(text("SELECT source_id, id FROM photos"))
+            ids = {source_id: photo_id for source_id, photo_id in rows}
+        yield MastWorld(ids=ids)
     finally:
         try:
             await _clean_database(factory)

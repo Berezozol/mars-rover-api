@@ -10,12 +10,14 @@ from app.api.deps import ClientKey, get_heavy_query_gate
 from app.api.home import request_origin
 from app.api.responses import FastJSONResponse
 from app.api.v2.params import (
+    FIELDS_DESCRIPTION,
     CameraListParam,
     CameraParam,
     DateMaxParam,
     DateMinParam,
     DriveParam,
     EarthDateParam,
+    FieldsParam,
     GoldenHourParam,
     LocalTimeParam,
     MinSizeParam,
@@ -38,6 +40,7 @@ from app.api.v2.params import (
     StatsSampleTypeParam,
     StatsSolMaxParam,
     StatsSolMinParam,
+    read_fields,
 )
 from app.api.v2.schemas import (
     ErrorResponse,
@@ -55,7 +58,12 @@ from app.core.overload import HeavyQueryGate
 from app.db.session import get_session
 from app.services import v2
 from app.services.mer_images import MerImageService
-from app.services.v2 import DEFAULT_SORT, MultiPhotoQuery, StatsQuery
+from app.services.v2 import (
+    DEFAULT_SORT,
+    FIELDS_MAX_LENGTH,
+    MultiPhotoQuery,
+    StatsQuery,
+)
 
 router = APIRouter()
 
@@ -96,6 +104,7 @@ async def list_all_photos(
     min_height: MinSizeParam = None,
     near: NearParam = None,
     radius_km: RadiusKmParam = None,
+    fields: FieldsParam = None,
 ) -> FastJSONResponse:
     query = MultiPhotoQuery(
         rovers=rovers,
@@ -122,7 +131,7 @@ async def list_all_photos(
         radius_km=radius_km,
     )
     result = await v2.search_photos_multi(session, query, pagination, gate=gate, client=client)
-    return FastJSONResponse(photo_list_body(result, request_origin(request)))
+    return FastJSONResponse(photo_list_body(result, request_origin(request), fields))
 
 
 # Declared before /photos/{id}: "stats" and "batch" must not be read as ids.
@@ -170,7 +179,14 @@ _BATCH_IDS_OPENAPI = {
                 "1 to 100 photo ids separated by commas (19 digits max each, 2000 chars max)."
             ),
             "schema": {"type": "string", "examples": ["3,1,2"]},
-        }
+        },
+        {
+            "name": "fields",
+            "in": "query",
+            "required": False,
+            "description": FIELDS_DESCRIPTION,
+            "schema": {"type": "string", "maxLength": FIELDS_MAX_LENGTH},
+        },
     ]
 }
 
@@ -188,11 +204,12 @@ async def batch_photos(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> FastJSONResponse:
+    fields = read_fields(request, request.query_params.get("fields"))
     values = request.query_params.getlist("ids")
     if len(values) != 1:
         raise InvalidParam("ids", "ids is required and must be given once")
     photos, missing = await v2.photos_by_ids(session, values[0])
-    return FastJSONResponse(photo_batch_body(photos, missing, request_origin(request)))
+    return FastJSONResponse(photo_batch_body(photos, missing, request_origin(request), fields))
 
 
 # Non-integer id → 422; an integer outside 1..2**63-1 → 404 photo_not_found.

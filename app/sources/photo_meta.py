@@ -4,6 +4,7 @@ The shape of ``extra`` is set by the adapters, so it is also parsed here, in ``s
 All functions are pure and total: anything missing or malformed gives ``None``.
 """
 
+import math
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -32,6 +33,51 @@ def frame_size(rover_id: str, extra: Mapping[str, Any]) -> tuple[int, int] | Non
     if rover_id in _MER:
         return _positive_pair(extra.get("line_samples"), extra.get("lines"))
     return None
+
+
+@dataclass(frozen=True)
+class MastAngles:
+    """Camera pointing, degrees: azimuth in [0, 360), elevation in [-90, 90]; 0.01-rounded."""
+
+    azimuth: float
+    elevation: float
+
+
+_MAST_KEYS = {"curiosity": ("mast_az", "mast_el"), "perseverance": ("mastAz", "mastEl")}
+
+
+def mast_angles(rover_id: str, extra: Mapping[str, Any]) -> MastAngles | None:
+    """Camera pointing from ``extra['extended']``, or None unless both angles are usable.
+
+    Azimuth is normalized to [0, 360): Perseverance wrote -180..180 in some periods.
+    """
+    keys = _MAST_KEYS.get(rover_id)
+    if keys is None:
+        return None
+    extended = _mapping(extra.get("extended"))
+    azimuth = _finite_number(extended.get(keys[0]))
+    elevation = _finite_number(extended.get(keys[1]))
+    if azimuth is None or elevation is None:
+        return None
+    if not (-360 <= azimuth <= 360 and -90 <= elevation <= 90):
+        return None
+    return MastAngles(_round_angle(azimuth % 360) % 360, _round_angle(elevation))
+
+
+def _round_angle(value: float) -> float:
+    return round(value, 2) + 0.0  # + 0.0 turns -0.0 into 0.0
+
+
+def _finite_number(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if not isinstance(value, str | int | float):
+        return None
+    try:
+        number = float(value.strip() if isinstance(value, str) else value)
+    except (ValueError, OverflowError):
+        return None
+    return number if math.isfinite(number) else None
 
 
 def local_time(rover_id: str, extra: Mapping[str, Any]) -> LocalTime | None:

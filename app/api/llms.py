@@ -63,7 +63,11 @@ and `{origin}/mars-photos/api/v1` serve the same API.
 Heavy searches may get `503 service_busy` with `Retry-After`: retry later. \
 Photos carry `taken_at` (Earth time, UTC) and `local_time` (local solar time on Mars: `time`, \
 `kind` = `lmst` or `ltst`, `planet` = `mars`; `null` if unknown). With `near`, each photo also has \
-`near_stop` (`sol`, `site`, `drive`, `lat`, `lon`, `distance_km`)
+`near_stop` (`sol`, `site`, `drive`, `lat`, `lon`, `distance_km`). \
+`fields=sol,img_src,camera` (also on the rover photos, latest and batch lists) returns only the \
+listed photo keys; `id` and `credit` are always included; it saves response size only. \
+`mast` is the camera direction (`azimuth` 0-360, `elevation` -90..90, degrees) relative to the \
+rover body, not to north; `null` if unknown
 - [Stats]({origin}/api/v2/photos/stats?rovers=perseverance&group_by=month): \
 `GET /api/v2/photos/stats` (photo and sol counts with first and last date; `rovers`, `camera`, \
 `sol_min`/`sol_max` or `date_min`/`date_max`, `sample_type=full` only, \

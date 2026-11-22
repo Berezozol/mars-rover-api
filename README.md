@@ -31,6 +31,10 @@ v2 photos have two time fields: `taken_at` is Earth time (UTC); `local_time`
 `GET /api/v2/photos?rovers=perseverance&near=LAT,LON&radius_km=2` also returns `near_stop` for each photo:
 the rover stop it is tied to (`sol`, `site`, `drive`, `lat`, `lon`) and `distance_km` to the point.
 
+`mast` (`{"azimuth": 309.89, "elevation": 16.9}`, degrees) is the camera direction relative to the rover body,
+not to north, so it is not a compass bearing. Photo lists accept `fields=sol,img_src,camera` to return only those
+keys (`id` and `credit` are always included).
+
 ## Quick start
 
 Requirements: Python 3.13+, [uv](https://docs.astral.sh/uv/), Docker.

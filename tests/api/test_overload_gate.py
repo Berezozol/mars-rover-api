@@ -917,3 +917,40 @@ async def test_total_of_full_photos_comes_from_sol_summaries(
     assert response.json()["total"] == 4
     assert multi.status_code == 200, multi.text
     assert multi.json()["total"] == 4
+
+
+# --- stage 19, AC-12: `fields` is validated before the slot and the database -------------------
+
+FIELDS_HEAVY_URLS = {
+    "rover-photos": HEAVY_URL,
+    "photos-multi": MULTI_URL,
+}
+
+
+@pytest.mark.parametrize("url", FIELDS_HEAVY_URLS.values(), ids=FIELDS_HEAVY_URLS)
+async def test_ac12_bad_fields_on_a_heavy_search_is_422_not_503_while_the_gate_is_full(
+    gate_app: FastAPI, client: httpx.AsyncClient, url: str
+) -> None:
+    """Stage 19 AC-12: the `fields` check runs before the heavy-query slot and the database."""
+    async with held_slot(gate_app, client):
+        bad = await client.get(f"{url}&fields=foo")
+        control = await client.get(f"{url}&fields=sol")
+
+    assert bad.status_code == 422, bad.text
+    assert bad.json()["error"]["code"] == "validation_error"
+    assert [d["field"] for d in bad.json()["error"]["details"]] == ["fields"]
+    assert "retry-after" not in bad.headers
+    # The same search with a valid `fields` is still refused as busy: `fields` does not change
+    # the heavy-query rules.
+    assert_busy(control)
+
+
+async def test_ac12_bad_fields_does_not_take_a_slot_or_reach_the_database(
+    gate_app: FastAPI, client: httpx.AsyncClient, harness: Harness
+) -> None:
+    calls_before = harness.stub.calls
+
+    response = await client.get(f"{HEAVY_URL}&fields=SOL")
+
+    assert response.status_code == 422
+    assert harness.stub.calls == calls_before

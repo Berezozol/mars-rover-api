@@ -84,8 +84,9 @@ async def test_mer_photo_list_item_shape(client: httpx.AsyncClient, world: MerWo
             "kind": "ltst",
             "planet": "mars",
         },
+        "mast": None,  # stage 19: MER has no mast angles in the source
     }
-    assert list(item)[-3:] == ["width", "height", "local_time"]
+    assert list(item)[-4:] == ["width", "height", "local_time", "mast"]
 
 
 @pytest.mark.parametrize("rover", ROVERS)
