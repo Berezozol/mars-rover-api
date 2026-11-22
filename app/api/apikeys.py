@@ -151,6 +151,14 @@ class ApiKeyResolver:
         # Bumped by every invalidation: a lookup started before it must not be cached.
         self._generation = 0
 
+    def peek(self, key: str) -> ResolvedKey | None:
+        """The fresh cached answer for a found key (valid, revoked or blocked), else None.
+        Never touches the database and ignores the negative cache."""
+        cached = self._cache.get(hash_api_key(key))
+        if cached is not None and cached[0] > self.clock():
+            return cached[1]
+        return None
+
     async def resolve(self, key: str) -> ResolvedKey:
         key_hash = hash_api_key(key)
         now = self.clock()

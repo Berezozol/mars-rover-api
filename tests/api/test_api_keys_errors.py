@@ -265,10 +265,11 @@ async def test_ac12_the_block_message_does_not_leak_the_reason(make_keys_app: Ma
 # --- AC-13: lockout of failed keys per IP ---
 
 
-async def test_ac13_21st_failed_key_from_an_ip_is_429_and_even_a_good_key_is_not_checked(
-    make_keys_app: MakeApp,
+async def test_ac13_21st_failed_key_from_an_ip_is_429_and_a_cold_good_key_is_not_looked_up(
+    make_keys_app: MakeApp, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     env: KeysApp = await make_keys_app()
+    calls = spy_resolver(env, monkeypatch)
     good = await account_with_key(env.factory)
     spent = await revoked_key(env)
     async with env.client(IP_A) as client, env.client(IP_B) as other, env.client(IP_A) as anon:
@@ -276,13 +277,16 @@ async def test_ac13_21st_failed_key_from_an_ip_is_429_and_even_a_good_key_is_not
         for index in range(20):
             key = new_key() if index % 2 == 0 else spent
             failures.append((await client.get(SMALL_V2, headers=hdr(key))).status_code)
+        calls.clear()
         locked = await client.get(SMALL_V2, headers=hdr(new_key()))
         locked_good = await client.get(SMALL_V2, headers=hdr(good.value))
         locked_query = await client.get(SMALL_V2, params={"api_key": good.value})
+        looked_up = list(calls)
         anonymous = await anon.get(SMALL_V2)
         other_ip = await other.get(SMALL_V2, headers=hdr(good.value))
 
     assert failures == [401] * 20
+    assert looked_up == [], "locked IP: cold keys must not be looked up"
     for response in (locked, locked_good, locked_query):
         assert response.status_code == 429, response.text
         assert response.json() == V2_BODY_429
@@ -327,6 +331,129 @@ async def test_ac13_lockout_is_shared_by_v1_and_v2(make_keys_app: MakeApp) -> No
         locked = await client.get(SMALL_V2, headers=hdr(new_key()))
 
     assert locked.status_code == 429
+
+
+def spy_resolver(env: KeysApp, monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Record the keys that reach `resolver.resolve` (the real lookup still runs)."""
+    resolver = env.app.state.api_key_resolver
+    real = resolver.resolve
+    calls: list[str] = []
+
+    async def spy(key: str) -> Any:
+        calls.append(key)
+        return await real(key)
+
+    monkeypatch.setattr(resolver, "resolve", spy)
+    return calls
+
+
+async def warm(client: Any, key: str, expected: int = 200) -> None:
+    assert (await client.get(SMALL_V2, headers=hdr(key))).status_code == expected
+
+
+@pytest.mark.parametrize("how", ["header", "query"])
+async def test_ac13_during_a_lockout_a_warmed_valid_key_is_served_on_the_key_tier(
+    make_keys_app: MakeApp, monkeypatch: pytest.MonkeyPatch, how: str
+) -> None:
+    """Owner decision 2026-11-22: neighbours behind one NAT keep their working keys."""
+    env: KeysApp = await make_keys_app()
+    good = await account_with_key(env.factory)
+    calls = spy_resolver(env, monkeypatch)
+    async with env.client(IP_A) as client:
+        await warm(client, good.value)
+        await lock_ip(client)
+        calls.clear()
+
+        response = await client.get(
+            SMALL_V2,
+            headers=hdr(good.value) if how == "header" else None,
+            params={"api_key": good.value} if how == "query" else None,
+        )
+        v1 = await client.get(SMALL_V1, headers=hdr(good.value))
+
+    assert response.status_code == 200, response.text
+    assert response.headers["x-ratelimit-limit"] == "120"
+    assert v1.status_code == 200
+    assert calls == [] or calls == [good.value, good.value]  # a cache hit is not a lookup
+
+
+async def test_ac13_during_a_lockout_a_cold_valid_key_is_429_without_a_lookup(
+    make_keys_app: MakeApp, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    env: KeysApp = await make_keys_app()
+    good = await account_with_key(env.factory)
+    warmed = await account_with_key(env.factory, "warm@example.org")
+    calls = spy_resolver(env, monkeypatch)
+    async with env.client(IP_A) as client, env.client(IP_B) as other:
+        await warm(client, warmed.value)
+        await lock_ip(client)
+        calls.clear()
+
+        cold = await client.get(SMALL_V2, headers=hdr(good.value))
+        looked_up = list(calls)
+        elsewhere = await other.get(SMALL_V2, headers=hdr(good.value))
+
+    assert cold.status_code == 429
+    assert cold.json() == V2_BODY_429
+    assert good.value not in looked_up
+    assert elsewhere.status_code == 200  # another IP is not affected
+    assert elsewhere.headers["x-ratelimit-limit"] == "120"
+
+
+async def test_ac13_a_warmed_key_goes_cold_after_the_cache_time_and_is_then_locked_out(
+    make_keys_app: MakeApp,
+) -> None:
+    env: KeysApp = await make_keys_app(api_key_cache_seconds=60)
+    good = await account_with_key(env.factory)
+    async with env.client(IP_A) as client:
+        await warm(client, good.value)
+        await lock_ip(client)
+        assert (await client.get(SMALL_V2, headers=hdr(good.value))).status_code == 200
+        env.clock.advance(61)  # the cached verdict is too old, the lockout (900 s) goes on
+
+        response = await client.get(SMALL_V2, headers=hdr(good.value))
+
+    assert response.status_code == 429
+
+
+async def test_ac13_cached_revoked_and_blocked_keys_answer_from_cache_and_are_not_counted_again(
+    make_keys_app: MakeApp, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The cache must outlive the 600 s the test lets pass inside the lockout.
+    env: KeysApp = await make_keys_app(api_key_cache_seconds=3600)
+    spent = await revoked_key(env)
+    blocked = await blocked_key(env)
+    good = await account_with_key(env.factory)
+    calls = spy_resolver(env, monkeypatch)
+    async with env.client(IP_A) as client:
+        await warm(client, spent, 401)  # failure 1 of 20
+        await warm(client, blocked, 403)  # not a failure
+        for _ in range(19):
+            assert (await client.get(SMALL_V2, headers=hdr(new_key()))).status_code == 401
+        assert (await client.get(SMALL_V2, headers=hdr(new_key()))).status_code == 429
+        calls.clear()
+        env.clock.advance(600)
+
+        revoked_answer = await client.get(SMALL_V2, headers=hdr(spent))
+        blocked_answer = await client.get(SMALL_V2, headers=hdr(blocked))
+        revoked_v1 = await client.get(SMALL_V1, headers=hdr(spent))
+        env.clock.advance(301)  # 901 s after the failures: only they count, not the repeats
+        after = await client.get(SMALL_V2, headers=hdr(good.value))
+
+    assert_v2_error(revoked_answer, 401, "api_key_revoked")
+    assert_v2_error(blocked_answer, 403, "account_blocked")
+    assert_v1_error(revoked_v1, 403, "API key revoked")
+    assert spent not in calls and blocked not in calls
+    assert after.status_code == 200, after.text
+
+
+async def lock_ip(client: Any) -> None:
+    """Fill the failure window of the address with unknown keys (a warmed-key request that was
+    itself a failure may already be in it; the loop stops at the first 429)."""
+    for _ in range(40):
+        if (await client.get(SMALL_V2, headers=hdr(new_key()))).status_code == 429:
+            return
+    raise AssertionError("the IP was not locked out")
 
 
 async def test_ac13_the_lockout_ends_with_the_window(make_keys_app: MakeApp) -> None:

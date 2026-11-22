@@ -36,6 +36,7 @@ from app.api.apikeys import (
     UNKNOWN_CLIENT,
     ApiKeyResolver,
     RateIdentity,
+    ResolvedKey,
     client_key,
     extract_api_key,
     rate_identity,
@@ -231,11 +232,15 @@ async def _identify(scope: Scope) -> tuple[RateIdentity, Rejection | None]:
     value, _source = extract_api_key(scope, legacy=is_legacy_path(scope["path"]))
     if value is None:
         return ip, None
-    # First of all: an address that failed too often is not served any key, whatever its
-    # format, and the refusal is not counted as one more failure.
+    # An address that failed too often is not served any key that needs a lookup (nor one of
+    # a foreign format); the refusal is not counted as one more failure. Keys verified
+    # recently (positive cache) are still answered from memory.
     wait = state.api_key_auth_limiter.check(ip.key)
     if wait is not None:
-        return ip, lambda extra: _too_many_requests(scope, wait, extra)
+        cached = resolver.peek(value) if is_our_key_format(value) else None
+        if cached is None:
+            return ip, lambda extra: _too_many_requests(scope, wait, extra)
+        return _from_resolved(scope, state, ip, cached, count_failure=False)
     if not is_our_key_format(value):
         # Only a v2 header gets here (the extractor drops the other foreign values).
         return ip, _key_failure(scope, state, ip, InvalidApiKey())
@@ -247,6 +252,13 @@ async def _identify(scope: Scope) -> tuple[RateIdentity, Rejection | None]:
     except Exception:
         logger.exception("API key lookup crashed")
         raise
+    return _from_resolved(scope, state, ip, resolved, count_failure=True)
+
+
+def _from_resolved(
+    scope: Scope, state: Any, ip: RateIdentity, resolved: ResolvedKey, *, count_failure: bool
+) -> tuple[RateIdentity, Rejection | None]:
+    """The identity of a valid key, else the rejection for a bad one."""
     if resolved.status == "ok" and resolved.account_id is not None:
         key = f"a:{resolved.account_id}"
         return RateIdentity("account", key, resolved.account_id, resolved.key_id), None
@@ -257,13 +269,15 @@ async def _identify(scope: Scope) -> tuple[RateIdentity, Rejection | None]:
         if resolved.status == "blocked"
         else InvalidApiKey()
     )
-    return ip, _key_failure(scope, state, ip, error)
+    return ip, _key_failure(scope, state, ip, error, count=count_failure)
 
 
-def _key_failure(scope: Scope, state: Any, ip: RateIdentity, error: ApiKeyError) -> Rejection:
+def _key_failure(
+    scope: Scope, state: Any, ip: RateIdentity, error: ApiKeyError, *, count: bool = True
+) -> Rejection:
     """The answer to a bad key. Wrong and revoked keys also count as failures of the address
     (the key of a blocked account is genuine, so it does not)."""
-    if not isinstance(error, AccountBlocked):
+    if count and not isinstance(error, AccountBlocked):
         _record_failure(state, ip.key)
     status, content = api_key_error_content(scope["path"], error)
     headers = {"Cache-Control": NO_STORE}
