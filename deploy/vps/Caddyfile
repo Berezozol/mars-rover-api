@@ -1,0 +1,120 @@
+# Caddy on the VPS: HTTPS (Let's Encrypt, automatic) and reverse proxy to the app on
+# 127.0.0.1:8000. Runs with network_mode: host (compose.yml). Live copy: /srv/mars/Caddyfile.
+# Check:  docker compose exec caddy caddy validate --config /etc/caddy/Caddyfile
+# Reload: docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile
+#
+# DNS (Contabo): A/AAAA for solindex.net and a wildcard * to this server, CAA letsencrypt.org.
+# Caddy answers (and issues certificates) only for the names below; other names under the
+# wildcard get a TLS handshake error.
+{
+	# The admin API stays on its default localhost:2019 (host network, not reachable from
+	# outside; ufw/Contabo block it): `caddy reload` in update.sh needs it.
+	admin localhost:2019
+
+	servers {
+		# Go's MaxHeaderBytes: the request line and all headers together. Above it Caddy
+		# answers 431 by itself. The URL limit (414) is stricter and is enforced below.
+		max_header_size 16KB
+
+		timeouts {
+			read_header 10s
+			read_body 30s
+			write 2m
+			idle 2m
+		}
+
+		# Do NOT add trusted_proxies here: Caddy is the first proxy, so an incoming
+		# X-Forwarded-For is client-controlled and is replaced, not extended.
+
+		# HTTP/3 needs UDP 443 open in the Contabo panel firewall (only TCP is open now);
+		# ufw already allows it. After opening it use: protocols h1 h2 h3
+		protocols h1 h2
+	}
+}
+
+# JSON access log to stdout (docker logs, json-file rotation 5 x 10 MB). Credentials never
+# reach it: the admin token, Authorization and Cookie request headers are deleted.
+(access_log) {
+	log {
+		output stdout
+		format filter {
+			wrap json
+			fields {
+				request>headers>X-Admin-Token delete
+				request>headers>Authorization delete
+				request>headers>Cookie delete
+			}
+		}
+	}
+}
+
+# Sol Index (frontend, served by the app at /) and the API: one upstream for both hosts.
+solindex.net, api.solindex.net {
+	# Admin API is reachable only through an SSH tunnel to 127.0.0.1:8000 (deploy/README.md).
+	# Case-insensitive, tolerant of repeated slashes.
+	@admin path_regexp admin (?i)^/+api/+v2/+admin
+	handle @admin {
+		respond "Not Found" 404
+	}
+
+	# Request URI (path + query) longer than 4096 characters: 414. The longest legitimate
+	# URL (a batch of 50 ids, bbox queries) is well below 1 KB.
+	# TO VERIFY on the first start: `caddy validate` accepts the CEL expression and a
+	# 5000-character URL gets 414 (README, "Checks after a rollout"). If the expression is
+	# rejected, remove this block and rely on max_header_size (431).
+	@longuri expression `{http.request.uri}.size() > 4096`
+	handle @longuri {
+		respond "URI Too Long" 414
+	}
+
+	handle {
+		# The API takes only GET/HEAD (admin is closed above): bodies are not expected.
+		request_body {
+			max_size 64KB
+		}
+
+		reverse_proxy 127.0.0.1:8000 {
+			# Never pass a client-supplied chain on: the app trusts these headers from
+			# Caddy and takes the right-most entry it does not trust.
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up -X-Real-IP
+			header_down -Server
+
+			transport http {
+				dial_timeout 3s
+				# Full-size MER image conversion may take up to 60 s plus the queue.
+				response_header_timeout 90s
+			}
+		}
+	}
+
+	# NO `encode` directive on purpose: the application compresses (gzip) itself, and the
+	# rate limit prices v1 responses by their compressed size. A second compression layer
+	# would change the cost of responses and double-encode.
+
+	header {
+		# Short max-age first; raise to 31536000 (1 year) after a week without HTTPS problems.
+		# No includeSubDomains/preload until every subdomain of solindex.net is on HTTPS.
+		Strict-Transport-Security "max-age=300"
+		# Defence in depth for the web interface; harmless for API clients. `?` sets a header
+		# only when the application did not set it itself.
+		?X-Content-Type-Options nosniff
+		?Referrer-Policy strict-origin-when-cross-origin
+		?Content-Security-Policy "frame-ancestors 'none'"
+		-Server
+		-Via
+	}
+
+	# JSON access log to stdout (docker logs, json-file rotation 5 x 10 MB). The client
+	# address is `request.remote_ip`: CHECK on the rehearsal that it is the real address for
+	# both IPv4 and IPv6 clients, and that the app's access log shows the same address
+	# (not 172.28.0.1 / 127.0.0.1): README, "Checks after a rollout".
+	import access_log
+}
+
+www.solindex.net {
+	redir https://solindex.net{uri} permanent
+
+	import access_log
+}

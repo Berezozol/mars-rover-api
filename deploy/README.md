@@ -1,14 +1,18 @@
 # Deploy
 
-The application image is built from the root `Dockerfile`. Production today runs on the owner's
-laptop behind Tailscale Funnel (section "Laptop + Tailscale Funnel"); a VPS with its own domain
-comes later.
+The application image is built from the root `Dockerfile`. Production moves to a Contabo VPS with
+Caddy and its own domain (section "VPS (Contabo) + Caddy"); until the move is done and checked,
+the owner's laptop behind Tailscale Funnel (section "Laptop + Tailscale Funnel") is the
+production, and afterwards the fallback.
 
 Contents:
 
 - [Build](#build), [Run against the local dev database](#run-against-the-local-dev-database),
   [Migrations](#migrations), [Environment variables](#environment-variables)
-- [Laptop + Tailscale Funnel](#laptop--tailscale-funnel): install, first data transfer, Funnel,
+- [VPS (Contabo) + Caddy](#vps-contabo--caddy): decisions, install, update and rollback, backups
+  and restore, admin through an SSH tunnel, monitoring, checks after a rollout, migration from
+  the laptop, incidents
+- [Laptop + Tailscale Funnel](#laptop--tailscale-funnel) (fallback): install, first data transfer, Funnel,
   autostart, updates, backups and restore, logs
 - [Monitoring](#monitoring): external uptime monitor, Telegram alerts, alert test
 - [Smoke test](#smoke-test)
@@ -66,7 +70,7 @@ the image.
 | `ADMIN_TOKEN` | no | enables `/api/v2/admin/*`; empty = admin routes return 404. At least 16 characters. Pass as a secret |
 | `CORS_ORIGINS` | no | JSON list, default `["*"]` |
 | `DB_CONNECT_TIMEOUT_SECONDS` | no | default 5 |
-| `FORWARDED_ALLOW_IPS` | no | uvicorn trusts `X-Forwarded-*` only from these addresses (default `127.0.0.1`); set to the reverse proxy address behind a proxy; comma-separated addresses and CIDR networks. Avoid `*` (the client then controls its own IP). Laptop: Docker gateway ranges (see below) |
+| `FORWARDED_ALLOW_IPS` | no | uvicorn trusts `X-Forwarded-*` only from these addresses (default `127.0.0.1`); set to the reverse proxy address behind a proxy; comma-separated addresses and CIDR networks. Avoid `*` (the client then controls its own IP). Laptop: Docker gateway ranges (see below). VPS: `172.28.0.1,127.0.0.1` (fixed compose subnet, see "VPS (Contabo) + Caddy") |
 | `RATE_LIMIT_ENABLED` | no | default `true`: per-IP limit on `/api/v1`, `/mars-photos/api/v1`, `/api/v2` |
 | `RATE_LIMIT_PER_MINUTE`, `RATE_LIMIT_PER_HOUR` | no | defaults 60 and 2000; exceeding either gives `429` with `Retry-After` |
 | `ADMIN_AUTH_MAX_FAILURES`, `ADMIN_AUTH_WINDOW_MINUTES` | no | defaults 10 and 15: after that many `401` from one IP in the window, admin answers `429` to that IP until the window ends |
@@ -89,7 +93,367 @@ the image.
 The server runs a single uvicorn process (no `--workers`): the scheduler, the rate-limit counters
 and the alert state live in-process.
 
+## VPS (Contabo) + Caddy
+
+Production target after the move off the laptop (owner's decision, 2026-11-22). The laptop
+section below stays as the fallback until the VPS has served for a while; `deploy/laptop/` is
+not changed. No Tailscale: SSH is open on port 22 (key only), the admin API is reached through
+an SSH tunnel.
+
+```
+Internet --HTTPS--> Caddy (host network, Let's Encrypt) --HTTP--> 127.0.0.1:8000
+    --> Docker port forward --> app container (uvicorn, SYNC_ENABLED) --> db container (Postgres 16)
+```
+
+Server: Contabo Cloud VPS 6 (6 vCPU, 12 GB RAM, 200 GB SSD), Ubuntu 24.04, IPv4
+`<VPS_IP>`, IPv6 `<VPS_IPV6>` (the real addresses are in the owner's notes, not in the repository). Contabo panel firewall `mars-web`: TCP 22,
+80, 443 (UDP 443 is not open, so HTTP/3 is off in the Caddyfile). Domain `solindex.net` (DNS at
+Contabo): A/AAAA for the apex and `*`, CAA `letsencrypt.org`.
+
+| Host | Serves |
+|---|---|
+| `api.solindex.net` | the API (v1, v2, `/health`, `/developers`, `/llms.txt`) |
+| `solindex.net` | Sol Index (the app serves `frontend/dist` at `/`); the API paths work here too |
+| `www.solindex.net` | `301` to `https://solindex.net{uri}` |
+
+Done once by hand on 2026-11-22 and recorded in `deploy/vps/bootstrap.sh` (idempotent): user
+`deploy` (key, sudo without password, group `docker`); root login, password login and the
+default `ubuntu` user disabled; `ufw` 22/tcp, 80/tcp, 443/tcp, 443/udp; unattended security
+updates with a reboot at 05:00 UTC; `fail2ban` for sshd; time zone UTC; 2 GB swap; Docker CE 29
+with compose v5 (`json-file` 10 MB x 5, `live-restore`); directory `/srv/mars`.
+
+Layout on the server:
+
+| Path | What |
+|---|---|
+| `/srv/mars/repo/` | git clone of the project (scripts and units run from here) |
+| `/srv/mars/compose.yml`, `Caddyfile`, `db-roles.sql` | live copies; `update.sh` refreshes them from `deploy/vps/` |
+| `/srv/mars/.env` | from `deploy/vps/.env.example`, `chmod 600`, never committed |
+| `/srv/mars/secrets/pg_owner_password` | password of the schema owner `mars` (file in a `chmod 700` directory); not in `.env`, so the app container never holds it |
+| `/srv/mars/backups/` | `mars-<UTC stamp>.dump`, `backup.log` |
+
+Files in `deploy/vps/`:
+
+| File | What |
+|---|---|
+| `compose.yml` | project `mars`: `db` (Postgres 16 tuned for 12 GB, memory limit 4 GB), `app` (`mars-rover-api:<commit>`, `127.0.0.1:8000`, 3 GB, read-only root file system), `migrate` (one-off Alembic as the owner role), `caddy` (host network, minimal capabilities); fixed subnet `172.28.0.0/24`; volumes `mars_pgdata`, `mars_mer_images`, `mars_caddy_data` |
+| `db-roles.sql` | idempotent creation of the restricted role `mars_app` and its grants |
+| `Caddyfile` | HTTPS, one upstream for both hosts, `www` redirect, admin closed (404), URL/header/body limits, timeouts, HSTS and protective headers, no `Server`/`Via`, no compression, JSON logs without credentials |
+| `.env.example` | all variables of the VPS `.env` |
+| `update.sh` | pull, build, copy compose/Caddyfile, backup, migrate, restart, health check |
+| `backup.sh`, `restore.sh`, `verify-backup.sh` | daily dump with rotation and `.sha256`, restore, weekly restore test |
+| `pull-backup.ps1` | runs on the owner's Windows computer: downloads the newest verified dump (size and SHA-256 checked), keeps 30 |
+| `host-check.sh` | disk, memory, containers, `/health`, HTTPS, backup age -> Telegram |
+| `systemd/` | timers: `mars-backup` (02:30 UTC daily), `mars-verify-backup` (Sunday 03:30 UTC), `mars-hostcheck` (every 5 min) |
+| `bootstrap.sh` | server preparation (already applied), installs the units |
+| `lib.sh` | helpers sourced by the scripts |
+
+### Decisions
+
+- **`FORWARDED_ALLOW_IPS=172.28.0.1`** (default in `compose.yml`). Caddy runs on the host
+  network and connects to `127.0.0.1:8000`; Docker forwards that to the container. With the
+  userland proxy (default) the container sees the connection coming from the gateway of its
+  network, `172.28.0.1` (the subnet is fixed for this reason). That is the host itself, so no
+  remote client can be mistaken for the proxy, and the list is a single address (the laptop
+  trusts whole ranges). This is derived, not yet measured: the rehearsal must show it ("Checks
+  after a rollout", real client IP). **If the app log shows another peer** (for example
+  `127.0.0.1`, when Docker forwards by iptables instead of the userland proxy): set
+  `FORWARDED_ALLOW_IPS=<that exact address>` in `.env`, run `docker compose up -d app`, repeat
+  the check. Add a second address only if both really occur; never `*`, never a range.
+- **`PUBLIC_BASE_URL=https://api.solindex.net`.** The app builds absolute links from it in v2
+  photo `images.*` links, the RSS feed, `/developers` and `/llms.txt`; only one origin can be
+  configured. These links are for API clients, so the API host is the right one. Sol Index calls
+  the API with same-origin relative URLs (`VITE_API_BASE` empty), so it is unaffected.
+  Redirects of the framework (`/api/v1/rovers/curiosity` -> `.../`) keep the host the client
+  used, because Caddy passes `Host` through and the `https` scheme comes from
+  `X-Forwarded-Proto`.
+- **Real client IP.** Caddy replaces `X-Forwarded-For` with the connecting address
+  (`header_up X-Forwarded-For {remote_host}`): a client-sent chain is never forwarded. The
+  rate limiter is per IP and relies on this.
+- **No compression in Caddy.** The app gzips itself, and the rate limit prices v1 responses by
+  their compressed size; a second layer would change the price and double-encode.
+- **HSTS** starts at `max-age=300`. Raise it to `31536000` after a week without HTTPS
+  problems; `includeSubDomains`/`preload` only when every subdomain is on HTTPS.
+- **Two database roles.** `mars` owns the schema: the db container, migrations (service
+  `migrate`, run by `update.sh` and `restore.sh`), backups and restores use it; its password is
+  only in `secrets/pg_owner_password`. The running app connects as `mars_app` (password
+  `APP_DB_PASSWORD` in `.env`): `LOGIN` only, no superuser/createdb/createrole, `SELECT/INSERT/
+  UPDATE/DELETE` on the tables and `USAGE` on sequences of schema `public`, no `CREATE`, no
+  `TRUNCATE`, no access to `alembic_version`. `ALTER DEFAULT PRIVILEGES FOR ROLE mars` makes
+  tables of future migrations usable at once. `db-roles.sql` does it all, idempotently: the
+  postgres image runs it on the first start (empty volume), `update.sh` and `restore.sh` run
+  it again after migrations and restores (a restored dump carries no grants: dumps are made
+  with `--no-acl`). A check of `app/` found no runtime DDL, `TRUNCATE`, `VACUUM`/`ANALYZE` or
+  `REFRESH MATERIALIZED VIEW`; advisory locks need no privilege. Verified locally against
+  Postgres 16: `create table` and `truncate` are refused, a table created later by `mars`
+  is writable by `mars_app`, the app answers `/health` and `/api/v2/rovers`.
+  Consequence: a future release that needs owner rights at runtime (a `CREATE`, a
+  `TRUNCATE`) fails with `permission denied` in the app log; the fix belongs in the code or in
+  `db-roles.sql`, not in giving the app the owner password.
+- **Container hardening.** `app`: read-only root file system (writable: the MER cache volume and
+  `/tmp`), all capabilities dropped, `no-new-privileges`, CPU/PID/memory limits. `caddy`:
+  read-only, only `NET_BIND_SERVICE`, `no-new-privileges`, writable `/data`, `/config`, `/tmp`.
+  `db`: `no-new-privileges`, limits. Caddy runs as root inside its container (with few capabilities); a
+  container escape is still a risk (accepted, see below).
+- **Protective headers** on both public hosts (Caddy sets them only when the app did not):
+  `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`,
+  `Content-Security-Policy: frame-ancestors 'none'`, plus HSTS above. The Caddy access log
+  deletes the `X-Admin-Token`, `Authorization` and `Cookie` request headers.
+- **Admin API** (`/api/v2/admin*`) answers `404` on both public hosts and is reachable only
+  through the SSH tunnel to `127.0.0.1:8000`.
+- **One scheduler.** `SYNC_ENABLED=true` in `.env` (read by `compose.yml`) on the only app
+  instance. With several replicas it must be `true` on one replica only; migrations are never
+  run by a replica at start (separate step in `update.sh`).
+- **Subnet.** `172.28.0.0/24` must not clash with other networks on the host
+  (`docker network ls`, `ip route`).
+
+### 1. Install from scratch
+
+Server preparation (`bootstrap.sh`) is done. What remains, as `deploy` over SSH:
+
+1. Clone the repository: `git clone <repository URL> /srv/mars/repo`. If it is private, create a
+   read-only deploy key on the server (`ssh-keygen -t ed25519 -f ~/.ssh/mars-deploy-key`), add
+   the public key to the repository (Settings -> Deploy keys, read-only) and use the SSH URL.
+2. Secrets. `cp /srv/mars/repo/deploy/vps/.env.example /srv/mars/.env && chmod 600 /srv/mars/.env`,
+   then fill in `APP_DB_PASSWORD`, `ADMIN_TOKEN` (or leave it empty), Telegram variables
+   ("Monitoring"); leave `APP_TAG` empty (`update.sh` sets it). Generate each password with
+   `python3 -c "import secrets; print(secrets.token_urlsafe(32))"` (URL-safe: it goes into
+   `DATABASE_URL`). The owner password goes into a file, not into `.env`:
+   `umask 077; python3 -c "import secrets; print(secrets.token_urlsafe(32), end='')" > /srv/mars/secrets/pg_owner_password`
+   (`update.sh` then sets the modes the containers need: directory `700`, file `644`).
+3. Check DNS from the server: `getent hosts solindex.net api.solindex.net www.solindex.net`
+   (must give `<VPS_IP>`). Caddy cannot get certificates before that.
+4. `sudo bash /srv/mars/repo/deploy/vps/bootstrap.sh` (idempotent; this time it also installs
+   the systemd units from the clone).
+5. `/srv/mars/repo/deploy/vps/update.sh` (first run: builds the image, creates the empty
+   database with both roles, applies migrations, starts everything; the first backup is of the
+   empty schema).
+   `cd /srv/mars && docker compose ps` shows three healthy containers (`compose.yml` and `.env`
+   are picked up there).
+6. Load the data: "Migration from the laptop" below (or let the sync fill the database from the
+   feeds; Spirit and Opportunity come only from the one-time PDS import, which is in the dump).
+7. Enable the timers:
+   `sudo systemctl enable --now mars-backup.timer mars-verify-backup.timer mars-hostcheck.timer`
+   and check `systemctl list-timers 'mars-*'`.
+8. Run the checks in "Checks after a rollout".
+
+**Pin images** (once, after the first successful start; third-party tags can be re-pushed).
+On the server, read the digests of what runs now:
+`docker buildx imagetools inspect caddy:2.10-alpine | head -n 3` (the line `Digest: sha256:...`)
+and the same for `postgres:16.16-alpine`. Put them into `/srv/mars/.env`:
+`CADDY_IMAGE=caddy:2.10-alpine@sha256:<digest>` and
+`POSTGRES_IMAGE=postgres:16.16-alpine@sha256:<digest>`, then `update.sh --skip-pull`. Update the
+digests deliberately (read the release notes), not by pulling a moving tag. Until then both
+images are pinned by tag only. Check the Caddyfile once on the server before the first start:
+`docker run --rm -v /srv/mars/Caddyfile:/etc/caddy/Caddyfile:ro caddy:2.10-alpine caddy validate --config /etc/caddy/Caddyfile`.
+
+### 2. Update and rollback
+
+```
+/srv/mars/repo/deploy/vps/update.sh            # git pull --ff-only (branch master), build, backup, migrate, restart
+/srv/mars/repo/deploy/vps/update.sh --skip-pull
+```
+
+Each step must succeed before the next; on failure the script names the step, sends a Telegram
+message and rolls nothing back. The old app keeps serving until step 6 (migrations run as the
+owner role in a one-off container with the new image, then `db-roles.sql` is applied). Old images are kept: the newest 3.
+
+Rollback of the app (only when the new migrations are backward compatible, otherwise restore
+the pre-update backup, "Backups and restore"):
+
+```
+cd /srv/mars
+docker image ls mars-rover-api                        # pick the previous tag
+sed -i 's/^APP_TAG=.*/APP_TAG=<previous-tag>/' .env
+docker compose up -d app
+```
+
+Changing the Caddyfile alone: edit it in the repository, run `update.sh --skip-pull` (copies it
+and reloads Caddy after `caddy validate`), or by hand
+`docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile`.
+
+### 3. Backups and restore
+
+`mars-backup.timer` runs `backup.sh` daily at 02:30 UTC (and `update.sh` runs it before every
+migration): `pg_dump -Fc` streams from the db container straight to
+`/srv/mars/backups/mars-<stamp>.dump.partial`, `pg_restore --list` must read it, then it is
+renamed; the 7 newest copies are kept; log `backups/backup.log`; on failure a Telegram message
+and a failed unit (`systemctl status mars-backup.service`). The backups are on the same disk as
+the database: they protect against mistakes and bad migrations, not against losing the server.
+
+**Off-server copy: the owner's computer pulls it** (decision: the computer fetches, the server
+never connects out). `backup.sh` writes `mars-<stamp>.dump.sha256` next to each dump, only after
+`pg_restore --list` read the archive. `deploy/vps/pull-backup.ps1` (Windows PowerShell 5.1, the
+system OpenSSH client with your key in the Windows ssh-agent) downloads the newest dump that is
+not yet local to `%USERPROFILE%\mars-backups`, compares size and SHA-256, keeps the newest 30,
+logs to `pull-backup.log` there and touches `.last-pulled` on the server; `host-check.sh` warns
+in Telegram when that mark is older than 72 h (only once the first pull has happened).
+Set it up once, in PowerShell on the Windows computer:
+
+```
+# 1. The ssh-agent holds the key, and the host key is known (accept the fingerprint after
+#    comparing it with the one in the provider's console):
+Get-Service ssh-agent | Set-Service -StartupType Automatic; Start-Service ssh-agent
+ssh-add $env:USERPROFILE\.ssh\<your-private-key>
+ssh deploy@<VPS_IP> exit
+# 2. Copy the script (from the repository checkout) and try it by hand:
+New-Item -ItemType Directory -Force $env:USERPROFILE\mars-backups | Out-Null
+Copy-Item <repo>\deploy\vps\pull-backup.ps1 $env:USERPROFILE\mars-backups\
+& $env:USERPROFILE\mars-backups\pull-backup.ps1 -HostName <VPS_IP>
+# 3. Scheduled task: daily 09:00 and at every logon; a missed run starts when the computer
+#    wakes up or the user signs in (StartWhenAvailable), only with a network:
+$a = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$env:USERPROFILE\mars-backups\pull-backup.ps1`" -HostName <VPS_IP>"
+$t = @((New-ScheduledTaskTrigger -Daily -At 9:00), (New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME))
+$set = New-ScheduledTaskSettingsSet -StartWhenAvailable -RunOnlyIfNetworkAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 2)
+Register-ScheduledTask -TaskName MarsPullBackup -Action $a -Trigger $t -Settings $set
+```
+
+Check: `Get-Content $env:USERPROFILE\mars-backups\pull-backup.log -Tail 5` and the task's
+"Last Run Result" (0x0). The task runs as you, only while you are signed in (no stored
+password); the key never leaves the computer. A dump is a full copy of the data: keep that
+folder on an encrypted disk (BitLocker). Optionally `BACKUP_REMOTE` (rclone upload to a bucket)
+adds a second off-server copy: set it in `.env` after `sudo apt-get install rclone` and
+`rclone config` as `deploy`; without it that step is skipped and the log says so.
+
+**Restore** (replaces the whole `mars` database; needs an explicit decision):
+
+```
+/srv/mars/repo/deploy/vps/restore.sh mars-<stamp>.dump
+```
+
+It asks you to type `restore`, checks the dump with `pg_restore --list`, stops the app, makes a
+safety dump of the current state (`pre-restore-*.dump`, ignored by the rotation; delete it
+later), drops and creates the database, runs `pg_restore --jobs 4`, `alembic upgrade head`
+(owner role), re-applies `db-roles.sql`, starts the app and waits for `/health`. If a step
+fails after the database was dropped it says so, sends a Telegram message and names the
+safety dump. Options: `--yes`, `--no-safety-dump`, `--jobs N`. A dump
+from another machine goes to `/srv/mars/backups/` first (the db container sees that directory
+read-only).
+
+**Restore test.** `mars-verify-backup.timer` (Sunday 03:30 UTC) runs `verify-backup.sh`: it
+restores the newest dump into a scratch database `mars_verify` in the running db container,
+compares row counts of `photos`, `rovers`, `cameras`, `sync_runs` with the live database, drops
+the scratch database; a failure sends a Telegram message. Run it by hand any time:
+`/srv/mars/repo/deploy/vps/verify-backup.sh`. It needs free disk space of about twice the
+database size (checked first).
+
+### 4. Admin API through an SSH tunnel
+
+```
+ssh -L 8000:127.0.0.1:8000 deploy@<VPS_IP>
+```
+
+While the tunnel is open, on your own machine `http://127.0.0.1:8000/api/v2/admin/...` with the
+header `X-Admin-Token` reaches the app directly (port 8000 busy locally: use
+`-L 18000:127.0.0.1:8000`). On the public hosts the same path answers `404`.
+
+### 5. Monitoring on the VPS
+
+- `mars-hostcheck.timer` runs `host-check.sh` every 5 minutes: disk >= 85%, available memory
+  < 10%, containers `db`/`app`/`caddy` running and healthy, `/health` on `127.0.0.1:8000`,
+  `https://api.solindex.net/health` through Caddy with certificate validation (resolved to
+  localhost, `HEAD` only), newest backup older than 36 h. A Telegram message when the set of
+  problems changes, a reminder every 6 h, "OK again" when it clears. Uses `TELEGRAM_BOT_TOKEN`
+  and `TELEGRAM_CHAT_ID` from `.env` (the same bot as the application alerts).
+- The external monitor (UptimeRobot, "Monitoring" below) watches what the server cannot report
+  about itself: monitors for `https://api.solindex.net/health` (5 min) and
+  `https://api.solindex.net/health/sync` (60 min).
+- Application alerts (failed sync, stale data): "Monitoring" below; the alert test works the
+  same, with the admin request sent through the tunnel.
+- Test the host alert on purpose: `DISK_WARN_PCT=1 /srv/mars/repo/deploy/vps/host-check.sh`
+  (a message about the disk), or `HOSTCHECK_TEST=1 ...host-check.sh` (a fake problem; the next
+  normal run sends "OK again"). A real breakage: `docker compose stop app`, wait up to 5 min
+  for the message, `docker compose up -d app`.
+- Logs: `docker compose logs --tail 200 app|db|caddy` (Caddy: JSON, one line per request).
+
+### 6. Checks after a rollout
+
+Run once after the first install (the "rehearsal") and after any Caddyfile or compose change.
+From a machine outside the server, repeated for IPv4 and IPv6 (`curl -4`, `curl -6`) where the
+machine has both.
+
+| Check | Command | Expected |
+|---|---|---|
+| Real client IP | `curl -4 -s https://api.solindex.net/health`, then on the server `docker compose logs --tail 5 app` | the access log shows your public address (not `172.28.0.1`, not `127.0.0.1`); same for `curl -6` and for the Caddy log field `request.remote_ip`. If it shows the gateway, the peer is not trusted: see "Decisions", `FORWARDED_ALLOW_IPS` |
+| Forged `X-Forwarded-For` | `curl -s -H 'X-Forwarded-For: 6.6.6.6' https://api.solindex.net/health`, then the logs | still your address, never `6.6.6.6` |
+| Rate limit | `for i in $(seq 1 70); do curl -s -o /dev/null -w '%{http_code}\n' https://api.solindex.net/api/v2/rovers; done \| sort \| uniq -c` | about 60 x `200`, then `429` (with `Retry-After`). Then check from a second address (mobile network) that it is NOT limited: a limit shared by all clients means the proxy address is counted |
+| HSTS and headers | `curl -sI https://api.solindex.net/health` and `curl -sI https://solindex.net/` | `strict-transport-security: max-age=300`, `x-content-type-options: nosniff`, `referrer-policy`, `content-security-policy: frame-ancestors 'none'`; no `Server`, no `Via` |
+| One compression layer | `curl -sI -H 'Accept-Encoding: gzip' https://api.solindex.net/api/v1/rovers` | a single `content-encoding: gzip` (from the app) |
+| Long URL | `curl -s -o /dev/null -w '%{http_code}\n' "https://api.solindex.net/x?$(head -c 5000 /dev/zero \| tr '\0' a)"` | `414` |
+| Big header / body | `curl -s -o /dev/null -w '%{http_code}\n' -H "X-Big: $(head -c 30000 /dev/zero \| tr '\0' a)" https://api.solindex.net/` and a `POST` of 100 KB | `431` and `413` |
+| `www` redirect | `curl -sI 'https://www.solindex.net/foo?a=1'` | `301`, `location: https://solindex.net/foo?a=1` |
+| HTTP -> HTTPS | `curl -sI http://api.solindex.net/health` | `308` to `https://...` |
+| Admin closed | `curl -s -o /dev/null -w '%{http_code}\n' https://api.solindex.net/api/v2/admin/sync/runs` (also `//api/v2/ADMIN/...`) | `404`; through the tunnel with the token `200` |
+| Redirect scheme | `curl -sI https://api.solindex.net/api/v1/rovers/curiosity` | `307`, `Location` starts with `https://api.solindex.net/` |
+| Admin token not logged | `curl -s -o /dev/null -H 'X-Admin-Token: probe-token-1234567' https://api.solindex.net/api/v2/admin/x`, then `docker compose logs --tail 3 caddy \| grep -c probe-token` | `0` |
+| Database role | `docker compose exec app python -c "import os;print(os.environ['DATABASE_URL'].split(':')[1])"` and `docker compose exec db psql -U mars -d mars -c '\du mars_app'` | `//mars_app`; not superuser, no create role/db; the app container has no owner password (`env \| grep -i owner` is empty) |
+| Read-only containers | `docker compose logs --tail 100 app \| grep -i 'read-only'`; `docker compose ps` | no `Read-only file system` errors, all healthy. If the app needs another path, add a tmpfs/volume in `compose.yml` |
+| Ports | `ss -tlnp` on the server | 8000 on `127.0.0.1` only, nothing on 5432; Docker port publishing bypasses `ufw`, so this check matters |
+| Certificate | `curl -vI https://solindex.net 2>&1 \| grep -i issuer` | Let's Encrypt, valid for `solindex.net`, `api.solindex.net`, `www.solindex.net` |
+| Smoke test | `uv run python deploy/smoke.py https://api.solindex.net` | all pass (`/llms.txt` contains `https://api.solindex.net`) |
+
+The Caddyfile was exercised locally against a stub upstream (admin `404` in three spellings,
+`414` at 5000 characters and `200` at 4000, `431`, `413`, forged `X-Forwarded-For` replaced,
+no `Server`/`Via`, no `content-encoding`); real addresses, certificates and the peer address
+seen by uvicorn can only be checked on the server.
+
+### 7. Migration from the laptop
+
+The new domain means no DNS cut-over: the laptop keeps answering on its Funnel URL until the
+owner turns it off, while the VPS is prepared and checked. What must be carried over is the
+database (it holds the one-time Spirit/Opportunity import, locations and samples); everything
+else the sync fetches again.
+
+1. VPS: install and check (steps 1-5 above and "Checks after a rollout"), with the empty
+   database. `SYNC_ENABLED=true` is fine: the VPS syncs from the feeds into its own database;
+   the two servers do not share anything.
+2. Laptop (PowerShell, `mars-server`): `.\backup.ps1` makes `backups\mars-<stamp>.dump`
+   (`pg_restore --list` already checked). Copy it to the machine you work from if it is not that
+   one.
+3. Upload, from that machine (Windows OpenSSH has `scp`):
+   `scp mars-<stamp>.dump deploy@<VPS_IP>:/srv/mars/backups/` (the file name keeps to
+   letters, digits, `.`, `_`, `-`).
+4. VPS: `/srv/mars/repo/deploy/vps/restore.sh mars-<stamp>.dump` (type `restore`; a safety dump
+   of the empty database is made, delete it afterwards). It also runs `alembic upgrade head`
+   if the laptop schema is older, and re-applies the grants of `mars_app` (the laptop dump has
+   none).
+5. Compare: `curl -s https://api.solindex.net/api/v2/rovers` against the laptop's
+   `total_photos`; `/health/sync` after the first sync (it fills the gap since the dump,
+   `SYNC_OVERLAP_SOLS`).
+6. Switch clients: v1 clients change only the host; Sol Index and links move to `solindex.net`.
+   Update the UptimeRobot monitors. Keep the laptop stack for a few weeks as a fallback, but
+   stop its `app` container (`docker compose stop app`) so that two schedulers do not hit NASA;
+   its data then ages, so fall back by restoring a fresh VPS dump there.
+7. Later: raise HSTS, remove the Funnel (`tailscale funnel reset`), archive the laptop stack.
+
+### Accepted risks and TODO (owner's decisions, from the security review)
+
+- Branch `master` is not protected: whoever can push there controls what `update.sh` builds
+  and runs as root-equivalent (docker group). TODO: branch protection, signed commits.
+- `deploy` has `sudo` without a password and is in the `docker` group (root-equivalent): the
+  SSH key of the owner is the single point of trust. Keep it in the ssh-agent, protected.
+- DNS has a wildcard `*` to the server: any subdomain reaches Caddy (which answers only the
+  three configured names). Take this into account for every future subdomain.
+- HSTS is short (`max-age=300`) until it is raised on purpose: TODO after a quiet week,
+  `includeSubDomains`/`preload` only when all subdomains are on HTTPS.
+- Caddy and the containers run with the default Docker isolation (no user namespaces, no
+  seccomp tuning); the images are pinned by digest only after "Pin images" is done.
+
+### 8. Incidents (quick reference)
+
+| Symptom | First look | Notes |
+|---|---|---|
+| Telegram "container X is ..." | `docker compose ps`, `docker compose logs --tail 200 X` | restart only after the cause is read: `docker compose up -d X` |
+| Disk >= 85% | `df -h /`, `docker system df`, `du -sh /srv/mars/backups`, size of volume `mars_mer_images` | the MER image cache can be deleted at any time; old images: `docker image prune -a` (keeps the running one) |
+| Certificate or HTTPS fails | `docker compose logs --tail 100 caddy` | DNS must still point here and TCP 80/443 must be open in the panel and `ufw` |
+| Backup is stale | `systemctl status mars-backup.service`, `journalctl -u mars-backup -n 50`, `tail backups/backup.log` | run `backup.sh` by hand after fixing the cause |
+| Wrong client IPs (everyone limited together) | app access log | fix `FORWARDED_ALLOW_IPS` to the peer address seen there |
+| App log: `permission denied for ...` | `docker compose logs --tail 100 app` | the restricted role lacks a grant: run `update.sh --skip-pull` (re-applies `db-roles.sql`); if it persists, the new code needs owner rights: a code or `db-roles.sql` change, not the owner password |
+
 ## Laptop + Tailscale Funnel
+
+**Fallback.** This was the production setup until the move to the VPS (section above); it stays
+documented and untouched in `deploy/laptop/` as the way back.
 
 Owner's decision (2026-11-18): free start on a home laptop. Windows 11 Home, Docker Desktop
 (WSL2), Wi-Fi. Tailscale Funnel gives the public HTTPS address
@@ -522,6 +886,9 @@ The root `docker-compose.yml` (local development) is not changed here; it needs 
 `shm_size` if the problem shows up locally (owner: backend-dev).
 
 ## Monitoring
+
+(Laptop addresses below; on the VPS use `https://api.solindex.net/health` and `/health/sync`, and
+see "Monitoring on the VPS" above for the host checks.)
 
 Two independent channels, both to Telegram:
 

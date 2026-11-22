@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily database backup of the Mars Rover API
+
+[Timer]
+# 02:30 UTC; the nightly reboot of unattended-upgrades is at 05:00 UTC.
+OnCalendar=*-*-* 02:30:00 UTC
+RandomizedDelaySec=5min
+# Run at boot if the machine was off at the scheduled time.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

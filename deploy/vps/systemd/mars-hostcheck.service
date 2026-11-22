@@ -1,0 +1,13 @@
+[Unit]
+Description=Host and stack check of the Mars Rover API (Telegram alerts)
+Wants=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=deploy
+Group=deploy
+# State (last alert) lives in /var/lib/mars-hostcheck, owned by the user above.
+StateDirectory=mars-hostcheck
+ExecStart=/srv/mars/repo/deploy/vps/host-check.sh
+TimeoutStartSec=2min
