@@ -172,8 +172,10 @@ Files in `deploy/vps/`:
   rate limiter is per IP and relies on this.
 - **No compression in Caddy.** The app gzips itself, and the rate limit prices v1 responses by
   their compressed size; a second layer would change the price and double-encode.
-- **HSTS** starts at `max-age=300`. Raise it to `31536000` after a week without HTTPS
-  problems; `includeSubDomains`/`preload` only when every subdomain is on HTTPS.
+- **HSTS** is `max-age=31536000` (1 year) since 2026-11-22, raised from 300 s on the owner's
+  decision before the quiet week this text first asked for; `includeSubDomains`/`preload` only
+  when every subdomain is on HTTPS. To back out, serve `max-age=0` until browsers have
+  revisited.
 - **Two database roles.** `mars` owns the schema: the db container, migrations (service
   `migrate`, run by `update.sh` and `restore.sh`), backups and restores use it; its password is
   only in `secrets/pg_owner_password`. The running app connects as `mars_app` (password
@@ -383,7 +385,7 @@ machine has both.
 | Real client IP | `curl -4 -s https://api.solindex.net/health`, then on the server `docker compose logs --tail 5 app` | the access log shows your public address (not `172.28.0.1`, not `127.0.0.1`); same for `curl -6` and for the Caddy log field `request.remote_ip`. If it shows the gateway, the peer is not trusted: see "Decisions", `FORWARDED_ALLOW_IPS` |
 | Forged `X-Forwarded-For` | `curl -s -H 'X-Forwarded-For: 6.6.6.6' https://api.solindex.net/health`, then the logs | still your address, never `6.6.6.6` |
 | Rate limit | `for i in $(seq 1 70); do curl -s -o /dev/null -w '%{http_code}\n' https://api.solindex.net/api/v2/rovers; done \| sort \| uniq -c` | about 60 x `200`, then `429` (with `Retry-After`). Then check from a second address (mobile network) that it is NOT limited: a limit shared by all clients means the proxy address is counted |
-| HSTS and headers | `curl -sI https://api.solindex.net/health` and `curl -sI https://solindex.net/` | `strict-transport-security: max-age=300`, `x-content-type-options: nosniff`, `referrer-policy`, `content-security-policy: frame-ancestors 'none'`; no `Server`, no `Via` |
+| HSTS and headers | `curl -sI https://api.solindex.net/health` and `curl -sI https://solindex.net/` | `strict-transport-security: max-age=31536000`, `x-content-type-options: nosniff`, `referrer-policy`, `content-security-policy: frame-ancestors 'none'`; no `Server`, no `Via` |
 | One compression layer | `curl -sI -H 'Accept-Encoding: gzip' https://api.solindex.net/api/v1/rovers` | a single `content-encoding: gzip` (from the app) |
 | Long URL | `curl -s -o /dev/null -w '%{http_code}\n' "https://api.solindex.net/x?$(head -c 5000 /dev/zero \| tr '\0' a)"` | `414` |
 | Big header / body | `curl -s -o /dev/null -w '%{http_code}\n' -H "X-Big: $(head -c 30000 /dev/zero \| tr '\0' a)" https://api.solindex.net/` and a `POST` of 100 KB | `431` and `413` |
@@ -392,6 +394,9 @@ machine has both.
 | Admin closed | `curl -s -o /dev/null -w '%{http_code}\n' https://api.solindex.net/api/v2/admin/sync/runs` (also `//api/v2/ADMIN/...`) | `404`; through the tunnel with the token `200` |
 | Redirect scheme | `curl -sI https://api.solindex.net/api/v1/rovers/curiosity` | `307`, `Location` starts with `https://api.solindex.net/` |
 | Admin token not logged | `curl -s -o /dev/null -H 'X-Admin-Token: probe-token-1234567' https://api.solindex.net/api/v2/admin/x`, then `docker compose logs --tail 3 caddy \| grep -c probe-token` | `0` |
+| API key not logged (app down) | `docker compose stop app`, `curl -s -o /dev/null 'https://api.solindex.net/api/v2/rovers/?api_key=si_probe0123456789'`, `docker compose start app` | `502`; the Caddy error log and access log show `api_key=REDACTED` |
+| API key not logged (query) | `curl -s -o /dev/null 'https://api.solindex.net/api/v2/rovers/?api_key=si_probe0123456789'` (trailing slash: the app redirects, `Location` carries the query) | `Location` in the log has `api_key=REDACTED` |
+| API key not logged (`www`) | `curl -sI 'https://www.solindex.net/api/v2/rovers?api_key=si_probe0123456789'` | `301`; then `docker logs caddy 2>&1 \| grep -c si_` prints `0` (run it after all three checks; also with `API_KEY=` in upper case) |
 | Database role | `docker compose exec app python -c "import os;print(os.environ['DATABASE_URL'].split(':')[1])"` and `docker compose exec db psql -U mars -d mars -c '\du mars_app'` | `//mars_app`; not superuser, no create role/db; the app container has no owner password (`env \| grep -i owner` is empty) |
 | Read-only containers | `docker compose logs --tail 100 app \| grep -i 'read-only'`; `docker compose ps` | no `Read-only file system` errors, all healthy. If the app needs another path, add a tmpfs/volume in `compose.yml` |
 | Ports | `ss -tlnp` on the server | 8000 on `127.0.0.1` only, nothing on 5432; Docker port publishing bypasses `ufw`, so this check matters |
@@ -440,8 +445,8 @@ else the sync fetches again.
   SSH key of the owner is the single point of trust. Keep it in the ssh-agent, protected.
 - DNS has a wildcard `*` to the server: any subdomain reaches Caddy (which answers only the
   three configured names). Take this into account for every future subdomain.
-- HSTS is short (`max-age=300`) until it is raised on purpose: TODO after a quiet week,
-  `includeSubDomains`/`preload` only when all subdomains are on HTTPS.
+- HSTS is one year (`max-age=31536000`, raised on 2026-11-22). TODO: `includeSubDomains`/`preload`
+  only when all subdomains are on HTTPS.
 - Caddy and the containers run with the default Docker isolation (no user namespaces, no
   seccomp tuning); the images are pinned by digest only after "Pin images" is done.
 

@@ -11,6 +11,24 @@
 	# outside; ufw/Contabo block it): `caddy reload` in update.sh needs it.
 	admin localhost:2019
 
+	# Default logger (runtime and http.log.error entries, which also carry the request):
+	# the same redaction as in (access_log). Sites with their own `log` (below) are excluded
+	# from it by the Caddyfile adapter, so access entries are written once, not twice.
+	log {
+		output stdout
+		format filter {
+			wrap json
+			fields {
+				request>uri regexp (?i)([?&]api(?:_|%5f)key=)[^&\s]* ${1}REDACTED
+				request>headers>X-Admin-Token delete
+				request>headers>X-Api-Key delete
+				request>headers>Authorization delete
+				request>headers>Cookie delete
+				request>headers>Referer delete
+			}
+		}
+	}
+
 	servers {
 		# Go's MaxHeaderBytes: the request line and all headers together. Above it Caddy
 		# answers 431 by itself. The URL limit (414) is stricter and is enforced below.
@@ -33,16 +51,27 @@
 }
 
 # JSON access log to stdout (docker logs, json-file rotation 5 x 10 MB). Credentials never
-# reach it: the admin token, Authorization and Cookie request headers are deleted.
+# reach it: the admin token, X-Api-Key, Authorization, Cookie and Referer request headers are
+# deleted, the api_key value (any case) is replaced in the logged URI, and in the response
+# Location header (redirects echo the query). Clients of the old API send their key in the
+# query; it must not be stored anywhere. The regexp covers the whole URI, so `API_KEY=` is
+# caught too (the `query` filter is case-sensitive, hence not used). The percent-encoded
+# name (`api%5Fkey`) is matched as well: the application decodes the query and accepts it.
+# The same rules are repeated in the global `log` above (errors, other loggers): keep both
+# in step.
 (access_log) {
 	log {
 		output stdout
 		format filter {
 			wrap json
 			fields {
+				request>uri regexp (?i)([?&]api(?:_|%5f)key=)[^&\s]* ${1}REDACTED
+				resp_headers>Location regexp (?i)([?&]api(?:_|%5f)key=)[^&\s]* ${1}REDACTED
 				request>headers>X-Admin-Token delete
+				request>headers>X-Api-Key delete
 				request>headers>Authorization delete
 				request>headers>Cookie delete
+				request>headers>Referer delete
 			}
 		}
 	}
@@ -94,9 +123,10 @@ solindex.net, api.solindex.net {
 	# would change the cost of responses and double-encode.
 
 	header {
-		# Short max-age first; raise to 31536000 (1 year) after a week without HTTPS problems.
+		# 1 year since 2026-11-22 (owner's decision; it started at 300 s). To back out, serve
+		# "max-age=0" until browsers have revisited the site.
 		# No includeSubDomains/preload until every subdomain of solindex.net is on HTTPS.
-		Strict-Transport-Security "max-age=300"
+		Strict-Transport-Security "max-age=31536000"
 		# Defence in depth for the web interface; harmless for API clients. `?` sets a header
 		# only when the application did not set it itself.
 		?X-Content-Type-Options nosniff
@@ -114,6 +144,7 @@ solindex.net, api.solindex.net {
 }
 
 www.solindex.net {
+	# The query is kept for users; the access log redacts api_key in the URI and in Location.
 	redir https://solindex.net{uri} permanent
 
 	import access_log
