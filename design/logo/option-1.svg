@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img">
+  <title>Sol Index: Mars in a spacesuit visor</title>
+  <rect x="4.5" y="25" width="5" height="12" rx="2.5" fill="currentColor"/>
+  <rect x="54.5" y="25" width="5" height="12" rx="2.5" fill="currentColor"/>
+  <circle cx="32" cy="29" r="23" fill="none" stroke="currentColor" stroke-width="3.5"/>
+  <rect x="18" y="51" width="28" height="7" rx="2.5" fill="currentColor"/>
+  <rect x="14" y="17" width="36" height="25" rx="12.5" fill="currentColor"/>
+  <circle cx="34" cy="30" r="10.5" fill="#c9501f"/>
+  <path d="M26.5 31.5q5 2.5 11 .5t6-1.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+  <circle cx="35" cy="25.5" r="1.6" fill="currentColor"/>
+  <circle cx="30" cy="36" r="1.2" fill="currentColor"/>
+  <path d="M19 24q1.5-4 6-5" fill="none" stroke="#c9501f" stroke-width="2" stroke-linecap="round"/>
+</svg>

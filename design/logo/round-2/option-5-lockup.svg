@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 232 64" role="img">
+  <title>Sol Index logo, option 5</title>
+  <g>
+  <g fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M8 51V32a24 24 0 0 1 48 0v19"/><rect x="6" y="51" width="52" height="7" rx="3"/><path d="M56 22H38a8 8 0 0 0 0 16H56"/></g>
+  <circle cx="44" cy="30" r="5.5" fill="#c9501f"/>
+  </g>
+  <text x="76" y="43" fill="currentColor" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="30" font-weight="650" letter-spacing="-0.5">Sol Index</text>
+</svg>

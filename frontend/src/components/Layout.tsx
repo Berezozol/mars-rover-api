@@ -66,18 +66,25 @@ export function Layout({ route, pathname, children }: Props) {
       <header class="site-header" ref={headerRef}>
         <div class="container">
           <Link class="brand" href="/" aria-label="Sol Index home">
-            <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
-              <circle cx="13" cy="13" r="8" fill="var(--accent)" />
-              <ellipse
-                cx="13"
-                cy="13"
-                rx="12"
-                ry="4.5"
-                fill="none"
-                stroke="var(--text-muted)"
-                stroke-width="1.4"
-                transform="rotate(-20 13 13)"
-              />
+            <svg width="34" height="34" viewBox="0 0 64 64" aria-hidden="true">
+              <defs>
+                <clipPath id="brand-clip">
+                  <circle cx="32" cy="32" r="24" />
+                </clipPath>
+                <mask id="brand-mask">
+                  <rect width="64" height="64" fill="#fff" />
+                  <g clip-path="url(#brand-clip)">
+                    <circle cx="32" cy="62" r="29.5" fill="#000" />
+                  </g>
+                  <circle cx="45" cy="19" r="3.8" fill="#000" />
+                  <circle cx="19" cy="21" r="1.6" fill="#000" />
+                  <circle cx="28" cy="12.5" r="1.4" fill="#000" />
+                  <circle cx="23" cy="31" r="1.3" fill="#000" />
+                  <circle cx="32" cy="32" r="27" fill="none" stroke="#000" stroke-width="1.6" />
+                </mask>
+              </defs>
+              <circle cx="32" cy="32" r="30" fill="currentColor" mask="url(#brand-mask)" />
+              <circle cx="32" cy="62" r="26" fill="var(--accent)" clip-path="url(#brand-clip)" />
             </svg>
             Sol Index <small>unofficial</small>
           </Link>

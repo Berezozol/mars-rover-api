@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img">
+  <title>Sol Index: sundial on Mars, a fin casting a long shadow (small size)</title>
+  <circle cx="32" cy="32" r="26" fill="none" stroke="currentColor" stroke-width="5"/>
+  <path d="M30 35L36 37L51 44L45 50Z" fill="#c9501f"/>
+  <path d="M27 36L33 10L38 36Z" fill="currentColor"/>
+</svg>

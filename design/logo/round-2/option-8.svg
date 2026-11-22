@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img">
+  <title>Sol Index: a planet made of photo thumbnails, lit on one side</title>
+  <rect x="14.5" y="2.0" width="10" height="10" rx="2.2" fill="#c9501f"/>
+  <rect x="27.0" y="2.0" width="10" height="10" rx="2.2" fill="#c9501f"/>
+  <rect x="39.5" y="2.0" width="10" height="10" rx="2.2" fill="#c9501f"/>
+  <rect x="2.0" y="14.5" width="10" height="10" rx="2.2" fill="#c9501f"/>
+  <rect x="14.5" y="14.5" width="10" height="10" rx="2.2" fill="#c9501f"/>
+  <rect x="27.0" y="14.5" width="10" height="10" rx="2.2" fill="#c9501f"/>
+  <rect x="39.5" y="14.5" width="10" height="10" rx="2.2" fill="#c9501f"/>
+  <rect x="52.0" y="14.5" width="10" height="10" rx="2.2" fill="currentColor" opacity=".38"/>
+  <rect x="2.0" y="27.0" width="10" height="10" rx="2.2" fill="#c9501f"/>
+  <rect x="14.5" y="27.0" width="10" height="10" rx="2.2" fill="#c9501f"/>
+  <rect x="27.0" y="27.0" width="10" height="10" rx="2.2" fill="#c9501f"/>
+  <rect x="39.5" y="27.0" width="10" height="10" rx="2.2" fill="currentColor" opacity=".38"/>
+  <rect x="52.0" y="27.0" width="10" height="10" rx="2.2" fill="currentColor" opacity=".38"/>
+  <rect x="2.0" y="39.5" width="10" height="10" rx="2.2" fill="#c9501f"/>
+  <rect x="14.5" y="39.5" width="10" height="10" rx="2.2" fill="#c9501f"/>
+  <rect x="27.0" y="39.5" width="10" height="10" rx="2.2" fill="currentColor" opacity=".38"/>
+  <rect x="39.5" y="39.5" width="10" height="10" rx="2.2" fill="currentColor" opacity=".38"/>
+  <rect x="52.0" y="39.5" width="10" height="10" rx="2.2" fill="currentColor" opacity=".38"/>
+  <rect x="14.5" y="52.0" width="10" height="10" rx="2.2" fill="currentColor" opacity=".38"/>
+  <rect x="27.0" y="52.0" width="10" height="10" rx="2.2" fill="currentColor" opacity=".38"/>
+  <rect x="39.5" y="52.0" width="10" height="10" rx="2.2" fill="currentColor" opacity=".38"/>
+</svg>
