@@ -63,4 +63,11 @@ uv run ruff check . && uv run ruff format .
 
 ## License
 
-To be decided before the first public release.
+Copyright (C) 2026 Alexander Zolotaryev.
+
+This program is free software: you can redistribute it and/or modify it under the terms of the
+GNU Affero General Public License, version 3 (see [`LICENSE`](LICENSE)). If you run a modified
+version as a network service, you must offer its users the corresponding source code.
+
+Photos and their metadata come from NASA/JPL/Caltech and the other credited sources; their
+`credit` is kept as published and is not covered by this license.
