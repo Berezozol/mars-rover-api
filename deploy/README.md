@@ -141,10 +141,10 @@ Files in `deploy/vps/`:
 | `Caddyfile` | HTTPS, one upstream for both hosts, `www` redirect, admin closed (404), URL/header/body limits, timeouts, HSTS and protective headers, no `Server`/`Via`, no compression, JSON logs without credentials |
 | `.env.example` | all variables of the VPS `.env` |
 | `update.sh` | pull, build, copy compose/Caddyfile, backup, migrate, restart, health check |
-| `backup.sh`, `restore.sh`, `verify-backup.sh` | daily dump with rotation and `.sha256`, restore, weekly restore test |
-| `pull-backup.ps1` | runs on the owner's Windows computer: downloads the newest verified dump (size and SHA-256 checked), keeps 30 |
+| `backup.sh`, `restore.sh`, `verify-backup.sh` | weekly dump (4 kept) and pre-update dump (3 kept) with `.sha256`, restore, weekly restore test |
+| `pull-backup.ps1` | runs on the owner's Windows computer: downloads the newest verified dump (size and SHA-256 checked), keeps 12 |
 | `host-check.sh` | disk, memory, containers, `/health`, HTTPS, backup age -> Telegram |
-| `systemd/` | timers: `mars-backup` (02:30 UTC daily), `mars-verify-backup` (Sunday 03:30 UTC), `mars-hostcheck` (every 5 min) |
+| `systemd/` | timers: `mars-backup` (Sunday 02:30 UTC), `mars-verify-backup` (Sunday 03:30 UTC), `mars-hostcheck` (every 5 min) |
 | `bootstrap.sh` | server preparation (already applied), installs the units |
 | `lib.sh` | helpers sourced by the scripts |
 
@@ -274,10 +274,15 @@ and reloads Caddy after `caddy validate`), or by hand
 
 ### 3. Backups and restore
 
-`mars-backup.timer` runs `backup.sh` daily at 02:30 UTC (and `update.sh` runs it before every
-migration): `pg_dump -Fc` streams from the db container straight to
+`mars-backup.timer` runs `backup.sh` weekly, Sunday 02:30 UTC (`Persistent=true`: a run missed
+while the server was off starts after boot), and `update.sh` runs it before every migration as
+`BACKUP_KIND=pre-update`: `pg_dump -Fc` streams from the db container straight to
 `/srv/mars/backups/mars-<stamp>.dump.partial`, `pg_restore --list` must read it, then it is
-renamed; the 7 newest copies are kept; log `backups/backup.log`; on failure a Telegram message
+renamed. Rotation is separate per kind: the 4 newest weekly `mars-<stamp>.dump` (about a month)
+and the 3 newest `preupdate-<stamp>.dump`, so frequent releases never push out the weekly
+copies; `pre-restore-*` dumps are not rotated (delete by hand). Weekly means up to a week of
+data between copies: the sync can refill recent photos from the feeds, but take an extra
+`backup.sh` before risky work; log `backups/backup.log`; on failure a Telegram message
 and a failed unit (`systemctl status mars-backup.service`). The backups are on the same disk as
 the database: they protect against mistakes and bad migrations, not against losing the server.
 
@@ -285,9 +290,9 @@ the database: they protect against mistakes and bad migrations, not against losi
 never connects out). `backup.sh` writes `mars-<stamp>.dump.sha256` next to each dump, only after
 `pg_restore --list` read the archive. `deploy/vps/pull-backup.ps1` (Windows PowerShell 5.1, the
 system OpenSSH client with your key in the Windows ssh-agent) downloads the newest dump that is
-not yet local to `%USERPROFILE%\mars-backups`, compares size and SHA-256, keeps the newest 30,
+not yet local to `%USERPROFILE%\mars-backups`, compares size and SHA-256, keeps the newest 12 (about three months),
 logs to `pull-backup.log` there and touches `.last-pulled` on the server; `host-check.sh` warns
-in Telegram when that mark is older than 72 h (only once the first pull has happened).
+in Telegram when that mark is older than 9 days (only once the first pull has happened).
 Set it up once, in PowerShell on the Windows computer:
 
 ```
@@ -300,12 +305,13 @@ ssh deploy@<VPS_IP> exit
 New-Item -ItemType Directory -Force $env:USERPROFILE\mars-backups | Out-Null
 Copy-Item <repo>\deploy\vps\pull-backup.ps1 $env:USERPROFILE\mars-backups\
 & $env:USERPROFILE\mars-backups\pull-backup.ps1 -HostName <VPS_IP>
-# 3. Scheduled task: daily 09:00 and at every logon; a missed run starts when the computer
-#    wakes up or the user signs in (StartWhenAvailable), only with a network:
+# 3. Scheduled task: weekly on Sunday 09:00 local time and at every logon; a missed run starts
+#    when the computer wakes up or the user signs in (StartWhenAvailable), only with a
+#    network. -Force replaces an existing MarsPullBackup task:
 $a = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$env:USERPROFILE\mars-backups\pull-backup.ps1`" -HostName <VPS_IP>"
-$t = @((New-ScheduledTaskTrigger -Daily -At 9:00), (New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME))
+$t = @((New-ScheduledTaskTrigger -Weekly -DaysOfWeek Sunday -At 9:00), (New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME))
 $set = New-ScheduledTaskSettingsSet -StartWhenAvailable -RunOnlyIfNetworkAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 2)
-Register-ScheduledTask -TaskName MarsPullBackup -Action $a -Trigger $t -Settings $set
+Register-ScheduledTask -TaskName MarsPullBackup -Action $a -Trigger $t -Settings $set -Force
 ```
 
 Check: `Get-Content $env:USERPROFILE\mars-backups\pull-backup.log -Tail 5` and the task's
@@ -352,7 +358,7 @@ header `X-Admin-Token` reaches the app directly (port 8000 busy locally: use
 - `mars-hostcheck.timer` runs `host-check.sh` every 5 minutes: disk >= 85%, available memory
   < 10%, containers `db`/`app`/`caddy` running and healthy, `/health` on `127.0.0.1:8000`,
   `https://api.solindex.net/health` through Caddy with certificate validation (resolved to
-  localhost, `HEAD` only), newest backup older than 36 h. A Telegram message when the set of
+  localhost, `HEAD` only), newest weekly backup older than 8 days. A Telegram message when the set of
   problems changes, a reminder every 6 h, "OK again" when it clears. Uses `TELEGRAM_BOT_TOKEN`
   and `TELEGRAM_CHAT_ID` from `.env` (the same bot as the application alerts).
 - The external monitor (UptimeRobot, "Monitoring" below) watches what the server cannot report
@@ -453,7 +459,10 @@ else the sync fetches again.
 ## Laptop + Tailscale Funnel
 
 **Fallback.** This was the production setup until the move to the VPS (section above); it stays
-documented and untouched in `deploy/laptop/` as the way back.
+documented and untouched in `deploy/laptop/` as the way back. The scheduled task
+`MarsServerBackup` on the laptop is disabled: after the move the laptop data is stale, so
+its backups are of no use (a fallback restores a fresh VPS dump there, see "Migration from the
+laptop", step 6).
 
 Owner's decision (2026-11-18): free start on a home laptop. Windows 11 Home, Docker Desktop
 (WSL2), Wi-Fi. Tailscale Funnel gives the public HTTPS address

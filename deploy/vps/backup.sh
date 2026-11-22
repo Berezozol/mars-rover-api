@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Backs up the database: pg_dump (custom format) streamed from the db container to a host
+# Backs up the database (weekly; also before every update): pg_dump (custom format) streamed from the db container to a host
 # file, checked with pg_restore --list, rotated (newest KEEP kept). Optional upload to remote
 # storage with rclone when BACKUP_REMOTE is set in .env (otherwise that step is skipped).
 # Exit code 0 on success, 1 on failure (and a Telegram message when alerts are configured).
@@ -11,13 +11,22 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
 . "$SCRIPT_DIR/lib.sh"
 
-KEEP="${KEEP:-7}"
+# BACKUP_KIND: scheduled (systemd timer, weekly; default) -> mars-<stamp>.dump, keep 4 (about
+# a month); pre-update (update.sh, before every migration) -> preupdate-<stamp>.dump, keep 3.
+# Separate prefixes and separate rotation: frequent releases never push out the weekly copies.
+# Only mars-* dumps are pulled by the owner's computer, verified weekly and uploaded.
+BACKUP_KIND="${BACKUP_KIND:-scheduled}"
+case "$BACKUP_KIND" in
+  scheduled) PREFIX="mars"; KEEP="${KEEP:-4}" ;;
+  pre-update) PREFIX="preupdate"; KEEP="${KEEP:-3}" ;;
+  *) echo "BACKUP_KIND must be scheduled or pre-update" >&2; exit 2 ;;
+esac
 LOG_FILE="$BACKUP_DIR/backup.log"
 mkdir -p "$BACKUP_DIR"
 chmod 700 "$BACKUP_DIR"
 
 stamp="$(date -u +%Y%m%d-%H%M%S)"
-final="$BACKUP_DIR/mars-$stamp.dump"
+final="$BACKUP_DIR/$PREFIX-$stamp.dump"
 partial="$final.partial"
 
 say() { log "$*" | tee -a "$LOG_FILE"; }
@@ -51,7 +60,7 @@ size_mb="$(du -m "$final" | cut -f1)"
 say "Backup OK: $final (${size_mb} MB)"
 
 # Rotation: keep the newest KEEP archives.
-mapfile -t old < <(ls -1 "$BACKUP_DIR"/mars-*.dump 2>/dev/null | sort -r | tail -n +"$((KEEP + 1))")
+mapfile -t old < <(ls -1 "$BACKUP_DIR/$PREFIX"-*.dump 2>/dev/null | sort -r | tail -n +"$((KEEP + 1))")
 for f in "${old[@]}"; do
   rm -f "$f" "$f.sha256"
   say "Rotated out: $(basename "$f")"
@@ -61,7 +70,9 @@ done
 # computer: deploy/vps/pull-backup.ps1). BACKUP_REMOTE is an rclone destination, e.g. "myremote:bucket/mars"
 # (configure the remote with `rclone config` as the deploy user first). Not set: skipped.
 remote="$(env_get BACKUP_REMOTE)"
-if [[ -n "$remote" ]]; then
+if [[ "$BACKUP_KIND" != "scheduled" ]]; then
+  say "Off-server upload skipped (pre-update dump)"
+elif [[ -n "$remote" ]]; then
   if ! command -v rclone >/dev/null 2>&1; then
     fail "BACKUP_REMOTE is set but rclone is not installed"
   fi

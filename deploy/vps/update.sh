@@ -86,7 +86,7 @@ echo "compose.yml valid; Caddyfile changed: $caddy_changed"
 
 step "4/7 database up and backup"
 mars_compose up -d --wait db
-"$SCRIPT_DIR/backup.sh"
+BACKUP_KIND=pre-update "$SCRIPT_DIR/backup.sh"
 
 step "5/7 migrations: alembic upgrade head (one-off container, new image)"
 mars_migrate

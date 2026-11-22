@@ -1,5 +1,5 @@
 [Unit]
-Description=Mars Rover API database backup (pg_dump, rotation, optional rclone upload)
+Description=Mars Rover API scheduled database backup (pg_dump, rotation, optional rclone upload)
 Wants=docker.service
 After=docker.service
 

@@ -9,7 +9,7 @@
 # Test an alert: HOSTCHECK_TEST=1 host-check.sh   (reports a fake problem, then clears it)
 #   or lower a threshold for one run: DISK_WARN_PCT=1 host-check.sh
 # Thresholds (environment): DISK_WARN_PCT (85), MEM_AVAIL_MIN_PCT (10),
-#   BACKUP_MAX_AGE_HOURS (36), BACKUP_PULL_MAX_AGE_HOURS (72), PUBLIC_HOST (api.solindex.net).
+#   BACKUP_MAX_AGE_HOURS (192 = 8 days), BACKUP_PULL_MAX_AGE_HOURS (216 = 9 days), PUBLIC_HOST (api.solindex.net).
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -18,8 +18,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 DISK_WARN_PCT="${DISK_WARN_PCT:-85}"
 MEM_AVAIL_MIN_PCT="${MEM_AVAIL_MIN_PCT:-10}"
-BACKUP_MAX_AGE_HOURS="${BACKUP_MAX_AGE_HOURS:-36}"
-BACKUP_PULL_MAX_AGE_HOURS="${BACKUP_PULL_MAX_AGE_HOURS:-72}"
+BACKUP_MAX_AGE_HOURS="${BACKUP_MAX_AGE_HOURS:-192}"  # 8 days: backups are weekly
+BACKUP_PULL_MAX_AGE_HOURS="${BACKUP_PULL_MAX_AGE_HOURS:-216}"  # 9 days
 PUBLIC_HOST="${PUBLIC_HOST:-api.solindex.net}"
 REPEAT_SECONDS=$((6 * 3600))
 STATE_DIR="${STATE_DIRECTORY:-$HOME/.local/state/mars-hostcheck}"
@@ -69,7 +69,7 @@ if ! curl -fsS -m 15 -I -o /dev/null --resolve "${PUBLIC_HOST}:443:127.0.0.1" "h
   add "https://${PUBLIC_HOST}/health through Caddy fails (certificate, Caddy or app)"
 fi
 
-# Backup age: the newest mars-*.dump.
+# Backup age: the newest scheduled mars-*.dump (pre-update dumps do not count).
 newest="$(latest_dump)"
 if [[ -z "$newest" ]]; then
   add "no backups in $BACKUP_DIR"

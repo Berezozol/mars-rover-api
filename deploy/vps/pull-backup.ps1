@@ -15,8 +15,8 @@
       2. if that dump is already in the local directory, stop (nothing to do);
       3. scp the dump and its checksum to *.partial files, compare size with the server and
          SHA-256 with the checksum, then rename;
-      4. keep the newest -Keep dumps (default 30), delete older ones;
-      5. touch .last-pulled on the server (host-check.sh warns when nobody has pulled for 72 h).
+      4. keep the newest -Keep dumps (default 12, about three months of weekly copies), delete older ones;
+      5. touch .last-pulled on the server (host-check.sh warns when nobody has pulled for 9 days).
     Everything is appended to <LocalDir>\pull-backup.log. Exit code 0 on success (also when the
     newest dump was already local), 1 on any failure.
 
@@ -24,7 +24,7 @@
     .\pull-backup.ps1 -HostName <VPS_IP>
 
 .EXAMPLE
-    $env:MARS_VPS_HOST = '<VPS_IP>'; .\pull-backup.ps1 -Keep 14
+    $env:MARS_VPS_HOST = '<VPS_IP>'; .\pull-backup.ps1 -Keep 24
 #>
 [CmdletBinding()]
 param(
@@ -35,7 +35,7 @@ param(
     [string]$RemoteDir = '/srv/mars/backups',
     [string]$LocalDir = (Join-Path $env:USERPROFILE 'mars-backups'),
     [ValidateRange(1, 1000)]
-    [int]$Keep = 30,
+    [int]$Keep = 12,
     # Optional private key file; by default the ssh-agent / default keys are used.
     [string]$IdentityFile = ''
 )
