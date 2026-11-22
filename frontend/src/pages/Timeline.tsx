@@ -522,7 +522,7 @@ function Detail(props: {
             <p class="muted small">No photos in this range.</p>
           ) : (
             <>
-              <table aria-labelledby="tbl-title">
+              <table class="sticky-head" aria-labelledby="tbl-title">
                 <thead>
                   <tr>
                     <th scope="col">Sol</th>

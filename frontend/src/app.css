@@ -804,7 +804,9 @@ td .cam-n {
 #tbl-title {
   scroll-margin-top: calc(var(--header-h, 57px) + 8px);
 }
-thead th {
+/* Sticky headers only work when the page is the nearest scroll container.
+   Opt in with .sticky-head; tables inside overflow wrappers must not use it. */
+.sticky-head thead th {
   position: sticky;
   top: var(--header-h, 57px);
   background: var(--surface);
