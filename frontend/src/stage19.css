@@ -583,3 +583,71 @@ td.share {
     width: 9rem;
   }
 }
+
+/* ---------- status page ---------- */
+.status-bar {
+  align-items: center;
+  margin: var(--s3) 0;
+}
+.status-overall {
+  display: flex;
+  gap: var(--s2);
+  align-items: center;
+  padding: var(--s3) var(--s4);
+  border-radius: 8px;
+  border: 1px solid currentColor;
+  font-weight: 700;
+  margin: var(--s3) 0;
+}
+.status-ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.status-warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.status-err {
+  background: var(--err-soft);
+  color: var(--err);
+}
+.status-icon {
+  font-size: 1.2em;
+  width: 1.4em;
+  text-align: center;
+}
+.status-grid {
+  display: grid;
+  gap: var(--s3);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  margin-bottom: var(--s4);
+}
+.status-card-title {
+  margin: 0 0 var(--s2);
+  font-size: 1.1rem;
+}
+.status-dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px var(--s3);
+  margin: 0 0 var(--s2);
+}
+.status-dl dt {
+  color: var(--text-muted);
+}
+.status-dl dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.status-flag {
+  display: block;
+  margin: var(--s2) 0 0;
+  white-space: normal;
+}
+.status-flag::before {
+  display: none;
+}
+.status-note {
+  font-weight: 400;
+  margin: 4px 0 0;
+}

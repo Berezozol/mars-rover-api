@@ -136,6 +136,9 @@ export function Layout({ route, pathname, children }: Props) {
           <div class="footer-links">
             <a href="/developers">For developers</a>
             <a href="/docs">API docs</a>
+            <Link href="/status" data-testid="footer-status-link">
+              Status
+            </Link>
           </div>
         </div>
       </footer>

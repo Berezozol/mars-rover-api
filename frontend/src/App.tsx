@@ -9,6 +9,7 @@ import { Photos } from "./pages/Photos";
 import { Samples } from "./pages/Samples";
 import { Search } from "./pages/Search";
 import { Stats } from "./pages/Stats";
+import { Status } from "./pages/Status";
 import { Timeline } from "./pages/Timeline";
 import { matchRoute, useLocation } from "./router";
 
@@ -79,6 +80,9 @@ export function App() {
       break;
     case "stats":
       page = <Stats />;
+      break;
+    case "status":
+      page = <Status />;
       break;
     case "photo":
       page = <PhotoPage key={route.id} id={route.id} />;

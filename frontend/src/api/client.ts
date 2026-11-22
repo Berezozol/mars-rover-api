@@ -196,9 +196,55 @@ export function photoStats(query: StatsQuery, signal?: AbortSignal): Promise<Sta
   return request<StatsResponse>("/photos/stats", { ...query }, signal);
 }
 
+/** Body of `GET /health/sync` (also sent with `503`). */
+export interface HealthRover {
+  rover: string;
+  last_success_at: string | null;
+  newest_photo_date: string | null;
+  sync_stale: boolean;
+  photos_stale: boolean;
+}
+export interface HealthSync {
+  status: "ok" | "stale" | "degraded";
+  rovers?: HealthRover[];
+  db?: string;
+}
+
+/** `GET /health/sync` (outside `/api`): the JSON body is read at any HTTP status, `503` included. */
+export async function healthSync(signal?: AbortSignal): Promise<HealthSync> {
+  let res: Response;
+  try {
+    res = await fetch(apiBase() + "/health/sync", {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+      signal,
+    });
+  } catch (e) {
+    if (signal?.aborted) throw e;
+    throw new ApiError({ status: 0, code: NETWORK_ERROR, message: "Network error" });
+  }
+  let body: unknown;
+  try {
+    body = await res.json();
+  } catch {
+    throw new ApiError({ status: res.status, code: HTTP_ERROR, message: "Unreadable response" });
+  }
+  const st = body && typeof body === "object" ? (body as { status?: unknown }).status : null;
+  if (st !== "ok" && st !== "stale" && st !== "degraded") {
+    throw new ApiError({
+      status: res.status,
+      code: HTTP_ERROR,
+      message: "Unreadable response",
+      body,
+    });
+  }
+  return body as HealthSync;
+}
+
 const slug = (rover: string) => encodeURIComponent(rover);
 
 export const api = {
+  healthSync,
   rovers: () => cached("rovers", () => request<{ items: Rover[] }>("/rovers").then((r) => r.items)),
   rover: (rover: string, signal?: AbortSignal) =>
     request<Rover>(`/rovers/${slug(rover)}`, undefined, signal),
