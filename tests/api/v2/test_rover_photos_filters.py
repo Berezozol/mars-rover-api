@@ -368,6 +368,7 @@ def expected_photo(world: Multi, row: Row) -> dict[str, Any]:
         "source": {"id": row.source_id, "link": None},
         "width": None,
         "height": None,
+        "local_time": None,  # the dataset has no local time in `extra`
     }
 
 

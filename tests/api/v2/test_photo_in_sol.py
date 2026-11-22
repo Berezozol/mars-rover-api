@@ -424,9 +424,13 @@ async def test_in_sol_etag_of_unfiltered_request_does_not_give_304_for_filtered_
 @pytest.mark.parametrize(
     ("source_id", "local_time", "size"),
     [
-        ("p2031-tie1", {"time": "11:30:55", "kind": "lmst"}, (1648, 1200)),
-        ("c5-mahli", {"time": "11:25:43", "kind": "lmst"}, (None, None)),  # MSL size is always null
-        ("o-05", {"time": "12:45:26", "kind": "ltst"}, (1024, 800)),
+        ("p2031-tie1", {"time": "11:30:55", "kind": "lmst", "planet": "mars"}, (1648, 1200)),
+        (
+            "c5-mahli",
+            {"time": "11:25:43", "kind": "lmst", "planet": "mars"},
+            (None, None),
+        ),  # MSL size is always null
+        ("o-05", {"time": "12:45:26", "kind": "ltst", "planet": "mars"}, (1024, 800)),
         ("p2031-a", None, (None, None)),  # no data in extra
         ("c1-fhaz", None, (None, None)),
         ("o-00", None, (None, None)),
@@ -456,7 +460,7 @@ async def test_photo_detail_local_time_and_size_come_from_extra(
     assert_json(body, world.detail(source_id))
 
 
-async def test_photo_list_items_carry_width_and_height_but_no_local_time(
+async def test_photo_list_items_carry_width_height_and_local_time_but_no_in_sol(
     client: httpx.AsyncClient, world: World
 ) -> None:
     body = (await client.get(f"{V2}/rovers/perseverance/photos", params={"sol": "2031"})).json()
@@ -465,8 +469,14 @@ async def test_photo_list_items_carry_width_and_height_but_no_local_time(
     assert (by_source["p2031-tie1"]["width"], by_source["p2031-tie1"]["height"]) == (1648, 1200)
     assert (by_source["p2031-a"]["width"], by_source["p2031-a"]["height"]) == (None, None)
     for item in body["items"]:
-        assert "local_time" not in item
+        assert list(item)[-1] == "local_time"
         assert "in_sol" not in item
+    assert by_source["p2031-tie1"]["local_time"] == {
+        "time": "11:30:55",
+        "kind": "lmst",
+        "planet": "mars",
+    }
+    assert by_source["p2031-a"]["local_time"] is None
 
 
 async def test_photo_latest_items_carry_width_and_height(

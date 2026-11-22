@@ -101,6 +101,13 @@ default all), <code>sol</code>/<code>sol_min</code>/<code>sol_max</code> or
 (one rover only: <code>curiosity</code> or <code>perseverance</code>). <code>page &times; per_page</code> must not
 exceed 10&nbsp;000. Heavy searches (for example date, local-time or size filters without <code>sol</code>)
 may answer <code>503 service_busy</code> with a <code>Retry-After</code> header; retry later or narrow the query.</p>
+<p>Every v2 photo has two time fields. <code>taken_at</code> is Earth time (UTC).
+<code>local_time</code> (<code>{"time": "17:40:12", "kind": "lmst", "planet": "mars"}</code>) is the local solar
+time <em>on Mars</em> where the rover stood: <code>lmst</code> (mean time) for Curiosity, Perseverance and Ingenuity,
+<code>ltst</code> (true time) for Spirit and Opportunity. It is <code>null</code> when the source gives no time.
+With <code>near</code>, each item also has <code>near_stop</code>: the rover stop the photo is tied to
+(<code>sol</code>, <code>site</code>, <code>drive</code>, <code>lat</code>, <code>lon</code>) and
+<code>distance_km</code> to your point.</p>
 <p>Interactive documentation of every endpoint: <a href="/docs">/docs</a>.
 Machine-readable: <a href="/openapi.json">/openapi.json</a>, and a short reference for
 LLM assistants: <a href="/llms.txt">/llms.txt</a>.</p>

@@ -134,10 +134,12 @@ PHOTO_KEYS = [
     "source",
     "width",
     "height",
+    "local_time",  # last key of Photo
 ]
-# Stage 11: `location`; API v2 improvements: `local_time` and `in_sol` follow it.
+# Stage 11: `location`; in PhotoDetail `local_time` keeps its place after `location` (not at the
+# end of the Photo part) and `in_sol` follows it.
 PHOTO_DETAIL_KEYS = [
-    *PHOTO_KEYS,
+    *[key for key in PHOTO_KEYS if key != "local_time"],
     "caption",
     "received_at",
     "site",
@@ -150,7 +152,7 @@ PHOTO_DETAIL_KEYS = [
     "samples",  # stage 13, last key
 ]
 IN_SOL_KEYS = ["position", "total", "newer_id", "older_id"]
-LOCAL_TIME_KEYS = ["time", "kind"]
+LOCAL_TIME_KEYS = ["time", "kind", "planet"]
 NEAREST_SOLS_KEYS = ["before", "after"]
 LIST_KEYS = ["items", "page", "per_page", "total", "nearest_sols"]
 LATEST_KEYS = ["sol", "items", "page", "per_page", "total"]
@@ -370,9 +372,9 @@ EXPECTED_SIZE: dict[str, tuple[int, int]] = {
     "o-05": (1024, 800),
 }  # c5-mahli (Curiosity) has a "dimension" too, but the size is always null for MSL
 EXPECTED_LOCAL_TIME: dict[str, dict[str, str]] = {
-    "p2031-tie1": {"time": "11:30:55", "kind": "lmst"},
-    "c5-mahli": {"time": "11:25:43", "kind": "lmst"},
-    "o-05": {"time": "12:45:26", "kind": "ltst"},
+    "p2031-tie1": {"time": "11:30:55", "kind": "lmst", "planet": "mars"},
+    "c5-mahli": {"time": "11:25:43", "kind": "lmst", "planet": "mars"},
+    "o-05": {"time": "12:45:26", "kind": "ltst", "planet": "mars"},
 }
 
 # Rover cache fields over ALL sample types: (max_sol, max_date, total_photos).
@@ -442,6 +444,7 @@ class World:
             "source": {"id": record.source_id, "link": record.source_link},
             "width": EXPECTED_SIZE.get(source_id, (None, None))[0],
             "height": EXPECTED_SIZE.get(source_id, (None, None))[1],
+            "local_time": EXPECTED_LOCAL_TIME.get(source_id),
         }
 
     def in_sol(
@@ -481,8 +484,10 @@ class World:
 
     def detail(self, source_id: str) -> dict[str, Any]:
         _, record = self.records[source_id]
+        photo = self.photo(source_id)
+        del photo["local_time"]  # PhotoDetail keeps it after `location`
         return {
-            **self.photo(source_id),
+            **photo,
             "caption": record.caption,
             "received_at": iso_z(record.received_at),
             "site": record.site,

@@ -79,8 +79,13 @@ async def test_mer_photo_list_item_shape(client: httpx.AsyncClient, world: MerWo
         # Size of the PDS product from the index columns LINE_SAMPLES x LINES.
         "width": int(frame.row["LINE_SAMPLES"]),
         "height": int(frame.row["LINES"]),
+        "local_time": {
+            "time": frame.row["LOCAL_TRUE_SOLAR_TIME"].strip()[:8],
+            "kind": "ltst",
+            "planet": "mars",
+        },
     }
-    assert list(item)[-2:] == ["width", "height"]
+    assert list(item)[-3:] == ["width", "height", "local_time"]
 
 
 @pytest.mark.parametrize("rover", ROVERS)

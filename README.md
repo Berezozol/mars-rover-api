@@ -25,6 +25,12 @@ Two v2 endpoints for summaries and bulk lookups:
 - `GET /api/v2/photos/batch?ids=1,2,3` — up to 100 photos by id in one request. Ids that are not found
   are listed in `missing` (no `404`).
 
+v2 photos have two time fields: `taken_at` is Earth time (UTC); `local_time`
+(`{"time": "17:40:12", "kind": "lmst", "planet": "mars"}`) is the local solar time **on Mars** where the rover stood
+(`lmst` mean time, `ltst` true time for Spirit and Opportunity), or `null` if the source gives none.
+`GET /api/v2/photos?rovers=perseverance&near=LAT,LON&radius_km=2` also returns `near_stop` for each photo:
+the rover stop it is tied to (`sol`, `site`, `drive`, `lat`, `lon`) and `distance_km` to the point.
+
 ## Quick start
 
 Requirements: Python 3.13+, [uv](https://docs.astral.sh/uv/), Docker.

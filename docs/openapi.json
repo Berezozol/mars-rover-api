@@ -3122,12 +3122,18 @@
               "ltst"
             ],
             "title": "Kind"
+          },
+          "planet": {
+            "type": "string",
+            "const": "mars",
+            "title": "Planet"
           }
         },
         "type": "object",
         "required": [
           "time",
-          "kind"
+          "kind",
+          "planet"
         ],
         "title": "LocalTimeOut"
       },
@@ -3280,6 +3286,44 @@
           "cameras"
         ],
         "title": "ManifestSolOut"
+      },
+      "NearStopOut": {
+        "properties": {
+          "sol": {
+            "type": "integer",
+            "title": "Sol"
+          },
+          "site": {
+            "type": "integer",
+            "title": "Site"
+          },
+          "drive": {
+            "type": "integer",
+            "title": "Drive"
+          },
+          "lat": {
+            "type": "number",
+            "title": "Lat"
+          },
+          "lon": {
+            "type": "number",
+            "title": "Lon"
+          },
+          "distance_km": {
+            "type": "number",
+            "title": "Distance Km"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sol",
+          "site",
+          "drive",
+          "lat",
+          "lon",
+          "distance_km"
+        ],
+        "title": "NearStopOut"
       },
       "NearestSolsOut": {
         "properties": {
@@ -4775,6 +4819,20 @@
               }
             ],
             "title": "Height"
+          },
+          "local_time": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LocalTimeOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "near_stop": {
+            "$ref": "#/components/schemas/NearStopOut",
+            "title": "Near Stop"
           }
         },
         "type": "object",
@@ -4792,7 +4850,8 @@
           "credit",
           "source",
           "width",
-          "height"
+          "height",
+          "local_time"
         ],
         "title": "PhotoOut"
       },

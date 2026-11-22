@@ -356,11 +356,52 @@ async def list_photos_multi(
                 execution_options=FRESH,
             )
         )
+    return await _load_in_order(session, page_ids)
+
+
+async def _load_in_order(session: AsyncSession, page_ids: Sequence[int]) -> list[Photo]:
     if not page_ids:
         return []
     stmt = select(Photo).where(Photo.id.in_(page_ids)).options(selectinload(Photo.camera))
     by_id = {photo.id: photo for photo in await session.scalars(stmt, execution_options=FRESH)}
     return [by_id[photo_id] for photo_id in page_ids if photo_id in by_id]
+
+
+@dataclass(frozen=True)
+class NearStop:
+    """The stop a photo of a ``near`` search is bound to, with its distance to the point."""
+
+    sol: int
+    site: int
+    drive: int
+    lat: float
+    lon: float
+    distance_km: float
+
+
+async def list_photos_near(
+    session: AsyncSession, flt: PhotoFilter, sort: PhotoSort, limit: int, offset: int
+) -> list[tuple[Photo, NearStop]]:
+    """One page of a ``near`` search: each photo with its stop, taken from the same keys query
+    (the stops are already joined there), so the stop costs no extra query."""
+    if flt.near is None:
+        raise ValueError("near filter required")
+    radius_km = flt.near[2]
+    keys_stmt = _keys_query(flt, sort, limit, offset, 0)
+    rows = (await session.execute(keys_stmt, execution_options=FRESH)).all()
+    stops = {
+        row.id: NearStop(
+            row.stop_sol,
+            row.stop_site,
+            row.stop_drive,
+            row.stop_lat,
+            row.stop_lon,
+            min(round(row.distance_km, 3), radius_km),
+        )
+        for row in rows
+    }
+    photos = await _load_in_order(session, [row.id for row in rows])
+    return [(photo, stops[photo.id]) for photo in photos]
 
 
 def _per_camera(flt: PhotoFilter) -> list[PhotoFilter]:
@@ -418,6 +459,7 @@ def _stops_in_radius(flt: PhotoFilter) -> Any:
     w = RoverWaypoint
     all_stops = (
         select(
+            w.sol,
             w.site,
             w.drive,
             w.lat,
@@ -435,9 +477,15 @@ def _stops_in_radius(flt: PhotoFilter) -> Any:
         * func.power(func.sin(dlon), 2)
     )
     distance = 2 * MARS_RADIUS_KM * func.asin(func.sqrt(func.least(1.0, a)))
-    chosen = select(all_stops.c.site, all_stops.c.drive, all_stops.c.next_drive).where(
-        distance <= radius_km
-    )
+    chosen = select(
+        all_stops.c.sol,
+        all_stops.c.site,
+        all_stops.c.drive,
+        all_stops.c.next_drive,
+        all_stops.c.lat,
+        all_stops.c.lon,
+        distance.label("distance_km"),
+    ).where(distance <= radius_km)
     return chosen.cte("near_stops").prefix_with("MATERIALIZED")
 
 
@@ -465,7 +513,19 @@ def _near_keys_query(
     stops = _stops_in_radius(flt)
     photos = _photos_of_stops(stops, [Photo.id, sol, Photo.taken_at], flt, bound_taken_at=True)
     stmt = (
-        select(photos.c.id, photos.c.sol, photos.c.taken_at).select_from(stops).join(photos, true())
+        select(
+            photos.c.id,
+            photos.c.sol,
+            photos.c.taken_at,
+            stops.c.sol.label("stop_sol"),
+            stops.c.site.label("stop_site"),
+            stops.c.drive.label("stop_drive"),
+            stops.c.lat.label("stop_lat"),
+            stops.c.lon.label("stop_lon"),
+            stops.c.distance_km,
+        )
+        .select_from(stops)
+        .join(photos, true())
     )
     stmt = stmt.order_by(*_sort_order(sort, photos.c.sol, photos.c.taken_at, photos.c.id))
     return stmt.limit(limit).offset(offset or None)

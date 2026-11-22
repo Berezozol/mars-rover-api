@@ -35,6 +35,9 @@ curl "$BASE/api/v2/rovers/perseverance/cameras"
 # Photos of a sol
 curl "$BASE/api/v2/rovers/perseverance/photos?sol=100&per_page=50"
 
+# Photos taken within 2 km of a point (one rover: curiosity or perseverance)
+curl "$BASE/api/v2/photos?rovers=perseverance&near=18.44,77.39&radius_km=2&per_page=5"
+
 # Manifest
 curl "$BASE/api/v2/rovers/perseverance/manifest"
 
@@ -49,6 +52,15 @@ curl "$BASE/api/v2/rovers/perseverance/samples"
 # RSS feed of new photos
 curl "$BASE/api/v2/rovers/perseverance/feed.xml"
 ```
+
+## Time fields in v2 photos
+
+`taken_at` is Earth time (UTC). `local_time` is the local solar time on Mars where the rover stood:
+`{"time": "17:40:12", "kind": "lmst", "planet": "mars"}`. `kind` is `lmst` (mean time: Curiosity,
+Perseverance, Ingenuity) or `ltst` (true time: Spirit, Opportunity). It is `null` when the source gives no time.
+
+With `near`, each item also has `near_stop`: the rover stop the photo is tied to and its distance to your point,
+`{"sol": 2020, "site": 93, "drive": 1840, "lat": 18.4447, "lon": 77.3951, "distance_km": 0.42}`.
 
 ## Reference
 

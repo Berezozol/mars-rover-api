@@ -32,7 +32,7 @@ from app.repositories import flights as flights_repo
 from app.repositories import photos as photos_repo
 from app.repositories import rovers as rovers_repo
 from app.repositories import samples as samples_repo
-from app.repositories.photos import DEFAULT_SORT, PhotoFilter, PhotoSort
+from app.repositories.photos import DEFAULT_SORT, NearStop, PhotoFilter, PhotoSort
 from app.services.locations import PhotoLocation, photo_location
 from app.services.rover_lookup import _ROVER_SLUG_RE, find_rover
 from app.sources import photo_meta as meta_parser
@@ -157,6 +157,8 @@ class PhotoPage:
     total: int
     # Set only for a sol / earth_date search with no results.
     nearest_sols: NearestSols | None = None
+    # Set only for a ``near`` search: the stop of each photo, by photo id.
+    near_stops: dict[int, NearStop] | None = None
 
 
 @dataclass(frozen=True)
@@ -311,6 +313,8 @@ async def _multi_page(
             # A rover without matches adds nothing to the page, and proving it by walking
             # the sort index can read the whole rover.
             hinted.append(_hint_narrow(flt, found))
+    if len(filters) == 1 and filters[0].near is not None:
+        return await _near_page(session, filters[0], page, sort, total)
     items: list[Photo] = []
     if page.offset < total:
         items = await photos_repo.list_photos_multi(
@@ -910,12 +914,27 @@ async def _photo_page(
 ) -> PhotoPage:
     """Total first; the list query runs only when the page can hold rows."""
     total = await _total(session, rover.id, flt)
+    if flt.near is not None:
+        return await _near_page(session, flt, page, sort, total)
     items: list[Photo] = []
     if page.offset < total:
         items = await photos_repo.list_photos_multi(
             session, [_hint_narrow(flt, total)], sort, page.per_page, page.offset
         )
     return PhotoPage(items, page.page, page.per_page, total)
+
+
+async def _near_page(
+    session: AsyncSession, flt: PhotoFilter, page: PageRequest, sort: PhotoSort, total: int
+) -> PhotoPage:
+    """A page of a ``near`` search with the stop of each photo."""
+    pairs: list[tuple[Photo, NearStop]] = []
+    if page.offset < total:
+        pairs = await photos_repo.list_photos_near(
+            session, _hint_narrow(flt, total), sort, page.per_page, page.offset
+        )
+    stops = {photo.id: stop for photo, stop in pairs}
+    return PhotoPage([photo for photo, _ in pairs], page.page, page.per_page, total, None, stops)
 
 
 # --- GET /photos/stats and /photos/batch (stage 18C) ---------------------------------------

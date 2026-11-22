@@ -719,7 +719,11 @@ async def test_ac20_detail_local_time_comes_from_extra(
     kind = "ltst" if rover in MER else "lmst"
     for row in (r for r in meta_world.rows if r.rover == rover and r.sol == 100):
         body = (await client.get(f"{V2}/photos/{row.id}")).json()
-        want = None if row.local_time is None else {"time": row.local_time, "kind": kind}
+        want = (
+            None
+            if row.local_time is None
+            else {"time": row.local_time, "kind": kind, "planet": "mars"}
+        )
         assert body["local_time"] == want, row.source_id
         assert (body["width"], body["height"]) == (
             row.declared if row.declared is not None else (None, None)

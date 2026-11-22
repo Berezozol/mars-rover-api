@@ -124,12 +124,26 @@ def assert_same_key_order(actual: Any, expected: Any, path: str = "$") -> None:
             assert_same_key_order(a, e, f"{path}[{i}]")
 
 
+def _drop_absent_near_stop(value: Any) -> Any:
+    """`near_stop` is absent (not null) without `near`; the model dump shows it as None."""
+    if isinstance(value, dict):
+        return {
+            k: _drop_absent_near_stop(v)
+            for k, v in value.items()
+            if not (k == "near_stop" and v is None)
+        }
+    if isinstance(value, list):
+        return [_drop_absent_near_stop(v) for v in value]
+    return value
+
+
 def assert_model_shape(response: httpx.Response, model: type[BaseModel]) -> Any:
     """The body equals its response model's own JSON, values and key order."""
     assert response.status_code == 200, response.text
     assert response.headers["content-type"].startswith("application/json")
     body = json.loads(response.content.decode("utf-8"))
     canonical = model.model_validate_json(response.content).model_dump(mode="json")
+    canonical = _drop_absent_near_stop(canonical)
     assert body == canonical
     assert_same_key_order(body, canonical)
     return body

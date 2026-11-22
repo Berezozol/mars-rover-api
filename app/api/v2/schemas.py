@@ -4,6 +4,7 @@ from datetime import UTC, date, datetime
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, PlainSerializer, StrictInt, StrictStr
+from pydantic.json_schema import SkipJsonSchema
 
 from app.api.v2.params import MAX_SOL
 from app.db.models import IngenuityFlight, Photo, RoverSample, SolSummary, SyncRun
@@ -17,6 +18,7 @@ from app.services.v2 import (
     LocalTime,
     Manifest,
     NearestSols,
+    NearStop,
     PhotoDetail,
     PhotoMeta,
     PhotoPage,
@@ -90,7 +92,7 @@ class SourceOut(BaseModel):
     link: str | None
 
 
-class PhotoOut(BaseModel):
+class PhotoBase(BaseModel):
     id: int
     rover: str
     sol: int
@@ -107,6 +109,27 @@ class PhotoOut(BaseModel):
     height: int | None
 
 
+class LocalTimeOut(BaseModel):
+    time: str
+    kind: Literal["lmst", "ltst"]
+    planet: Literal["mars"]
+
+
+class NearStopOut(BaseModel):
+    sol: int
+    site: int
+    drive: int
+    lat: float
+    lon: float
+    distance_km: float
+
+
+class PhotoOut(PhotoBase):
+    local_time: LocalTimeOut | None
+    # Only in a search with ``near``; the key is absent otherwise.
+    near_stop: NearStopOut | SkipJsonSchema[None] = None
+
+
 class PhotoLocationOut(BaseModel):
     sol: int
     site: int
@@ -118,11 +141,6 @@ class PhotoLocationOut(BaseModel):
     exact: bool
 
 
-class LocalTimeOut(BaseModel):
-    time: str
-    kind: Literal["lmst", "ltst"]
-
-
 class InSolOut(BaseModel):
     position: int | None
     total: int
@@ -130,7 +148,7 @@ class InSolOut(BaseModel):
     older_id: int | None
 
 
-class PhotoDetailOut(PhotoOut):
+class PhotoDetailOut(PhotoBase):
     caption: str | None
     received_at: UtcDateTime | None
     site: int | None
@@ -368,7 +386,35 @@ def _image_urls(photo: Photo, origin: str) -> tuple[str | None, str]:
     return photo.img_small, photo.img_full
 
 
-def photo_dict(photo: Photo, origin: str, meta: PhotoMeta | None = None) -> Json:
+def photo_dict(photo: Photo, origin: str, near_stop: NearStop | None = None) -> Json:
+    """A Photo of a list: the base keys, then ``local_time`` (from ``extra``, like PhotoDetail)
+    and, in a ``near`` search, ``near_stop``."""
+    meta = v2.photo_meta(photo)
+    item = photo_base_dict(photo, origin, meta)
+    item["local_time"] = _local_time_dict(meta.local_time)
+    if near_stop is not None:
+        item["near_stop"] = _near_stop_dict(near_stop)
+    return item
+
+
+def _local_time_dict(value: LocalTime | None) -> Json | None:
+    if value is None:
+        return None
+    return {"time": value.time, "kind": value.kind, "planet": "mars"}
+
+
+def _near_stop_dict(stop: NearStop) -> Json:
+    return {
+        "sol": stop.sol,
+        "site": stop.site,
+        "drive": stop.drive,
+        "lat": stop.lat,
+        "lon": stop.lon,
+        "distance_km": stop.distance_km,
+    }
+
+
+def photo_base_dict(photo: Photo, origin: str, meta: PhotoMeta | None = None) -> Json:
     small, full = _image_urls(photo, origin)
     meta = meta or v2.photo_meta(photo)
     return {
@@ -413,7 +459,7 @@ def photo_detail_out(detail: PhotoDetail, origin: str) -> PhotoDetailOut:
     photo = detail.photo
     meta = v2.photo_meta(photo)
     return PhotoDetailOut(
-        **photo_dict(photo, origin, meta),
+        **photo_base_dict(photo, origin, meta),
         caption=photo.caption,
         received_at=photo.received_at,
         site=photo.site,
@@ -496,7 +542,9 @@ def samples_body(data: SamplesData, source_url: str) -> Json:
 
 
 def _local_time_out(value: LocalTime | None) -> LocalTimeOut | None:
-    return LocalTimeOut(time=value.time, kind=value.kind) if value is not None else None
+    return (
+        LocalTimeOut(time=value.time, kind=value.kind, planet="mars") if value is not None else None
+    )
 
 
 def _in_sol_out(value: SolPosition) -> InSolOut:
@@ -514,9 +562,16 @@ def _nearest_sols_dict(value: NearestSols | None) -> Json | None:
     return {"before": value.before, "after": value.after}
 
 
+def _photo_items(result: PhotoPage, origin: str) -> list[Json]:
+    stops = result.near_stops
+    if stops is None:
+        return [photo_dict(photo, origin) for photo in result.items]
+    return [photo_dict(photo, origin, stops[photo.id]) for photo in result.items]
+
+
 def photos_body(result: PhotoPage, origin: str) -> Json:
     return {
-        "items": [photo_dict(photo, origin) for photo in result.items],
+        "items": _photo_items(result, origin),
         "page": result.page,
         "per_page": result.per_page,
         "total": result.total,
@@ -527,7 +582,7 @@ def photos_body(result: PhotoPage, origin: str) -> Json:
 def photo_list_body(result: PhotoPage, origin: str) -> Json:
     """List of photos without ``nearest_sols`` (GET /photos)."""
     return {
-        "items": [photo_dict(photo, origin) for photo in result.items],
+        "items": _photo_items(result, origin),
         "page": result.page,
         "per_page": result.per_page,
         "total": result.total,

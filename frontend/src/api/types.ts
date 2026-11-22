@@ -47,6 +47,19 @@ export interface Photo {
   /** Pixel size of the full frame; both null when the source does not say. */
   width?: number | null;
   height?: number | null;
+  /** Local solar time on Mars at the moment of the shot; null when unknown, absent on older servers. */
+  local_time?: LocalTime | null;
+  /** Only in `/photos?near=` results: the route stop nearest to the photo. */
+  near_stop?: NearStop | null;
+}
+
+export interface NearStop {
+  sol: number;
+  site: number;
+  drive: number;
+  lat: number;
+  lon: number;
+  distance_km: number;
 }
 
 export interface PhotoLocation {
@@ -65,6 +78,7 @@ export interface LocalTime {
   time: string;
   /** lmst = mean, ltst = true solar time (Spirit, Opportunity). */
   kind: "lmst" | "ltst" | string;
+  planet?: string;
 }
 
 export interface InSol {
@@ -83,7 +97,6 @@ export interface PhotoDetail extends Photo {
   drive: number | null;
   extra: Record<string, unknown>;
   location?: PhotoLocation | null;
-  local_time?: LocalTime | null;
   in_sol?: InSol | null;
   /** Ingenuity only: number of the flight made on the sol of the photo, or null. Always null for other rovers. */
   flight?: number | null;

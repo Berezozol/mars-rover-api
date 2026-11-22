@@ -593,7 +593,8 @@ function Meta({
                   }
                 >
                   {photo.local_time.kind.toUpperCase()}
-                </abbr>
+                </abbr>{" "}
+                <span class="muted">on Mars</span>
               </dd>
             </>
           )}

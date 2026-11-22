@@ -63,6 +63,7 @@ export interface LineStringOut {
 
 export interface LocalTimeOut {
   kind: "lmst" | "ltst";
+  planet: "mars";
   time: string;
 }
 
@@ -90,6 +91,15 @@ export interface ManifestSolOut {
   earth_date: string;
   sol: number;
   total_photos: number;
+}
+
+export interface NearStopOut {
+  distance_km: number;
+  drive: number;
+  lat: number;
+  lon: number;
+  site: number;
+  sol: number;
 }
 
 export interface NearestSolsOut {
@@ -337,6 +347,8 @@ export interface app__api__v2__schemas__PhotoOut {
   id: number;
   images: ImagesOut;
   img_src: string;
+  local_time: LocalTimeOut | null;
+  near_stop?: NearStopOut;
   rover: string;
   sample_type: string;
   sol: number;

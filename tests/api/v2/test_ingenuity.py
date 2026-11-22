@@ -319,7 +319,7 @@ async def test_ingenuity_photo_card_has_local_time_and_frame_size(
 ) -> None:
     body = (await client.get(f"{V2}/photos/{ids['h58-nav-full']}")).json()
 
-    assert body["local_time"] == {"time": "11:41:52", "kind": "lmst"}
+    assert body["local_time"] == {"time": "11:41:52", "kind": "lmst", "planet": "mars"}
     assert (body["width"], body["height"]) == (640, 480)
     assert body["in_sol"] == {
         "position": 3,
