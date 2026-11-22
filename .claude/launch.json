@@ -9,6 +9,13 @@
       "port": 8000
     },
     {
+      "name": "api-e2e",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["run", "uvicorn", "app.main:app", "--port", "8010"],
+      "env": { "SYNC_ENABLED": "false", "RATE_LIMIT_ENABLED": "false" },
+      "port": 8010
+    },
+    {
       "name": "frontend-local",
       "runtimeExecutable": "C:\\Program Files\\nodejs\\npm.cmd",
       "runtimeArgs": ["--prefix", "frontend", "run", "dev", "--", "--port", "5174", "--strictPort"],

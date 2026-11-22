@@ -11,16 +11,18 @@ Versions are pinned in `package.json`, the lock file is `package-lock.json`. Nod
 
 If `npm` is not on PATH in your shell, use `"C:\Program Files\nodejs\npm.cmd"` instead of `npm`.
 
-| Command             | What it does                                                                |
-| ------------------- | --------------------------------------------------------------------------- |
-| `npm ci`            | install the locked dependencies                                             |
-| `npm run dev`       | dev server on http://localhost:5173, proxies the API                        |
-| `npm run build`     | type-check and build into `frontend/dist` (`index.html` + hashed `assets/`) |
-| `npm run preview`   | serve the built `dist` locally                                              |
-| `npm test`          | Vitest + Testing Library (jsdom); the network is mocked                     |
-| `npm run lint`      | ESLint and a Prettier format check                                          |
-| `npm run typecheck` | `tsc --noEmit`                                                              |
-| `npm run format`    | Prettier write                                                              |
+| Command              | What it does                                                                |
+| -------------------- | --------------------------------------------------------------------------- |
+| `npm ci`             | install the locked dependencies                                             |
+| `npm run dev`        | dev server on http://localhost:5173, proxies the API                        |
+| `npm run build`      | type-check and build into `frontend/dist` (`index.html` + hashed `assets/`) |
+| `npm run preview`    | serve the built `dist` locally                                              |
+| `npm test`           | Vitest + Testing Library (jsdom); the network is mocked                     |
+| `npm run lint`       | ESLint and a Prettier format check                                          |
+| `npm run typecheck`  | `tsc --noEmit` for the app and for `e2e/`                                   |
+| `npm run e2e`        | Playwright end-to-end tests (see below)                                     |
+| `npm run e2e:report` | open the last Playwright HTML report                                        |
+| `npm run format`     | Prettier write                                                              |
 
 ## Running against the API locally
 
@@ -34,6 +36,20 @@ If `npm` is not on PATH in your shell, use `"C:\Program Files\nodejs\npm.cmd"` i
 
 Or build (`npm run build`) and open http://127.0.0.1:8000/ : the backend serves `frontend/dist` and the
 interface routes (`/`, `/rovers/{rover}`, `/rovers/{rover}/timeline`, `/rovers/{rover}/map`, `/photos/{id}`).
+
+## End-to-end tests (Playwright)
+
+Specs live in `e2e/`, Chromium only, projects `desktop` (1280x800) and `mobile` (375x812). They only read:
+they run against a server that already has data and serves `frontend/dist`.
+
+1. Once: `npm ci`, `npx playwright install chromium`.
+2. Build the interface: `npm run build`.
+3. From the repository root start the database and the server without the rate limit (the config does not start it):
+   `docker compose up -d db`, then (PowerShell)
+   `$env:SYNC_ENABLED="false"; $env:RATE_LIMIT_ENABLED="false"; uv run uvicorn app.main:app --port 8010`
+   (or the `.claude/launch.json` configuration `api-e2e`).
+4. In `frontend/` (PowerShell): `$env:E2E_BASE_URL="http://127.0.0.1:8010"; npm run e2e`
+   (one project: `npx playwright test --project=mobile`). Tests run with one worker.
 
 ## Configuration
 
