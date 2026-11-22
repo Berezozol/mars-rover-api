@@ -1,15 +1,31 @@
 """v2 response models (docs/API.md, "Объекты"); field order is the JSON key order."""
 
 from datetime import UTC, date, datetime
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, cast
 
-from pydantic import BaseModel, ConfigDict, Field, PlainSerializer, StrictInt, StrictStr
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PlainSerializer,
+    StrictInt,
+    StrictStr,
+    field_validator,
+)
 from pydantic.json_schema import SkipJsonSchema
 
 from app.api.v2.params import MAX_SOL
-from app.db.models import IngenuityFlight, Photo, RoverSample, SolSummary, SyncRun
+from app.db.models import ApiKey, IngenuityFlight, Photo, RoverSample, SolSummary, SyncRun
 from app.services import v2
 from app.services.admin import RunPage
+from app.services.api_keys import (
+    MAX_TEXT_LENGTH,
+    AccountDetail,
+    AccountPage,
+    AccountSummary,
+    IssuedKey,
+    normalize_email,
+)
 from app.services.locations import LocationData, PhotoLocation, TraverseData
 from app.services.samples import SampleLocation, SamplesData, SampleView
 from app.services.v2 import (
@@ -782,4 +798,140 @@ def runs_out(result: RunPage) -> RunsResponse:
         page=result.page,
         per_page=result.per_page,
         total=result.total,
+    )
+
+
+class IssueKeyIn(BaseModel):
+    """POST /admin/accounts body."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    email: StrictStr
+    note: Annotated[StrictStr | None, Field(max_length=MAX_TEXT_LENGTH)] = None
+
+    @field_validator("email")
+    @classmethod
+    def _email(cls, value: str) -> str:
+        return normalize_email(value)
+
+
+class BlockAccountIn(BaseModel):
+    """POST /admin/accounts/{id}/block body (an empty body means no reason)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    reason: Annotated[StrictStr | None, Field(max_length=MAX_TEXT_LENGTH)] = None
+
+
+class ApiKeyInfoOut(BaseModel):
+    id: int
+    prefix: str
+    created_at: UtcDateTime
+    last_used_at: UtcDateTime | None
+    revoked_at: UtcDateTime | None
+
+
+AccountStatus = Literal["active", "blocked"]
+RevokeReason = Literal["owner", "admin", "replaced"]
+
+
+class AdminKeyOut(ApiKeyInfoOut):
+    revoke_reason: RevokeReason | None
+
+
+class IssuedAccountOut(BaseModel):
+    email: str
+    created_at: UtcDateTime
+
+
+class IssuedKeyOut(BaseModel):
+    """The only response that carries the key itself."""
+
+    key: str
+    key_info: ApiKeyInfoOut
+    account: IssuedAccountOut
+
+
+class AdminAccountOut(BaseModel):
+    id: int
+    email: str
+    status: AccountStatus
+    created_at: UtcDateTime
+    verified_at: UtcDateTime | None
+    blocked_at: UtcDateTime | None
+    block_reason: str | None
+    active_keys: int
+    requests_30d: int
+
+
+class UsageDayOut(BaseModel):
+    day: date
+    requests: int
+    rejected: int
+
+
+class AdminAccountDetailOut(AdminAccountOut):
+    keys: list[AdminKeyOut]
+    usage_daily: list[UsageDayOut]
+
+
+class AdminAccountsResponse(BaseModel):
+    items: list[AdminAccountOut]
+    page: int
+    per_page: int
+    total: int
+
+
+def key_info_out(key: ApiKey) -> ApiKeyInfoOut:
+    return ApiKeyInfoOut(
+        id=key.id,
+        prefix=key.prefix,
+        created_at=key.created_at,
+        last_used_at=key.last_used_at,
+        revoked_at=key.revoked_at,
+    )
+
+
+def admin_key_out(key: ApiKey) -> AdminKeyOut:
+    reason = cast(RevokeReason | None, key.revoke_reason)
+    return AdminKeyOut(**key_info_out(key).model_dump(), revoke_reason=reason)
+
+
+def issued_key_out(issued: IssuedKey) -> IssuedKeyOut:
+    return IssuedKeyOut(
+        key=issued.key,
+        key_info=key_info_out(issued.record),
+        account=IssuedAccountOut(email=issued.account.email, created_at=issued.account.created_at),
+    )
+
+
+def admin_account_out(summary: AccountSummary) -> AdminAccountOut:
+    account = summary.account
+    return AdminAccountOut(
+        id=account.id,
+        email=account.email,
+        status=cast(AccountStatus, account.status),
+        created_at=account.created_at,
+        verified_at=account.verified_at,
+        blocked_at=account.blocked_at,
+        block_reason=account.block_reason,
+        active_keys=summary.active_keys,
+        requests_30d=summary.requests_30d,
+    )
+
+
+def admin_account_detail_out(detail: AccountDetail) -> AdminAccountDetailOut:
+    return AdminAccountDetailOut(
+        **admin_account_out(detail.summary).model_dump(),
+        keys=[admin_key_out(key) for key in detail.keys],
+        usage_daily=[UsageDayOut(day=d, requests=r, rejected=j) for d, r, j in detail.usage_daily],
+    )
+
+
+def admin_accounts_out(page: AccountPage) -> AdminAccountsResponse:
+    return AdminAccountsResponse(
+        items=[admin_account_out(item) for item in page.items],
+        page=page.page,
+        per_page=page.per_page,
+        total=page.total,
     )

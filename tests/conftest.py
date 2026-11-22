@@ -303,6 +303,46 @@ async def clean_db(
         await _clean_database(session_factory)
 
 
+_API_KEY_TABLES = "api_key_usage_daily, api_key_requests, api_keys, api_accounts"
+
+
+async def _clean_api_keys(factory: async_sessionmaker[AsyncSession]) -> None:
+    async with factory() as session:
+        if await session.scalar(text("SELECT to_regclass('public.api_accounts') IS NOT NULL")):
+            await session.execute(text(f"TRUNCATE {_API_KEY_TABLES} RESTART IDENTITY CASCADE"))
+            await session.commit()
+
+
+@pytest.fixture
+async def clean_api_keys(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> AsyncIterator[None]:
+    """Stage 20: empty the account / key tables before and after the test (if they exist)."""
+    await _clean_api_keys(session_factory)
+    try:
+        yield
+    finally:
+        await _clean_api_keys(session_factory)
+
+
+@pytest.fixture
+async def make_keys_app(settings: Settings) -> AsyncIterator[Callable[..., Any]]:
+    """Factory of apps with API keys on (see tests/_apikeys.py); closed after the test.
+
+    `await make_keys_app(**settings_overrides)` returns a `KeysApp` (app, fake clock, clients).
+    """
+    from contextlib import AsyncExitStack
+
+    from tests._apikeys import keys_app
+
+    async with AsyncExitStack() as stack:
+
+        async def make(**extra: Any) -> Any:
+            return await stack.enter_async_context(keys_app(settings, **extra))
+
+        yield make
+
+
 @pytest.fixture(autouse=True)
 def upstream_router() -> Iterator[respx.MockRouter]:
     """Network guard: any httpx request that is not explicitly mocked fails the test."""

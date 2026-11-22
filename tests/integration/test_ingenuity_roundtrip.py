@@ -151,11 +151,8 @@ def _assert_near_index(url: str, include: str, other: str) -> None:
 def test_migration_0015_upgrade_downgrade_upgrade_widens_and_narrows_the_covering_index(
     migrated_db: str, alembic_cfg: AlembicConfig
 ) -> None:
-    """AC-15 (migration part): head -> 0014 -> 0015 swaps the INCLUDE list and back."""
+    """AC-15 (migration part): head -> 0014 -> 0015 -> head swaps the INCLUDE list and back."""
     try:
-        assert _head(alembic_cfg) == "0015"
-        _assert_near_index(migrated_db, NEW_INCLUDE, OLD_INCLUDE)
-
         command.downgrade(alembic_cfg, "0014")
         assert asyncio.run(_db_state(migrated_db))["versions"] == ["0014"]
         _assert_near_index(migrated_db, OLD_INCLUDE, "sample_type, camera_id")

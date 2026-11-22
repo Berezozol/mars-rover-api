@@ -130,6 +130,23 @@ class Settings(BaseSettings):
     # ...or per started chunk of this many bytes of the uncompressed body (also for HEAD and
     # 304); the larger of the two counts. Must be >= the wire unit.
     rate_limit_v1_raw_bytes_per_request: int = Field(default=1_048_576, ge=1024)
+    # API keys (stage 20). Off: ``api_key`` / ``X-Api-Key`` are ignored and every request is
+    # limited by IP, as before the stage; the key and account admin endpoints are not mounted.
+    api_keys_enabled: bool = False
+    # Limits of a request with a valid key, counted per account (all its keys share them).
+    rate_limit_key_per_minute: int = Field(default=120, ge=1)
+    rate_limit_key_per_hour: int = Field(default=10_000, ge=1)
+    rate_limit_key_concurrent: int = Field(default=8, ge=1)
+    # Active (not revoked) keys per account.
+    api_key_max_per_account: int = Field(default=2, ge=1)
+    # How long a key lookup (also a negative one) is kept in memory.
+    api_key_cache_seconds: float = Field(default=60.0, ge=0)
+    # Wrong or revoked keys per IP before requests with a key from it get 429 for the window.
+    api_key_auth_max_failures: int = Field(default=20, ge=1)
+    api_key_auth_window_minutes: int = Field(default=15, ge=1)
+    # Usage counters are kept in memory and written to the database this often.
+    api_key_usage_flush_seconds: int = Field(default=60, ge=1)
+    api_key_usage_retention_days: int = Field(default=90, ge=1)
     # Failed admin token checks per IP before admin answers 429 for the rest of the window.
     admin_auth_max_failures: int = Field(default=10, ge=1)
     admin_auth_window_minutes: int = Field(default=15, ge=1)
@@ -161,11 +178,24 @@ class Settings(BaseSettings):
     def _check_rate_limits(self) -> Self:
         if self.rate_limit_per_hour < self.rate_limit_per_minute:
             raise ValueError("RATE_LIMIT_PER_HOUR must be >= RATE_LIMIT_PER_MINUTE")
+        if self.api_keys_enabled:
+            self._check_key_limits()
         if self.rate_limit_v1_raw_bytes_per_request < self.rate_limit_v1_bytes_per_request:
             raise ValueError(
                 "RATE_LIMIT_V1_RAW_BYTES_PER_REQUEST must be >= RATE_LIMIT_V1_BYTES_PER_REQUEST"
             )
         return self
+
+    def _check_key_limits(self) -> None:
+        """Key limits matter only with API_KEYS_ENABLED (the values are unused otherwise)."""
+        if self.rate_limit_key_per_hour < self.rate_limit_key_per_minute:
+            raise ValueError("RATE_LIMIT_KEY_PER_HOUR must be >= RATE_LIMIT_KEY_PER_MINUTE")
+        if (
+            self.rate_limit_key_per_minute < self.rate_limit_per_minute
+            or self.rate_limit_key_per_hour < self.rate_limit_per_hour
+            or self.rate_limit_key_concurrent < self.rate_limit_concurrent
+        ):
+            raise ValueError("RATE_LIMIT_KEY_* must be >= the matching RATE_LIMIT_* values")
 
     @model_validator(mode="after")
     def _check_heavy_query_concurrency(self) -> Self:

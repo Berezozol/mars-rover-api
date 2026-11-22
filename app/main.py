@@ -3,6 +3,7 @@
 import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,6 +11,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from starlette.middleware.gzip import DEFAULT_EXCLUDED_CONTENT_TYPES
 
 from app import __version__
+from app.api.apikeys import API_KEY_HEADER, ApiKeyResolver
 from app.api.caching import CachingMiddleware, VaryAcceptEncodingMiddleware
 from app.api.frontend import mount_frontend
 from app.api.health import router as health_router
@@ -19,7 +21,7 @@ from app.api.legacy import router as legacy_router
 from app.api.llms import router as llms_router
 from app.api.ratelimit import RateLimitMiddleware, ResponseSizeMiddleware
 from app.api.v2 import router as v2_router
-from app.api.v2.admin import admin_auth_limiter
+from app.api.v2.admin import accounts_router, admin_auth_limiter
 from app.api.v2.admin import router as admin_router
 from app.core.config import Settings, check_admin_token, check_pool_settings, get_settings
 from app.core.errors import register_exception_handlers
@@ -29,11 +31,12 @@ from app.core.ratelimit import RateLimiter
 from app.db.session import create_engine, create_session_factory
 from app.services.admin import AdapterFactory, cancel_background
 from app.services.alerts import AlertMonitor, TelegramNotifier
+from app.services.api_keys import ApiKeyService, ApiKeyUsage
 from app.services.health import FreshnessCache
 from app.services.location_sync import LocationSyncService
 from app.services.mer_images import MerImageService
 from app.services.sample_sync import SampleSyncService
-from app.services.scheduler import AlertScheduler, SyncScheduler
+from app.services.scheduler import AlertScheduler, ApiKeyScheduler, SyncScheduler
 from app.services.sync import SyncService
 from app.sources.base import SourceAdapter
 from app.sources.http import UpstreamClient
@@ -56,6 +59,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
       admin enabled): ``RateLimiter`` instances; tests may replace their ``clock``.
     - ``v1_bytes_per_request`` (only with RATE_LIMIT_ENABLED): bytes of a v1 response per charged
       request; tests may change it. ``v1_raw_bytes_per_request``: same for the uncompressed body.
+    - ``key_rate_limiter``, ``api_key_auth_limiter``, ``api_key_resolver``, ``api_key_usage``,
+      ``api_key_service`` (only with API_KEYS_ENABLED; the limiters also need RATE_LIMIT_ENABLED):
+      limiter of requests with a key (per account), of failed key attempts (per IP), key lookup
+      cache (``clock``, ``clear()``), usage counters (``await flush()``), account service.
     - ``alert_monitor``: ``AlertMonitor`` when Telegram alerts are configured, else None.
     - ``mer_image_service``: ``MerImageService`` of the Spirit/Opportunity full frames (a stub
       with ``async get_full_jpeg(photo) -> bytes`` also works; ``aclose()`` is optional).
@@ -94,6 +101,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if settings.sync_enabled:
                 _start_scheduler(app, settings)
             _start_alerts(app, settings)
+            _start_api_key_jobs(app, settings)
             yield
         finally:
             try:
@@ -103,7 +111,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     try:
                         await _stop_converter(app)
                     finally:
-                        await _stop_sync(app)
+                        try:
+                            await _stop_sync(app)
+                        finally:
+                            await _stop_api_key_jobs(app)
             finally:
                 try:
                     await engine.dispose()
@@ -144,6 +155,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.health_sync_cache = FreshnessCache(settings.health_sync_cache_seconds)
     if settings.admin_enabled:
         app.state.admin_auth_limiter = admin_auth_limiter(settings)
+    # Stage 20 (API_KEYS_ENABLED): key lookup, usage counters and the account service.
+    app.state.api_key_resolver = None
+    app.state.api_key_usage = None
+    app.state.api_key_scheduler = None
+    _document_api_key(app)
+    if settings.api_keys_enabled:
+        _setup_api_keys(app, settings)
 
     # Added first = inner: CORS headers also reach 304 responses.
     app.add_middleware(CachingMiddleware)
@@ -152,6 +170,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             [(settings.rate_limit_per_minute, 60), (settings.rate_limit_per_hour, 3600)],
             max_concurrent=settings.rate_limit_concurrent,
         )
+        if settings.api_keys_enabled:
+            _setup_key_limiters(app, settings)
         # Inside CORS (browsers can read the 429), outside caching (304s count too).
         app.add_middleware(RateLimitMiddleware)
         # Test hook: bytes of a v1 response that cost one request.
@@ -195,7 +215,75 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(v2_router, prefix="/api/v2")
     if settings.admin_enabled:
         app.include_router(admin_router, prefix="/api/v2")
+        if settings.api_keys_enabled:
+            app.include_router(accounts_router, prefix="/api/v2")
     return app
+
+
+def _setup_api_keys(app: FastAPI, settings: Settings) -> None:
+    """Key lookup with its cache, usage counters and the account service.
+
+    Lookups use the API engine (statement timeout); counters are written on the worker one.
+    """
+    resolver = ApiKeyResolver(app.state.session_factory, settings.api_key_cache_seconds)
+    app.state.api_key_resolver = resolver
+    app.state.api_key_usage = ApiKeyUsage(app.state.worker_session_factory)
+    app.state.api_key_service = ApiKeyService(settings, resolver)
+
+
+def _document_api_key(app: FastAPI) -> None:
+    """Describe the optional ``X-Api-Key`` header in the OpenAPI schema (every operation
+    accepts it; ``security: [{}, ...]`` marks it optional)."""
+    original = app.openapi
+
+    def openapi() -> dict[str, Any]:
+        if app.openapi_schema is None:
+            schema = original()
+            schemes = schema.setdefault("components", {}).setdefault("securitySchemes", {})
+            schemes["ApiKeyHeader"] = {
+                "type": "apiKey",
+                "in": "header",
+                "name": API_KEY_HEADER,
+                "description": (
+                    "Optional API key (si_ and 32 letters or digits), used when the server has API "
+                    "keys enabled (otherwise ignored): the account limits apply instead of the "
+                    "per-IP ones. Also accepted as the api_key query parameter; "
+                    "the header wins. Wrong keys answer 401 invalid_api_key, revoked ones "
+                    "401 api_key_revoked, blocked accounts 403 account_blocked."
+                ),
+            }
+            schema["security"] = [{}, {"ApiKeyHeader": []}]
+        return app.openapi_schema or schema
+
+    app.openapi = openapi  # type: ignore[method-assign]
+
+
+def _setup_key_limiters(app: FastAPI, settings: Settings) -> None:
+    """Limiters of requests with a key (per account) and of failed key attempts (per IP)."""
+    app.state.key_rate_limiter = RateLimiter(
+        [(settings.rate_limit_key_per_minute, 60), (settings.rate_limit_key_per_hour, 3600)],
+        max_concurrent=settings.rate_limit_key_concurrent,
+    )
+    app.state.api_key_auth_limiter = RateLimiter(
+        [(settings.api_key_auth_max_failures, settings.api_key_auth_window_minutes * 60)]
+    )
+
+
+def _start_api_key_jobs(app: FastAPI, settings: Settings) -> None:
+    """Periodic flush of the usage counters and the daily cleanup."""
+    if app.state.api_key_usage is None:
+        return
+    scheduler = ApiKeyScheduler(app.state.api_key_usage, app.state.worker_session_factory, settings)
+    app.state.api_key_scheduler = scheduler
+    scheduler.start()
+
+
+async def _stop_api_key_jobs(app: FastAPI) -> None:
+    """Stop the jobs and write the counters that are still in memory."""
+    scheduler = app.state.api_key_scheduler
+    if scheduler is not None:
+        app.state.api_key_scheduler = None
+        await scheduler.shutdown()
 
 
 def _default_adapter_factory(app: FastAPI, settings: Settings) -> AdapterFactory:

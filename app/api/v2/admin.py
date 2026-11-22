@@ -8,20 +8,33 @@ the limit gets 429 without its token being compared (docs/API.md, "Ограни�
 """
 
 import secrets
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, Query, Request, Security
+from fastapi import APIRouter, Depends, Query, Request, Response, Security
 from fastapi.exceptions import RequestValidationError
 from fastapi.security import APIKeyHeader
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.apikeys import client_key
 from app.api.v2.params import Pagination
 from app.api.v2.schemas import (
+    AdminAccountDetailOut,
+    AdminAccountOut,
+    AdminAccountsResponse,
+    AdminKeyOut,
+    BlockAccountIn,
     ErrorResponse,
+    IssuedKeyOut,
+    IssueKeyIn,
     RunsResponse,
     SyncRequestIn,
     SyncStartedOut,
+    admin_account_detail_out,
+    admin_account_out,
+    admin_accounts_out,
+    admin_key_out,
+    issued_key_out,
     runs_out,
 )
 from app.core.config import Settings
@@ -30,6 +43,7 @@ from app.core.ratelimit import RateLimiter
 from app.db.session import get_session
 from app.services import admin
 from app.services.admin import SyncRequest
+from app.services.api_keys import ApiKeyService
 
 ADMIN_TOKEN_HEADER = "X-Admin-Token"
 
@@ -51,7 +65,8 @@ async def require_admin(
 ) -> None:
     """429 for an IP with too many failures, else 401 unless the header equals ADMIN_TOKEN."""
     limiter: RateLimiter = request.app.state.admin_auth_limiter
-    ip = request.client.host if request.client else "unknown"
+    # The same key as the rate limiter: IPv6 reduced to its /64.
+    ip = client_key(request.scope)
     wait = limiter.check(ip)
     if wait is not None:
         raise RateLimited(wait)
@@ -88,15 +103,24 @@ _SYNC_BODY = {
 }
 
 
-async def _read_sync_request(request: Request) -> SyncRequest:
+async def _read_body[B: BaseModel](
+    request: Request, model: type[B], *, optional: bool = False
+) -> B:
+    """The validated JSON body; ``optional``: an empty body means ``{}``."""
     raw = await request.body()
+    if optional and not raw.strip():
+        raw = b"{}"
     try:
-        body = SyncRequestIn.model_validate_json(raw)
+        return model.model_validate_json(raw)
     except ValidationError as exc:
         errors = exc.errors(include_url=False, include_context=False, include_input=False)
         for error in errors:
             error["loc"] = ("body", *error["loc"])
         raise RequestValidationError(errors) from None
+
+
+async def _read_sync_request(request: Request) -> SyncRequest:
+    body = await _read_body(request, SyncRequestIn)
     return SyncRequest(rover=body.rover, from_sol=body.from_sol, to_sol=body.to_sol)
 
 
@@ -125,3 +149,105 @@ async def list_runs(
 ) -> RunsResponse:
     """Sync runs, newest first."""
     return runs_out(await admin.list_runs(session, rover, pagination))
+
+
+# Accounts and API keys (stage 20): mounted by create_app only with API_KEYS_ENABLED.
+accounts_router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
+
+_ACCOUNT_ERRORS: dict[int | str, dict[str, Any]] = {
+    **_ERRORS,
+    404: {"model": ErrorResponse, "description": "not_found"},
+}
+
+
+def _body_schema(model: type[BaseModel]) -> dict[str, Any]:
+    return {
+        "requestBody": {
+            "required": True,
+            "content": {"application/json": {"schema": model.model_json_schema()}},
+        }
+    }
+
+
+def _service(request: Request) -> ApiKeyService:
+    service: ApiKeyService = request.app.state.api_key_service
+    return service
+
+
+@accounts_router.get("/accounts", response_model=AdminAccountsResponse, responses=_ACCOUNT_ERRORS)
+async def list_accounts(
+    request: Request,
+    session: Session,
+    pagination: Pagination,
+    q: Annotated[
+        str | None,
+        Query(
+            max_length=254,
+            description="Part of the e-mail (case-insensitive) or the prefix of a key (si_...).",
+        ),
+    ] = None,
+    status: Annotated[Literal["active", "blocked"] | None, Query()] = None,
+) -> AdminAccountsResponse:
+    """Accounts, newest first."""
+    return admin_accounts_out(await _service(request).list_accounts(session, q, status, pagination))
+
+
+@accounts_router.get(
+    "/accounts/{account_id}", response_model=AdminAccountDetailOut, responses=_ACCOUNT_ERRORS
+)
+async def get_account(request: Request, session: Session, account_id: int) -> AdminAccountDetailOut:
+    """One account with its keys and the usage of the last 30 days."""
+    return admin_account_detail_out(await _service(request).get_account(session, account_id))
+
+
+@accounts_router.post(
+    "/accounts",
+    status_code=201,
+    response_model=IssuedKeyOut,
+    responses={
+        **_ACCOUNT_ERRORS,
+        409: {"model": ErrorResponse, "description": "key_limit_reached"},
+    },
+    openapi_extra=_body_schema(IssueKeyIn),
+)
+async def issue_key(request: Request, session: Session) -> IssuedKeyOut:
+    """Issue a key by hand (no e-mail); the key is shown only in this response."""
+    body = await _read_body(request, IssueKeyIn)
+    return issued_key_out(await _service(request).issue_key(session, body.email, body.note))
+
+
+@accounts_router.post(
+    "/accounts/{account_id}/block",
+    response_model=AdminAccountOut,
+    responses=_ACCOUNT_ERRORS,
+    openapi_extra=_body_schema(BlockAccountIn),
+)
+async def block_account(request: Request, session: Session, account_id: int) -> AdminAccountOut:
+    """Block an account: all its keys answer 403 account_blocked."""
+    body = await _read_body(request, BlockAccountIn, optional=True)
+    return admin_account_out(await _service(request).block(session, account_id, body.reason))
+
+
+@accounts_router.post(
+    "/accounts/{account_id}/unblock", response_model=AdminAccountOut, responses=_ACCOUNT_ERRORS
+)
+async def unblock_account(request: Request, session: Session, account_id: int) -> AdminAccountOut:
+    """Unblock an account."""
+    return admin_account_out(await _service(request).unblock(session, account_id))
+
+
+@accounts_router.post(
+    "/keys/{key_id}/revoke", response_model=AdminKeyOut, responses=_ACCOUNT_ERRORS
+)
+async def revoke_key(request: Request, session: Session, key_id: int) -> AdminKeyOut:
+    """Revoke a key; its requests answer 401 api_key_revoked at once."""
+    return admin_key_out(await _service(request).revoke_key(session, key_id, "admin"))
+
+
+@accounts_router.delete(
+    "/accounts/{account_id}", status_code=204, response_class=Response, responses=_ACCOUNT_ERRORS
+)
+async def delete_account(request: Request, session: Session, account_id: int) -> Response:
+    """Delete an account with its keys and counters for good."""
+    await _service(request).delete_account(session, account_id)
+    return Response(status_code=204)

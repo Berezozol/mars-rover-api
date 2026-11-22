@@ -5129,6 +5129,20 @@
         ],
         "title": "RoversResponse"
       }
+    },
+    "securitySchemes": {
+      "ApiKeyHeader": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Api-Key",
+        "description": "Optional API key (si_ and 32 letters or digits), used when the server has API keys enabled (otherwise ignored): the account limits apply instead of the per-IP ones. Also accepted as the api_key query parameter; the header wins. Wrong keys answer 401 invalid_api_key, revoked ones 401 api_key_revoked, blocked accounts 403 account_blocked."
+      }
     }
-  }
+  },
+  "security": [
+    {},
+    {
+      "ApiKeyHeader": []
+    }
+  ]
 }

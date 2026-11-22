@@ -183,6 +183,58 @@ class RateLimited(AppError):
         self.retry_after = retry_after
 
 
+class InvalidApiKey(AppError):
+    """A key of our format that is not in the database, or a malformed ``X-Api-Key`` (v2)."""
+
+    status_code = 401
+    code = "invalid_api_key"
+    legacy_message = "Invalid API key"
+
+    def __init__(self) -> None:
+        super().__init__("Invalid API key")
+
+
+class ApiKeyRevoked(AppError):
+    status_code = 401
+    code = "api_key_revoked"
+    legacy_message = "API key revoked"
+
+    def __init__(self) -> None:
+        super().__init__("API key has been revoked")
+
+
+class AccountBlocked(AppError):
+    status_code = 403
+    code = "account_blocked"
+    legacy_message = "Account blocked"
+
+    def __init__(self) -> None:
+        super().__init__("Account is blocked")
+
+
+class KeyLimitReached(ConflictError):
+    """The account already has ``API_KEY_MAX_PER_ACCOUNT`` active keys."""
+
+    code = "key_limit_reached"
+
+    def __init__(self, limit: int) -> None:
+        super().__init__(f"The account already has {limit} active API keys")
+        self.limit = limit
+
+
+# v1 answers every key error with 403 and the text of ``legacy_message`` (docs/LEGACY-API.md).
+LEGACY_KEY_ERROR_STATUS = 403
+ApiKeyError = InvalidApiKey | ApiKeyRevoked | AccountBlocked
+
+
+def api_key_error_content(path: str, exc: ApiKeyError) -> tuple[int, dict[str, Any]]:
+    """Status and body of a key error in the format of the path's API version."""
+    if is_legacy_path(path):
+        return LEGACY_KEY_ERROR_STATUS, {"errors": exc.legacy_message}
+    body = {"code": exc.code, "message": exc.message, "details": None}
+    return exc.status_code, {"error": body}
+
+
 def retry_after_value(seconds: float) -> str:
     """``Retry-After`` header value: whole seconds, rounded up, at least 1."""
     return str(max(1, math.ceil(seconds)))

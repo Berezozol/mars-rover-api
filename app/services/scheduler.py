@@ -5,10 +5,12 @@ import logging
 from datetime import UTC, datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
 from app.core.errors import SyncInProgress
 from app.services.alerts import AlertMonitor
+from app.services.api_keys import ApiKeyUsage, cleanup_api_keys, flush_api_key_usage
 from app.services.location_sync import LocationSyncService
 from app.services.sample_sync import SampleSyncService
 from app.services.sync import SyncResult, SyncService
@@ -164,3 +166,59 @@ class AlertScheduler:
             await self._monitor.check(datetime.now(UTC))
         except Exception:
             logger.exception("Alert check failed")
+
+
+API_KEY_FLUSH_JOB_ID = "api-key-usage-flush"
+API_KEY_CLEANUP_JOB_ID = "api-key-cleanup"
+
+
+class ApiKeyScheduler:
+    """Writes the API key usage counters every API_KEY_USAGE_FLUSH_SECONDS and cleans old
+    counters and expired confirmation requests once a day."""
+
+    def __init__(
+        self,
+        usage: ApiKeyUsage,
+        session_factory: async_sessionmaker[AsyncSession],
+        settings: Settings,
+    ) -> None:
+        self._usage = usage
+        self._session_factory = session_factory
+        self._settings = settings
+        self._scheduler = AsyncIOScheduler(timezone=UTC)
+
+    def start(self) -> None:
+        """Schedule the jobs and start; call inside the event loop."""
+        common = {"max_instances": 1, "coalesce": True, "misfire_grace_time": None}
+        self._scheduler.add_job(
+            flush_api_key_usage,
+            "interval",
+            args=[self._usage],
+            seconds=self._settings.api_key_usage_flush_seconds,
+            id=API_KEY_FLUSH_JOB_ID,
+            replace_existing=True,
+            **common,
+        )
+        self._scheduler.add_job(
+            self._cleanup,
+            "interval",
+            days=1,
+            id=API_KEY_CLEANUP_JOB_ID,
+            next_run_time=datetime.now(UTC),
+            replace_existing=True,
+            **common,
+        )
+        self._scheduler.start()
+        logger.info(
+            "API key scheduler started flush_seconds=%d",
+            self._settings.api_key_usage_flush_seconds,
+        )
+
+    async def shutdown(self) -> None:
+        """Stop scheduling and write what is still in memory (a failure is only logged)."""
+        if self._scheduler.running:
+            self._scheduler.shutdown(wait=False)
+        await flush_api_key_usage(self._usage)
+
+    async def _cleanup(self) -> None:
+        await cleanup_api_keys(self._session_factory, self._settings, datetime.now(UTC))

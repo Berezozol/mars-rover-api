@@ -14,8 +14,10 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Identity,
     Index,
     Integer,
+    LargeBinary,
     Numeric,
     SmallInteger,
     Text,
@@ -29,6 +31,10 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 __all__ = [
+    "ApiAccount",
+    "ApiKey",
+    "ApiKeyRequest",
+    "ApiKeyUsageDaily",
     "Base",
     "Camera",
     "CameraSolCount",
@@ -399,3 +405,78 @@ class SampleDataset(Base):
     content_sha256: Mapped[str | None] = mapped_column(Text)
     items: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     last_error: Mapped[str | None] = mapped_column(Text)
+
+
+class ApiAccount(Base):
+    """An API key account (stage 20): the unit of the rate limit; e-mail is stored lowercase."""
+
+    __tablename__ = "api_accounts"
+    __table_args__ = (
+        CheckConstraint("length(email) <= 254", name="email_length"),
+        CheckConstraint("status IN ('active', 'blocked')", name="status_valid"),
+        CheckConstraint("length(block_reason) <= 500", name="block_reason_length"),
+        CheckConstraint("length(note) <= 500", name="note_length"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    email: Mapped[str] = mapped_column(Text, unique=True)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'active'"))
+    created_at: Mapped[datetime] = mapped_column(_TIMESTAMPTZ, server_default=func.now())
+    verified_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ)
+    blocked_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ)
+    block_reason: Mapped[str | None] = mapped_column(Text)
+    note: Mapped[str | None] = mapped_column(Text)
+
+
+class ApiKey(Base):
+    """A key of an account; only its SHA-256 and a display prefix are stored."""
+
+    __tablename__ = "api_keys"
+    __table_args__ = (
+        CheckConstraint("octet_length(key_hash) = 32", name="key_hash_length"),
+        CheckConstraint(
+            "revoke_reason IN ('owner', 'admin', 'replaced')", name="revoke_reason_valid"
+        ),
+        # Admin search by key prefix (LIKE 'si_...%'): needs the pattern ops class.
+        Index("ix_api_keys_prefix", "prefix", postgresql_ops={"prefix": "text_pattern_ops"}),
+        Index("ix_api_keys_account_id", "account_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("api_accounts.id", ondelete="CASCADE"))
+    key_hash: Mapped[bytes] = mapped_column(LargeBinary, unique=True)
+    prefix: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(_TIMESTAMPTZ, server_default=func.now())
+    last_used_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ)
+    revoked_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ)
+    revoke_reason: Mapped[str | None] = mapped_column(Text)
+
+
+class ApiKeyRequest(Base):
+    """A key request awaiting e-mail confirmation (stage 20B fills it; the table is created
+    with the rest of the stage so the schema is migrated once)."""
+
+    __tablename__ = "api_key_requests"
+    __table_args__ = (Index("ix_api_key_requests_email_created_at", "email", "created_at"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    email: Mapped[str] = mapped_column(Text)
+    token_hash: Mapped[bytes] = mapped_column(LargeBinary, unique=True)
+    created_at: Mapped[datetime] = mapped_column(_TIMESTAMPTZ, server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(_TIMESTAMPTZ)
+    used_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ)
+
+
+class ApiKeyUsageDaily(Base):
+    """Requests of a key per UTC day; ``rejected`` counts its 429 answers."""
+
+    __tablename__ = "api_key_usage_daily"
+    __table_args__ = (Index("ix_api_key_usage_daily_account_id_day", "account_id", "day"),)
+
+    key_id: Mapped[int] = mapped_column(
+        ForeignKey("api_keys.id", ondelete="CASCADE"), primary_key=True
+    )
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("api_accounts.id", ondelete="CASCADE"))
+    requests: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    rejected: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
