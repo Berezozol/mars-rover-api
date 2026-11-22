@@ -9,7 +9,6 @@ tells the agent to describe the needed change in its report instead.
 from __future__ import annotations
 
 import json
-import os
 import sys
 from pathlib import Path, PurePosixPath
 
@@ -40,6 +39,16 @@ EXCLUDED: dict[str, tuple[str, ...]] = {
 }
 
 
+def checkout_root(path: str) -> str | None:
+    """Nearest ancestor of ``path`` that has a ``.git`` entry (a dir, or a file in a worktree)."""
+    if not path:
+        return None
+    for parent in Path(path).resolve().parents:
+        if (parent / ".git").exists():
+            return str(parent)
+    return None
+
+
 def relative(path: str, root: str) -> str | None:
     """Path relative to the project root with forward slashes, or None if outside it."""
     normal = path.replace("\\", "/")
@@ -62,14 +71,15 @@ def main() -> int:
         payload = json.load(sys.stdin)
         role = payload.get("agent_type") or ""
         path = (payload.get("tool_input") or {}).get("file_path") or ""
-        # The project root, not the session's cwd: a cwd inside frontend/ would turn
-        # frontend/src/x into src/x and misattribute the file to another role.
-        root = os.environ.get("CLAUDE_PROJECT_DIR") or str(Path(__file__).resolve().parents[2])
+        # The checkout that holds the file (main folder or a git worktree), not the session's
+        # cwd: a cwd inside frontend/ would turn frontend/src/x into src/x, and a worktree under
+        # .claude/worktrees/ must be judged against its own root.
+        root = checkout_root(path) or payload.get("cwd") or ""
     except ValueError:
         return 0
     if role not in ZONES or not path:
         return 0
-    rel = relative(path, root)
+    rel = relative(str(Path(path).resolve()) if Path(path).is_absolute() else path, root)
     if rel is None:
         return 0  # outside the project (scratchpad, notes): not this hook's business
     if allowed(role, rel):
