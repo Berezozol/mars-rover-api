@@ -29,6 +29,9 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 API_PREFIXES: tuple[str, ...] = ("/api/v1", "/mars-photos/api/v1", "/api/v2")
 ADMIN_PREFIX = "/api/v2/admin"
+# Scope key of a dict the response-size middleware shares with this one: "raw" gets the length
+# of the uncompressed body of a 200 (also for HEAD and 304).
+RESPONSE_SIZE_SCOPE_KEY = "mars.response_size"
 
 LIST_CACHE_CONTROL = "public, max-age=300"
 DETAIL_CACHE_CONTROL = "public, max-age=3600"
@@ -236,6 +239,10 @@ class _CachedResponse:
         if self._start is None:
             return
         body = b"".join(self._chunks)
+        info = self._scope.get(RESPONSE_SIZE_SCOPE_KEY)
+        if info is not None:
+            # Uncompressed size, before a 304 or HEAD drops the body (charged by size).
+            info["raw"] = len(body)
         etag = make_etag(body)
         headers = MutableHeaders(scope=self._start)
         headers["ETag"] = etag

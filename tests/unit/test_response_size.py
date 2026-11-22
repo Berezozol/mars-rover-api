@@ -14,7 +14,14 @@ import pytest
 from pydantic import ValidationError
 from starlette.types import Message, Receive, Scope, Send
 
-from app.api.ratelimit import RateLimitMiddleware, ResponseSizeMiddleware, client_key, extra_hits
+from app.api.caching import RESPONSE_SIZE_SCOPE_KEY
+from app.api.ratelimit import (
+    RateLimitMiddleware,
+    ResponseSizeMiddleware,
+    client_key,
+    extra_hits,
+    response_cost,
+)
 from app.core.config import Settings
 from app.core.ratelimit import RateLimiter
 
@@ -24,6 +31,9 @@ START = 50_000.0
 UNIT = 1024
 KEY = "198.51.100.7"
 LIMIT = 100
+# Raw unit R of the earlier tests: so large that the raw side never matters there (AC-9).
+BIG_RAW_UNIT = 1_048_576
+RAW_UNIT = 4 * UNIT  # R of the tests of docs/proposals/legacy-response-cpu.md
 
 
 class Clock:
@@ -202,10 +212,15 @@ def make_scope(
     unit: int = UNIT,
     client: str = KEY,
     scope_type: str = "http",
+    raw_unit: int = BIG_RAW_UNIT,
 ) -> Scope:
     state = SimpleNamespace(
         v1_bytes_per_request=unit,
-        settings=SimpleNamespace(rate_limit_v1_bytes_per_request=unit),
+        v1_raw_bytes_per_request=raw_unit,
+        settings=SimpleNamespace(
+            rate_limit_v1_bytes_per_request=unit,
+            rate_limit_v1_raw_bytes_per_request=raw_unit,
+        ),
     )
     if limiter is not None:
         state.rate_limiter = limiter
@@ -461,3 +476,229 @@ async def test_ac7_charge_after_error_is_idempotent_per_request() -> None:
 
     # 2 U + 1 byte (the failed chunk) = 3 started units -> 1 entry + 2 extra, charged once.
     assert spent(limiter) == 1 + 2
+
+
+# === docs/proposals/legacy-response-cpu.md: price by the raw (uncompressed) size =============
+
+
+@pytest.mark.parametrize(
+    ("wire", "raw", "unit", "raw_unit", "expected"),
+    [
+        pytest.param(0, None, 1024, 4096, 1, id="empty-no-raw"),
+        pytest.param(0, 0, 1024, 4096, 1, id="empty-raw-zero"),
+        pytest.param(1, 1, 1024, 4096, 1, id="one-byte"),
+        pytest.param(1024, None, 1024, 4096, 1, id="wire-exactly-u"),
+        pytest.param(1025, None, 1024, 4096, 2, id="wire-u-plus-1"),
+        pytest.param(5000, None, 1024, 4096, 5, id="raw-unknown-wire-only"),
+        pytest.param(100, 4096, 1024, 4096, 1, id="raw-exactly-r"),
+        pytest.param(100, 4097, 1024, 4096, 2, id="raw-r-plus-1"),
+        pytest.param(100, 40960, 1024, 4096, 10, id="raw-10r-small-wire"),
+        pytest.param(100, 40961, 1024, 4096, 11, id="raw-10r-plus-1"),
+        pytest.param(10 * 1024, 10 * 1024, 1024, 4096, 10, id="wire-dominates"),
+        pytest.param(3 * 1024, 40960, 1024, 4096, 10, id="raw-dominates"),
+        pytest.param(5000, 5000, 1024, 1024, 5, id="r-equals-u"),
+        pytest.param(138_000, 8_008_724, 262_144, 1_048_576, 8, id="worst-sol-gzip-is-8"),
+        pytest.param(8_008_724, 8_008_724, 262_144, 1_048_576, 31, id="worst-sol-plain-is-31"),
+        pytest.param(23_000, 23_000, 262_144, 1_048_576, 1, id="ordinary-sol-is-1"),
+    ],
+)
+def test_cpu_ac1_response_cost_is_the_max_of_wire_and_raw_units(
+    wire: int, raw: int | None, unit: int, raw_unit: int, expected: int
+) -> None:
+    assert response_cost(wire, raw, unit, raw_unit) == expected
+
+
+def test_cpu_ac1_scope_key_name_is_the_shared_one() -> None:
+    assert RESPONSE_SIZE_SCOPE_KEY == "mars.response_size"
+
+
+def test_cpu_ac8_default_raw_unit_is_1_mib() -> None:
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert settings.rate_limit_v1_raw_bytes_per_request == 1_048_576
+
+
+@pytest.mark.parametrize("value", [0, 1, 1023, -5], ids=["zero", "one", "1023", "negative"])
+def test_cpu_ac8_raw_unit_below_1024_is_a_settings_error(value: int) -> None:
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, rate_limit_v1_raw_bytes_per_request=value)  # type: ignore[call-arg]
+
+
+def test_cpu_ac8_raw_unit_below_the_wire_unit_is_a_settings_error() -> None:
+    with pytest.raises(ValidationError):
+        Settings(
+            _env_file=None,  # type: ignore[call-arg]
+            rate_limit_v1_bytes_per_request=8192,
+            rate_limit_v1_raw_bytes_per_request=4096,
+        )
+
+
+@pytest.mark.parametrize(
+    ("unit", "raw_unit"),
+    [(1024, 1024), (1024, 4096), (262_144, 262_144)],
+    ids=["both-1024", "r-above-u", "r-equals-default-u"],
+)
+def test_cpu_ac8_raw_unit_at_or_above_the_wire_unit_is_accepted(unit: int, raw_unit: int) -> None:
+    settings = Settings(
+        _env_file=None,  # type: ignore[call-arg]
+        rate_limit_v1_bytes_per_request=unit,
+        rate_limit_v1_raw_bytes_per_request=raw_unit,
+    )
+    assert settings.rate_limit_v1_raw_bytes_per_request == raw_unit
+
+
+def test_cpu_ac8_raw_unit_is_read_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RATE_LIMIT_V1_RAW_BYTES_PER_REQUEST", "2097152")
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert settings.rate_limit_v1_raw_bytes_per_request == 2_097_152
+
+
+def test_cpu_ac8_environment_raw_unit_below_1024_fails_at_start(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("RATE_LIMIT_V1_RAW_BYTES_PER_REQUEST", "1023")
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)  # type: ignore[call-arg]
+
+
+def raw_reporting_app(
+    chunks: list[bytes],
+    raw: int | None,
+    *,
+    status: int = 200,
+    fail_with: BaseException | None = None,
+) -> Any:
+    """Like the caching layer: writes raw into the scope dict (200 only) before the body."""
+
+    async def app(scope: Scope, receive: Receive, send: Send) -> None:
+        info = scope.get(RESPONSE_SIZE_SCOPE_KEY)
+        if info is not None and raw is not None and status == 200:
+            info["raw"] = raw
+        await send({"type": "http.response.start", "status": status, "headers": []})
+        for index, chunk in enumerate(chunks):
+            await send(
+                {"type": "http.response.body", "body": chunk, "more_body": index < len(chunks) - 1}
+            )
+        if fail_with is not None:
+            raise fail_with
+
+    return app
+
+
+async def test_cpu_ac2_middleware_puts_a_mutable_dict_into_the_v1_scope() -> None:
+    seen: list[Any] = []
+
+    async def app(scope: Scope, receive: Receive, send: Send) -> None:
+        seen.append(scope.get(RESPONSE_SIZE_SCOPE_KEY))
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"", "more_body": False})
+
+    await run(app, make_scope("/api/v1/rovers", new_limiter(), raw_unit=RAW_UNIT))
+
+    assert isinstance(seen[0], dict)
+    assert seen[0].get("raw") is None
+
+
+@pytest.mark.parametrize("path", ["/api/v2/rovers", "/health", "/"])
+async def test_cpu_ac6_non_v1_scope_gets_no_size_dict_and_no_charge(path: str) -> None:
+    seen: list[bool] = []
+
+    async def app(scope: Scope, receive: Receive, send: Send) -> None:
+        seen.append(RESPONSE_SIZE_SCOPE_KEY in scope)
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"x" * (9 * UNIT), "more_body": False})
+
+    limiter = new_limiter()
+    await run(app, make_scope(path, limiter, raw_unit=RAW_UNIT))
+
+    assert seen == [False]
+    assert spent(limiter) == 0
+
+
+RAW_CASES = [
+    pytest.param(10, RAW_UNIT, 0, id="raw-exactly-r"),
+    pytest.param(10, RAW_UNIT + 1, 1, id="raw-r-plus-1"),
+    pytest.param(10, 10 * RAW_UNIT, 9, id="raw-10r"),
+    pytest.param(10, 10 * RAW_UNIT + 1, 10, id="raw-10r-plus-1"),
+    pytest.param(10, 0, 0, id="raw-zero"),
+    pytest.param(10, None, 0, id="raw-unknown-wire-only"),
+    pytest.param(3 * UNIT, 10 * RAW_UNIT, 9, id="raw-dominates-wire"),
+    pytest.param(9 * UNIT, 2 * RAW_UNIT, 8, id="wire-dominates-raw"),
+]
+
+
+@pytest.mark.parametrize(("wire", "raw", "extra"), RAW_CASES)
+async def test_cpu_ac2_response_is_charged_by_the_larger_of_wire_and_raw(
+    wire: int, raw: int | None, extra: int
+) -> None:
+    limiter = new_limiter()
+    scope = make_scope("/api/v1/rovers/curiosity/photos", limiter, raw_unit=RAW_UNIT)
+    sink = await run(raw_reporting_app([b"z" * wire], raw), scope)
+
+    assert spent(limiter) == extra
+    assert sink.body_bytes == wire  # transparent
+
+
+async def test_cpu_ac2_wire_is_summed_over_several_body_messages_raw_is_not_added() -> None:
+    limiter = new_limiter()
+    await run(
+        raw_reporting_app([b"z" * 50] * 4, 3 * RAW_UNIT + 1),
+        make_scope("/api/v1/rovers", limiter, raw_unit=RAW_UNIT),
+    )
+
+    assert spent(limiter) == 3  # ceil(raw / R) = 4 -> 3 extra; wire 200 B -> 0
+
+
+@pytest.mark.parametrize("status", [404, 400, 503, 302])
+async def test_cpu_ac7_no_raw_reported_means_wire_only_cost(status: int) -> None:
+    """Without a raw size in the dict the cost follows the wire alone (the real non-200 path,
+    where the caching layer reports nothing, is covered by the api AC-7 tests)."""
+    limiter = new_limiter()
+    await run(
+        raw_reporting_app([b"z" * 10], 10 * RAW_UNIT, status=status),
+        make_scope("/api/v1/rovers", limiter, raw_unit=RAW_UNIT),
+    )
+
+    assert spent(limiter) == 0
+
+
+async def test_cpu_ac2_raw_charge_survives_a_failed_send() -> None:
+    limiter = new_limiter()
+    sink = Sink(fail_on_body=1, error=ConnectionResetError("gone"))
+
+    with pytest.raises(ConnectionResetError):
+        await full_stack(raw_reporting_app([b"z" * 10], 10 * RAW_UNIT))(
+            make_scope("/api/v1/rovers", limiter, raw_unit=RAW_UNIT), no_receive, sink
+        )
+
+    assert spent(limiter) == 1 + 9  # entry + (10 - 1), charged once
+
+
+async def test_cpu_ac2_raw_unit_is_read_on_every_request() -> None:
+    limiter = new_limiter()
+    app = raw_reporting_app([b"z"], 4 * RAW_UNIT)
+
+    await run(app, make_scope("/api/v1/rovers", limiter, raw_unit=RAW_UNIT))
+    assert spent(limiter) == 3
+    await run(app, make_scope("/api/v1/rovers", limiter, raw_unit=2 * RAW_UNIT))
+    assert spent(limiter) == 3 + 1
+
+
+async def test_cpu_ac2_raw_unit_falls_back_to_the_settings_without_the_test_hook() -> None:
+    limiter = new_limiter()
+    scope = make_scope("/api/v1/rovers", limiter, raw_unit=RAW_UNIT)
+    del scope["app"].state.v1_raw_bytes_per_request
+
+    await run(raw_reporting_app([b"z"], 4 * RAW_UNIT), scope)
+
+    assert spent(limiter) == 3
+
+
+async def test_cpu_ac2_raw_unit_below_the_wire_unit_is_clamped_up_to_the_wire_unit() -> None:
+    limiter = new_limiter()
+    # raw_unit 512 < UNIT 1024 is read as 1024: 10 * UNIT raw -> 10 requests (9 extra), not 20.
+    await run(
+        raw_reporting_app([b"z"], 10 * UNIT),
+        make_scope("/api/v1/rovers", limiter, raw_unit=512),
+    )
+
+    assert spent(limiter) == 9
