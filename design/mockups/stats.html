@@ -1,0 +1,634 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stats — Sol Index</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  .page-head { display: flex; gap: var(--s3); align-items: baseline; flex-wrap: wrap; margin-bottom: var(--s2); }
+  .page-head h1 { margin: 0; }
+  .lede { max-width: 70ch; }
+  .filters-card { margin: var(--s4) 0; }
+  .check { display: inline-flex; gap: var(--s2); align-items: center; min-height: 40px; font-size: var(--fs-sm); }
+  .check input { width: 18px; height: 18px; accent-color: var(--accent); }
+  .cam-box { max-height: 320px; overflow: auto; padding: var(--s2) 2px; }
+  .actions { display: flex; gap: var(--s3); align-items: center; flex-wrap: wrap; }
+  .counter { font-size: var(--fs-xs); color: var(--text-muted); }
+
+  .overall { display: flex; gap: var(--s3) var(--s6); flex-wrap: wrap; padding: var(--s4); margin-bottom: var(--s4); align-items: flex-end; }
+  .overall .k { font-size: var(--fs-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+  .overall .v { font-size: var(--fs-xl); font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; }
+  .overall .v.sm { font-size: var(--fs-md); }
+  .cards { display: grid; gap: var(--s4); grid-template-columns: 1fr; }
+  @media (min-width: 640px) { .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (min-width: 960px) { .cards { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  .rcard { padding: var(--s4); display: grid; gap: var(--s3); align-content: start; }
+  .rcard header { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; }
+  .rcard h3 { margin: 0; }
+  .rcard .big { font-size: var(--fs-2xl); font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .rcard .big small { font-size: var(--fs-sm); font-weight: 500; color: var(--text-muted); }
+
+  .tabs { display: flex; gap: var(--s1); border-bottom: 1px solid var(--border); margin: var(--s6) 0 var(--s4); flex-wrap: wrap; }
+  .tabs button { all: unset; box-sizing: border-box; cursor: pointer; padding: 10px 14px; color: var(--text-muted); font-size: var(--fs-sm); font-weight: 500; border-bottom: 3px solid transparent; margin-bottom: -1px; }
+  .tabs button:hover { color: var(--text); }
+  .tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+  .tabs button:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
+  .panel-tools { display: flex; gap: var(--s3); align-items: center; flex-wrap: wrap; margin-bottom: var(--s3); }
+
+  .chart-card { padding: var(--s4); }
+  .chart-card + .chart-card { margin-top: var(--s4); }
+  .chart-card h3 { margin: 0 0 2px; }
+  .chart-read { min-height: 1.5em; font-size: var(--fs-sm); margin: var(--s2) 0; font-variant-numeric: tabular-nums; }
+  .chart-scroll { overflow-x: auto; overflow-y: hidden; border-radius: var(--radius-sm); }
+  .chart-scroll:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  .chart-scroll svg { display: block; }
+  .ax { fill: var(--chart-axis); font: 11px var(--font); }
+  .gl { stroke: var(--chart-grid); stroke-width: 1; }
+  .axis-line { stroke: var(--border-strong); stroke-width: 1; }
+  .bar-r { fill: var(--chart-bar); }
+  .bar-r.on { fill: var(--chart-bar-hi); }
+  .note-row { margin-top: var(--s3); }
+  .reasons { margin: var(--s2) 0 0; padding-left: 1.2em; text-align: left; font-size: var(--fs-sm); }
+  .reasons li + li { margin-top: 4px; }
+  .empty .reasons { display: inline-block; }
+  .busy-count { font-variant-numeric: tabular-nums; font-weight: 700; }
+  td .bar-track { width: 100%; min-width: 80px; }
+  td.share { white-space: nowrap; }
+  .cam-code { font-family: var(--mono); font-weight: 600; }
+</style>
+</head>
+<body>
+<header class="site-header">
+  <div class="container">
+    <a class="brand" href="index.html" aria-label="Sol Index home">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="8" fill="var(--accent)"/><ellipse cx="13" cy="13" rx="12" ry="4.5" fill="none" stroke="var(--text-muted)" stroke-width="1.4" transform="rotate(-20 13 13)"/></svg>
+      Sol Index <small>unofficial</small>
+    </a>
+    <nav class="nav" aria-label="Main">
+      <a href="index.html">Rovers</a>
+      <a href="photos.html?rover=perseverance" title="Latest sol">Photos</a>
+      <a href="search.html" title="Search photos across rovers">Search</a>
+      <a href="manifest.html">Timeline</a>
+      <a href="map.html">Route map</a>
+      <a href="flights.html">Flights</a>
+      <a href="samples.html">Samples</a>
+      <a href="stats.html" aria-current="page" title="Photo counts by month, year and camera">Stats</a>
+      <a href="index.html#api">API</a>
+    </nav>
+    <button class="theme-toggle" type="button" aria-label="Toggle colour theme">Theme</button>
+  </div>
+</header>
+
+<main>
+  <div class="container">
+
+    <div class="mock-bar" role="group" aria-label="Mockup state switcher (not part of the product)">
+      <strong>Mockup</strong> state:
+      <button class="btn btn-sm" type="button" data-state="data">Data</button>
+      <button class="btn btn-sm" type="button" data-state="loading">Loading</button>
+      <button class="btn btn-sm" type="button" data-state="empty">Empty (no photos)</button>
+      <button class="btn btn-sm" type="button" data-state="e422">422</button>
+      <button class="btn btn-sm" type="button" data-state="busy">503 service_busy</button>
+      <span>· numbers are generated to add up to the rovers&rsquo; totals; monthly shapes are invented, not API output</span>
+    </div>
+
+    <div class="page-head">
+      <h1>Stats</h1>
+      <span class="small muted">GET /api/v2/photos/stats</span>
+    </div>
+    <p class="lede muted">How many photos each rover has sent, by month, year or camera. Counts come from the same sync summaries as the Timeline, so they are instant.</p>
+
+    <form class="card filters-card" id="form" novalidate aria-label="Stats filters">
+      <div class="filters-bar">
+        <button class="btn btn-sm filters-toggle" id="filters-toggle" type="button" aria-expanded="true" aria-controls="filters-panel"><span>Hide filters</span><span class="badge badge-warn no-dot" id="filters-count" hidden>0</span></button>
+        <div class="summary-text" id="summary" aria-live="polite"></div>
+        <button class="btn btn-sm" type="button" id="reset">Reset</button>
+      </div>
+      <div class="filters-panel" id="filters-panel" data-collapsed="false">
+        <fieldset class="fieldset">
+          <legend>Rovers</legend>
+          <div class="chips" id="rover-chips" role="group" aria-label="Rovers"></div>
+          <span class="hint">At least one.</span>
+        </fieldset>
+        <fieldset class="fieldset">
+          <legend>Period</legend>
+          <div class="segmented" role="radiogroup" aria-label="Filter by">
+            <input type="radio" name="mode" id="mode-sol" value="sol" checked><label for="mode-sol">Sol</label>
+            <input type="radio" name="mode" id="mode-date" value="date"><label for="mode-date">Earth date</label>
+          </div>
+          <div class="inline-fields" id="when-sol">
+            <div class="field"><label for="sol-min">From sol</label><input id="sol-min" type="number" min="0" step="1" inputmode="numeric" placeholder="first"></div>
+            <div class="field"><label for="sol-max">To sol</label><input id="sol-max" type="number" min="0" step="1" inputmode="numeric" placeholder="last"></div>
+          </div>
+          <div class="inline-fields" id="when-date" hidden>
+            <div class="field"><label for="date-min">From date</label><input id="date-min" type="date"></div>
+            <div class="field"><label for="date-max">To date</label><input id="date-max" type="date"></div>
+          </div>
+          <p class="note" id="when-note">Sols are counted separately for each rover.</p>
+          <div class="field-err" id="err-when" role="alert" hidden></div>
+        </fieldset>
+        <fieldset class="fieldset wide">
+          <legend>Cameras</legend>
+          <div class="row" style="align-items:center"><span class="counter" id="cam-counter">All cameras</span><button class="btn btn-sm" type="button" id="cam-clear" hidden>Clear cameras</button></div>
+          <details class="more">
+            <summary>Choose cameras</summary>
+            <div class="cam-box" id="cam-box" tabindex="0" role="group" aria-label="Camera list, scrollable"></div>
+          </details>
+          <label class="check"><input type="checkbox" id="full"> Full frames only</label>
+        </fieldset>
+        <div class="wide actions"><button class="btn btn-primary" type="submit">Show stats</button></div>
+      </div>
+    </form>
+
+    <section id="results" aria-label="Stats results" aria-busy="false">
+      <div id="state"></div>
+      <div id="overall"></div>
+      <div class="cards" id="cards"></div>
+
+      <div id="breakdown" hidden>
+        <div class="tabs" role="tablist" aria-label="Break down by">
+          <button type="button" role="tab" id="tab-month" aria-controls="tabpanel" aria-selected="true" data-by="month">By month</button>
+          <button type="button" role="tab" id="tab-year" aria-controls="tabpanel" aria-selected="false" tabindex="-1" data-by="year">By year</button>
+          <button type="button" role="tab" id="tab-camera" aria-controls="tabpanel" aria-selected="false" tabindex="-1" data-by="camera">By camera</button>
+        </div>
+        <div id="tabpanel" role="tabpanel" aria-labelledby="tab-month" tabindex="-1">
+          <div class="panel-tools" id="view-tools">
+            <div class="segmented" role="radiogroup" aria-label="Show as">
+              <input type="radio" name="view" id="v-chart" value="chart" checked><label for="v-chart">Chart</label>
+              <input type="radio" name="view" id="v-table" value="table"><label for="v-table">Table</label>
+            </div>
+            <span class="xsmall muted">Each rover has its own scale. The table has the same numbers.</span>
+          </div>
+          <div id="panel"></div>
+          <div id="pager"></div>
+        </div>
+      </div>
+    </section>
+    <p class="api-line" id="api-line"></p>
+  </div>
+</main>
+<footer class="site-footer">
+  <div class="container">Sol Index is an independent, unofficial project, not affiliated with or endorsed by NASA or JPL. Image credit is shown next to every photo.</div>
+</footer>
+
+<script>
+/* ===== Shared mockup helpers (copied into each page so every file stays self-contained) ===== */
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const fmt = n => n == null ? '—' : Number(n).toLocaleString('en-US');
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/* GET /api/v2/rovers — only rovers with data (Spirit and Opportunity are hidden until their archives are imported) */
+const ROVERS = {
+  perseverance: {"id":"perseverance","name":"Perseverance","mission":"mars2020","launch_date":"2020-07-30","landing_date":"2021-02-18","end_date":null,"status":"active","max_sol":2031,"max_date":"2026-11-06","total_photos":579518,"cameras_count":23,"last_synced_at":"2026-11-17T06:00:12Z","data_source":"sync"},
+  curiosity:    {"id":"curiosity","name":"Curiosity","mission":"msl","launch_date":"2011-11-26","landing_date":"2012-08-06","end_date":null,"status":"active","max_sol":5066,"max_date":"2026-11-07","total_photos":1184530,"cameras_count":17,"last_synced_at":"2026-11-17T06:00:08Z","data_source":"sync"},
+  ingenuity:    {"id":"ingenuity","name":"Ingenuity","mission":"mars2020","launch_date":"2020-07-30","landing_date":"2021-02-18","end_date":"2024-01-25","status":"complete","max_sol":1042,"max_date":"2024-01-25","total_photos":7412,"cameras_count":2,"last_synced_at":"2026-11-12T09:41:03Z","data_source":"archive"}
+};
+const ROVER_IDS = Object.keys(ROVERS);
+/* GET /api/v2/rovers/{rover}/cameras -> [{code, name, total_photos}] (abridged) */
+const CAMERAS = {
+  perseverance: [
+    ["CACHECAM","CacheCam",6120],["EDL_RDCAM","Rover Down-Look Camera",2114],["FRONT_HAZCAM_LEFT_A","Front Hazard Avoidance Camera - Left",41877],
+    ["FRONT_HAZCAM_RIGHT_A","Front Hazard Avoidance Camera - Right",40215],["MCZ_LEFT","Mastcam-Z Left",118342],["MCZ_RIGHT","Mastcam-Z Right",109877],
+    ["NAVCAM_LEFT","Left Navigation Camera (Navcam)",96210],["NAVCAM_RIGHT","Right Navigation Camera (Navcam)",71433],["PIXL_MCC","PIXL Micro Context Camera",10544],
+    ["REAR_HAZCAM_LEFT","Rear Hazard Avoidance Camera - Left",16202],["REAR_HAZCAM_RIGHT","Rear Hazard Avoidance Camera - Right",15987],
+    ["SHERLOC_ACI","SHERLOC Autofocus and Context Imager",9311],["SHERLOC_WATSON","SHERLOC WATSON Camera",14270],["SKYCAM","MEDA Skycam",7820],
+    ["SUPERCAM_RMI","SuperCam Remote Micro Imager",13087]],
+  curiosity: [
+    ["CHEMCAM_RMI","Chemistry and Camera Complex",71230],["FHAZ_LEFT_A","Front Hazard Avoidance Camera - Left A",9877],["FHAZ_LEFT_B","Front Hazard Avoidance Camera - Left B",24102],
+    ["FHAZ_RIGHT_A","Front Hazard Avoidance Camera - Right A",9640],["FHAZ_RIGHT_B","Front Hazard Avoidance Camera - Right B",23988],["MAHLI","Mars Hand Lens Imager",88431],
+    ["MARDI","Mars Descent Imager",21115],["MAST_LEFT","Mast Camera - Left",402554],["MAST_RIGHT","Mast Camera - Right",318760],["NAV_LEFT_A","Navigation Camera - Left A",31220],
+    ["NAV_LEFT_B","Navigation Camera - Left B",96513],["NAV_RIGHT_A","Navigation Camera - Right A",12007],["NAV_RIGHT_B","Navigation Camera - Right B",41389],
+    ["RHAZ_LEFT_A","Rear Hazard Avoidance Camera - Left A",5902],["RHAZ_LEFT_B","Rear Hazard Avoidance Camera - Left B",13350],["RHAZ_RIGHT_A","Rear Hazard Avoidance Camera - Right A",5811],
+    ["RHAZ_RIGHT_B","Rear Hazard Avoidance Camera - Right B",13241]],
+  ingenuity: [["HELI_NAV","Helicopter Navigation Camera",5230],["HELI_RTE","Helicopter Return-to-Earth Camera",2182]]
+};
+const camName = (rover, code) => (CAMERAS[rover].find(c => c[0] === code) || [code, code])[1];
+const phClass = code =>
+  /RMI/.test(code) ? 'ph ph-rmi' : /NAV/.test(code) ? 'ph ph-gray' : /HAZ/.test(code) ? 'ph ph-haz' :
+  /WATSON|MAHLI|ACI|PIXL/.test(code) ? 'ph ph-close' : /SKY|HELI/.test(code) ? 'ph ph-sky' : 'ph';
+const creditOf = code =>
+  /MCZ/.test(code) ? 'NASA/JPL-Caltech/ASU' : /SUPERCAM|CHEMCAM/.test(code) ? 'NASA/JPL-Caltech/LANL' :
+  /MAST|MAHLI|MARDI|WATSON/.test(code) ? 'NASA/JPL-Caltech/MSSS' : 'NASA/JPL-Caltech';
+
+/* Sol <-> date. A sol is 1.0275 days; Ingenuity uses Perseverance sols. Close enough for a mockup. */
+const SOL_DAYS = 1.0274912;
+const landingOf = r => Date.parse((r === 'ingenuity' ? ROVERS.perseverance : ROVERS[r]).landing_date + 'T00:00:00Z');
+const solToMs = (r, sol) => landingOf(r) + Math.round(sol * SOL_DAYS * 86400000);
+const solToDate = (r, sol) => new Date(solToMs(r, sol)).toISOString().slice(0, 10);
+const dateToSol = (r, d) => Math.max(0, Math.round((Date.parse(d + 'T00:00:00Z') - landingOf(r)) / 86400000 / SOL_DAYS));
+
+/* Deterministic pseudo-random so the mock data does not jump on re-render */
+const rnd = seed => { let t = (Math.imul(seed + 1, 2654435761)) >>> 0; t ^= t << 13; t >>>= 0; t ^= t >>> 17; t ^= t << 5; t >>>= 0; return t / 4294967296; };
+
+/* One Photo exactly as in GET /api/v2/photos items (docs/API.md "Photo").
+   No local_time here: that field exists only in PhotoDetail. */
+function makePhoto(rover, sol, camCode, seed, ms) {
+  const r = rnd(seed), id = 100000 + ROVER_IDS.indexOf(rover) * 3000000 + sol * 211 + (seed % 211);
+  const taken = new Date(ms ?? (solToMs(rover, sol) + Math.floor(r * 86400000)));
+  const nav = /NAV|HAZ/.test(camCode);
+  const type = rover === 'curiosity' ? ['full', 'full', 'subframe', 'downsampled', 'mixed'][seed % 5] : ['full', 'full', 'subframe', 'downsampled'][seed % 4];
+  const w = rover === 'curiosity' ? null : (nav ? 1280 : 1648), h = rover === 'curiosity' ? null : (nav ? 960 : 1200);
+  const base = `https://images.invalid/${rover}/${id}`;
+  return {
+    id, rover, sol, earth_date: taken.toISOString().slice(0, 10), taken_at: taken.toISOString().replace('.000Z', 'Z'),
+    camera: { code: camCode, name: camName(rover, camCode) }, sample_type: type,
+    title: `${ROVERS[rover].name} Sol ${sol}: ${camName(rover, camCode)}`,
+    img_src: `${base}_full.png`,
+    images: rover === 'curiosity' ? { small: null, medium: null, large: null, full: `${base}_full.jpg` } : { small: `${base}_320.jpg`, medium: `${base}_800.jpg`, large: `${base}_1200.jpg`, full: `${base}_full.png` },
+    credit: creditOf(camCode), source: { id: `${camCode}_${sol}_${id}`, link: `https://images.invalid/raw/${id}` }, width: w, height: h
+  };
+}
+const FILTERABLE = ['full', 'subframe', 'downsampled'];
+function tile(p, showRover = true) {
+  const st = FILTERABLE.includes(p.sample_type) ? 'st' : 'st other';
+  const time = p.taken_at.slice(11, 16);
+  return `<a class="tile" href="photo.html?id=${p.id}&amp;rover=${p.rover}">
+    <div class="${phClass(p.camera.code)}" role="img" aria-label="${esc(p.camera.name)}, ${ROVERS[p.rover].name} sol ${p.sol}, ${esc(p.earth_date)} ${time} UTC"></div>
+    <div class="tile-meta"><span class="cam" title="${esc(p.camera.name)}">${p.camera.code}</span><span class="${st}">${p.sample_type}</span></div>
+    <div class="tile-meta muted tile-line">${showRover ? `<span><strong>${ROVERS[p.rover].name}</strong> · sol ${p.sol}</span>` : `<span>Sol ${p.sol}</span>`}</div>
+    <div class="tile-meta muted tile-line"><time datetime="${p.taken_at}">${p.earth_date} ${time} UTC</time></div>
+    <div class="tile-credit" title="Credit: ${esc(p.credit)}">Credit: ${esc(p.credit)}</div>
+  </a>`;
+}
+const skeletonGrid = n => `<div class="photo-grid">${Array.from({ length: n }, () => `<div><div class="skeleton" style="aspect-ratio:4/3"></div><div class="skeleton" style="height:10px;margin-top:8px;width:70%"></div><div class="skeleton" style="height:10px;margin-top:6px;width:45%"></div></div>`).join('')}</div>`;
+
+const ICON_ERR = '<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" style="flex:none;color:var(--err)"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7v6M12 16.5v.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
+const ICON_WARN = '<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" style="flex:none;color:var(--warn)"><path d="M12 3 2 20h20z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M12 10v4.5M12 17v.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
+const ICON_EMPTY = '<svg width="48" height="48" viewBox="0 0 48 48" aria-hidden="true"><rect x="6" y="10" width="36" height="28" rx="4" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="17" cy="21" r="3.5" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="M8 35l11-9 7 6 6-5 9 8" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/></svg>';
+
+/* Pager: same behaviour as frontend/src/components/Pager.tsx (window of pages, "Go to page" with inline error). */
+function pageWindow(page, pages) {
+  const set = new Set([1, pages, page - 1, page, page + 1].filter(n => n >= 1 && n <= pages));
+  const out = []; let last = 0;
+  for (const n of [...set].sort((a, b) => a - b)) { if (n - last > 1) out.push('gap'); out.push(n); last = n; }
+  return out;
+}
+let pagerSeq = 0;
+function renderPager(el, page, pages, onPage) {
+  el.innerHTML = '';
+  if (pages <= 1) return;
+  const id = 'goto-' + (++pagerSeq), btn = (label, target, dis, aria) =>
+    dis ? `<span class="btn btn-sm" aria-disabled="true" aria-label="${aria}">${label}</span>` : `<button class="btn btn-sm" type="button" data-p="${target}" aria-label="${aria}">${label}</button>`;
+  let h = `<nav class="pager" aria-label="Pagination">` + btn('‹ Prev', page - 1, page <= 1, 'Previous page');
+  for (const n of pageWindow(page, pages)) h += n === 'gap' ? '<span class="muted" aria-hidden="true">…</span>' : `<button class="btn btn-sm" type="button" data-p="${n}" ${n === page ? 'aria-current="page"' : ''} aria-label="Page ${n}">${n}</button>`;
+  h += btn('Next ›', page + 1, page >= pages, 'Next page') + `<span class="xsmall muted">Page ${fmt(page)} of ${fmt(pages)}</span>
+    <form class="goto-page" novalidate><label for="${id}" class="xsmall muted">Go to page</label>
+    <input id="${id}" type="number" inputmode="numeric" min="1" max="${pages}" step="1" placeholder="${page}">
+    <button type="submit" class="btn btn-sm">Go</button><span class="goto-page-err" id="${id}-e" role="alert" hidden></span></form></nav>`;
+  el.innerHTML = h;
+  el.querySelectorAll('button[data-p]').forEach(b => b.onclick = () => onPage(+b.dataset.p));
+  const f = el.querySelector('form'), inp = f.querySelector('input'), err = f.querySelector('.goto-page-err');
+  const setErr = m => {
+    err.hidden = !m; err.textContent = m;
+    if (m) { inp.setAttribute('aria-invalid', 'true'); inp.setAttribute('aria-describedby', id + '-e'); }
+    else { inp.removeAttribute('aria-invalid'); inp.removeAttribute('aria-describedby'); }
+  };
+  inp.oninput = () => setErr('');
+  f.onsubmit = e => {
+    e.preventDefault();
+    const t = inp.value.trim(), n = Number(t);
+    if (t === '') return setErr(`Enter a page number from 1 to ${fmt(pages)}.`);
+    if (!/^\d+$/.test(t) || !Number.isSafeInteger(n) || n < 1 || n > pages) return setErr(`Enter a whole number from 1 to ${fmt(pages)}.`);
+    setErr(''); if (n !== page) onPage(n);
+  };
+}
+
+/* Collapsible filter panel (phones): the button toggles aria-expanded; wide screens ignore it (CSS). */
+function bindFiltersToggle() {
+  const b = $('#filters-toggle'), p = $('#filters-panel');
+  const set = open => { b.setAttribute('aria-expanded', String(open)); p.dataset.collapsed = String(!open); b.firstElementChild.textContent = open ? 'Hide filters' : 'Filters'; };
+  set(matchMedia('(min-width: 760px)').matches);
+  b.onclick = () => set(b.getAttribute('aria-expanded') !== 'true');
+  return set;
+}
+$('.theme-toggle').onclick = () => {
+  const r = document.documentElement, dark = r.dataset.theme ? r.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  r.dataset.theme = dark ? 'light' : 'dark';
+};
+
+/* 503 with Retry-After: countdown, then enable the button (screen readers hear the message twice only). */
+let _busyT = null;
+const stopBusy = () => clearInterval(_busyT);
+function renderBusy(body, { onRetry, tips }) {
+  const resp = { error: { code: 'service_busy', message: 'Server is busy, retry later', details: null } };
+  let left = 5;
+  body.innerHTML = `<div class="alert alert-warn">${ICON_WARN}<div style="min-width:0"><div class="alert-title">The server is busy</div>
+    <p style="margin:0 0 8px"><span id="busy-line"><span aria-hidden="true">Try again in <span class="busy-count" id="busy-n">${left}</span> s.</span></span></p>
+    <div class="row" style="align-items:center"><button class="btn btn-primary btn-sm" type="button" id="retry" disabled>Try again</button>
+      <span class="xsmall muted">Error code: <code>service_busy</code> (HTTP 503, <code>Retry-After: 5</code>)</span></div>
+    <p class="small" style="margin:12px 0 4px"><strong>Or narrow the search:</strong></p><ul class="reasons" style="margin:0">${tips.map(t => `<li>${t}</li>`).join('')}</ul>
+    <details style="margin-top:8px"><summary class="small">Response details</summary><pre class="raw">HTTP/1.1 503
+Retry-After: 5
+Cache-Control: no-store
+
+${esc(JSON.stringify(resp, null, 2))}</pre></details></div></div><p class="visually-hidden" role="status" id="busy-sr">The server is busy. You can try again in 5 seconds.</p>`;
+  stopBusy();
+  _busyT = setInterval(() => {
+    left--; const n = $('#busy-n'); if (n) n.textContent = left;
+    if (left <= 0) { stopBusy(); $('#retry').disabled = false; $('#busy-line').textContent = 'You can try again now.'; $('#busy-sr').textContent = 'You can try again now.'; }
+  }, 1000);
+  $('#retry').onclick = onRetry;
+}
+
+
+/* ===== Mock data: monthly photo counts per rover, scaled so every rover adds up to Rover.total_photos ===== */
+const SPAN = { perseverance: ['2021-02', '2026-11'], curiosity: ['2012-08', '2026-11'], ingenuity: ['2021-04', '2024-01'] };
+const CONJ = ['2013-04', '2015-06', '2017-07', '2019-10', '2021-10', '2023-11', '2026-01'];   /* Mars behind the Sun: few photos */
+const monthList = ([a, b]) => { const out = []; let y = +a.slice(0, 4), m = +a.slice(5); while (y < +b.slice(0, 4) || (y === +b.slice(0, 4) && m <= +b.slice(5))) { out.push(`${y}-${String(m).padStart(2, '0')}`); if (++m > 12) { m = 1; y++; } } return out; };
+const daysIn = p => new Date(Date.UTC(+p.slice(0, 4), +p.slice(5), 0)).getUTCDate();
+const mStart = p => p + '-01', mEnd = p => p + '-' + String(daysIn(p)).padStart(2, '0');
+const dayN = d => Date.parse(d + 'T00:00:00Z') / 86400000;
+const BASE = {};
+function base(r) {
+  if (BASE[r]) return BASE[r];
+  const ms = monthList(SPAN[r]), n = ms.length, seed = ROVER_IDS.indexOf(r) * 997;
+  const w = ms.map((p, i) => {
+    let x = r === 'curiosity' ? 1.4 * Math.exp(-2.6 * i / n) + .4 : r === 'perseverance' ? 1 + .35 * Math.sin(i / 5) : (i < 3 ? 3 : 1);
+    x *= .55 + .9 * rnd(seed + i * 3);
+    if (i === 0) x *= r === 'perseverance' ? 1.3 : 2.2;
+    const c = CONJ.indexOf(p); if (c >= 0) x *= .1;
+    if (CONJ.some(q => { const d = (+q.slice(0, 4) - +p.slice(0, 4)) * 12 + (+q.slice(5) - +p.slice(5)); return Math.abs(d) === 1; })) x *= .45;
+    if (r === 'ingenuity' && rnd(seed + i * 11) < .35) x = 0;
+    return x;
+  });
+  const sum = w.reduce((a, b) => a + b, 0), total = ROVERS[r].total_photos;
+  const v = w.map(x => Math.floor(x / sum * total)); let rest = total - v.reduce((a, b) => a + b, 0);
+  v[w.indexOf(Math.max(...w))] += rest;
+  return BASE[r] = ms.map((p, i) => ({ p, v: v[i] }));
+}
+const CAM_START = { CACHECAM: 130, PIXL_MCC: 60, SHERLOC_ACI: 60, SHERLOC_WATSON: 60, SKYCAM: 1, EDL_RDCAM: 0, MARDI: 0, MAHLI: 34, CHEMCAM_RMI: 10, HELI_NAV: 46, HELI_RTE: 46 };
+const CAM_END = { EDL_RDCAM: 0, MARDI: 1, FHAZ_LEFT_A: 1500, FHAZ_RIGHT_A: 1500, NAV_LEFT_A: 2100, NAV_RIGHT_A: 2100, RHAZ_LEFT_A: 1500, RHAZ_RIGHT_A: 1500 };
+
+/* ===== The page ===== */
+const DEF = () => ({ rovers: new Set(ROVER_IDS), mode: 'sol', smin: '', smax: '', dmin: '', dmax: '', cams: new Set(), full: false });
+let f = DEF(), applied = null, by = 'month', viewMode = 'chart', view = 'data', tpage = 1, camSort = 'api';
+const TPER = 12;
+const q = new URLSearchParams(location.search);
+const roverList = s => ROVER_IDS.filter(r => s.rovers.has(r));
+const camsOf = (s, r) => s.cams.size ? CAMERAS[r].filter(c => s.cams.has(c[0])) : CAMERAS[r];
+
+function readForm() { f.mode = $('input[name=mode]:checked').value; f.smin = $('#sol-min').value; f.smax = $('#sol-max').value; f.dmin = $('#date-min').value; f.dmax = $('#date-max').value; f.full = $('#full').checked; }
+function validate(s) {
+  const isInt = v => /^\d+$/.test(v) && Number(v) <= 2147483647;
+  if (s.mode === 'sol') {
+    if ((s.smin !== '' && !isInt(s.smin)) || (s.smax !== '' && !isInt(s.smax))) return { ids: ['sol-min', 'sol-max'], text: 'Sols must be whole numbers from 0 to 2,147,483,647.' };
+    if (s.smin !== '' && s.smax !== '' && +s.smin > +s.smax) return { ids: ['sol-min', 'sol-max'], text: '“From sol” must not be greater than “To sol”.' };
+  } else if (s.dmin && s.dmax && s.dmin > s.dmax) return { ids: ['date-min', 'date-max'], text: '“From date” must not be after “To date”.' };
+  return null;
+}
+function showErr(e) {
+  const el = $('#err-when'); el.hidden = !e; el.textContent = e ? e.text : '';
+  $$('#form input').forEach(i => i.removeAttribute('aria-invalid')); if (e) e.ids.forEach(id => $('#' + id).setAttribute('aria-invalid', 'true'));
+}
+
+/* what the API would return for the filters: GET /api/v2/photos/stats?group_by=... (same field names as docs/API.md) */
+function rangeDays(s, r) {                          /* [first, last] day of the filter, by sol date */
+  const R = ROVERS[r], max = R.max_date;
+  if (s.mode === 'sol') return [solToDate(r, s.smin === '' ? 0 : +s.smin), s.smax === '' ? max : (+s.smax >= R.max_sol ? max : solToDate(r, +s.smax))];
+  return [s.dmin || R.landing_date, s.dmax && s.dmax < max ? s.dmax : max];
+}
+function months(s, r) {                             /* filtered months of one rover: [{p, v, first_date, last_date}] */
+  const cams = camsOf(s, r); if (!cams.length) return [];
+  const camShare = cams.reduce((a, c) => a + c[2], 0) / CAMERAS[r].reduce((a, c) => a + c[2], 0), full = s.full ? .6 : 1;
+  const [d0, d1] = rangeDays(s, r), a = dayN(d0), b = dayN(d1), R = ROVERS[r];
+  const out = [];
+  for (const m of base(r)) {
+    const al = Math.max(dayN(mStart(m.p)), dayN(R.landing_date)), ah = Math.min(dayN(mEnd(m.p)), dayN(R.max_date));   /* days of the month the rover was active */
+    const lo = Math.max(a, al), hi = Math.min(b, ah);
+    if (hi < lo || !m.v) continue;
+    const v = Math.round(m.v * ((hi - lo + 1) / (ah - al + 1)) * full * camShare);
+    if (!v) continue;
+    out.push({ p: m.p, v, sols: Math.min(Math.ceil((hi - lo + 1) / SOL_DAYS), Math.max(1, Math.ceil(v / (r === 'ingenuity' ? 60 : 250)))), fd: new Date(lo * 86400000).toISOString().slice(0, 10), ld: new Date(hi * 86400000).toISOString().slice(0, 10) });
+  }
+  return out;
+}
+function stats(s, groupBy) {
+  const groups = [];
+  for (const r of roverList(s)) {
+    const ms = months(s, r), R = ROVERS[r], total = ms.reduce((a, m) => a + m.v, 0); if (!total) continue;
+    const solOf = d => Math.min(R.max_sol, dateToSol(r, d));
+    const mk = (extra, tot, sols, fd, ld, fs, ls) => groups.push({ rover: r, camera: null, period: null, total_photos: tot, sols_with_photos: sols, first_sol: fs ?? solOf(fd), last_sol: ls ?? solOf(ld), first_date: fd, last_date: ld, ...extra });
+    if (groupBy === 'rover') mk({}, total, ms.reduce((a, m) => a + m.sols, 0), ms[0].fd, ms[ms.length - 1].ld);
+    else if (groupBy === 'month') ms.forEach(m => mk({ period: m.p }, m.v, m.sols, m.fd, m.ld));
+    else if (groupBy === 'year') [...new Set(ms.map(m => m.p.slice(0, 4)))].forEach(y => { const l = ms.filter(m => m.p.startsWith(y)); mk({ period: y }, l.reduce((a, m) => a + m.v, 0), l.reduce((a, m) => a + m.sols, 0), l[0].fd, l[l.length - 1].ld); });
+    else {
+      const k = ms.reduce((a, m) => a + m.v, 0) / camsOf(s, r).reduce((a, c) => a + c[2], 0) * (1);   /* photos per camera photo */
+      const sols = ms.reduce((a, m) => a + m.sols, 0), fs0 = solOf(ms[0].fd), ls0 = solOf(ms[ms.length - 1].ld);
+      const list = camsOf(s, r).map(c => ({ c, t: Math.round(c[2] * k) })).filter(x => x.t > 0);
+      if (list.length) list.reduce((a, b) => b.t > a.t ? b : a).t += total - list.reduce((a, x) => a + x.t, 0);   /* the rounding remainder goes to the biggest camera */
+      list.forEach(({ c, t }) => {
+        const fs = Math.max(fs0, CAM_START[c[0]] ?? 0), ls = Math.max(fs, Math.min(ls0, CAM_END[c[0]] ?? ls0));
+        mk({ camera: c[0] }, t, Math.max(1, Math.min(sols, Math.ceil(t / 40))), solToDate(r, fs), solToDate(r, ls), fs, ls);
+      });
+    }
+  }
+  const sols = groupBy === 'rover' ? groups.reduce((a, g) => a + g.sols_with_photos, 0) : stats.cacheSols(s);
+  return { group_by: groupBy, total_photos: groups.reduce((a, g) => a + g.total_photos, 0), sols_with_photos: sols, first_date: groups.length ? groups.map(g => g.first_date).sort()[0] : null, last_date: groups.length ? groups.map(g => g.last_date).sort().pop() : null, groups };
+}
+stats.cacheSols = s => roverList(s).reduce((a, r) => a + months(s, r).reduce((x, m) => x + m.sols, 0), 0);
+
+/* ===== request line ===== */
+function paramsOf(s, groupBy) {
+  const p = new URLSearchParams();
+  if (s.rovers.size < ROVER_IDS.length) p.set('rovers', roverList(s).join(','));
+  if (s.cams.size) p.set('camera', [...s.cams].join(','));
+  if (s.mode === 'sol') { if (s.smin !== '') p.set('sol_min', s.smin); if (s.smax !== '') p.set('sol_max', s.smax); } else { if (s.dmin) p.set('date_min', s.dmin); if (s.dmax) p.set('date_max', s.dmax); }
+  if (s.full) p.set('sample_type', 'full');
+  p.set('group_by', groupBy); return p.toString().replace(/%2C/g, ',');
+}
+function summaryText(s) {
+  const parts = [s.rovers.size === ROVER_IDS.length ? 'All rovers' : roverList(s).map(r => ROVERS[r].name).join(' + ')];
+  if (s.mode === 'sol') parts.push(s.smin === '' && s.smax === '' ? 'all sols' : `sols ${s.smin || 'first'}–${s.smax || 'last'}`); else parts.push(!s.dmin && !s.dmax ? 'all dates' : `${s.dmin || 'start'} → ${s.dmax || 'now'}`);
+  parts.push(s.cams.size ? s.cams.size + (s.cams.size === 1 ? ' camera' : ' cameras') : 'all cameras'); if (s.full) parts.push('full frames only');
+  return parts.join(' · ');
+}
+const activeCount = s => [s.rovers.size < ROVER_IDS.length, s.mode === 'sol' ? (s.smin !== '' || s.smax !== '') : (s.dmin || s.dmax), s.cams.size, s.full].filter(Boolean).length;
+
+/* ===== form chrome ===== */
+function renderChips() {
+  $('#rover-chips').innerHTML = ROVER_IDS.map(r => `<button class="chip" type="button" data-r="${r}" aria-pressed="${f.rovers.has(r)}">${ROVERS[r].name}<span class="count">${fmt(ROVERS[r].total_photos)}</span></button>`).join('');
+  $$('#rover-chips .chip').forEach(b => b.onclick = () => { const r = b.dataset.r; if (f.rovers.has(r)) { if (f.rovers.size === 1) return; f.rovers.delete(r); CAMERAS[r].forEach(c => f.cams.delete(c[0])); } else f.rovers.add(r); renderChips(); hints(); });
+  renderCams();
+}
+function renderCams() {
+  $('#cam-box').innerHTML = roverList(f).map(r => `<div class="cam-group"><h4>${ROVERS[r].name}</h4><div class="chips">${CAMERAS[r].map(c => `<button class="chip" type="button" data-c="${c[0]}" aria-pressed="${f.cams.has(c[0])}" ${!f.cams.has(c[0]) && f.cams.size >= 10 ? 'aria-disabled="true"' : ''} title="${esc(c[1])}"><span class="mono">${c[0]}</span><span class="count">${fmt(c[2])}</span></button>`).join('')}</div></div>`).join('');
+  $$('#cam-box .chip').forEach(b => b.onclick = () => { const c = b.dataset.c; if (f.cams.has(c)) f.cams.delete(c); else if (f.cams.size < 10) f.cams.add(c); else return; renderCams(); hints(); $(`#cam-box [data-c="${c}"]`)?.focus(); });
+}
+function hints() {
+  readForm();
+  $('#when-sol').hidden = f.mode === 'date'; $('#when-date').hidden = f.mode !== 'date';
+  $('#when-note').textContent = f.mode === 'date' ? 'Dates here are the day of each sol’s first photo, not of every single photo. Photos from a sol that crosses midnight UTC count on the day it started, so totals can differ slightly from Search.' : 'Sols are counted separately for each rover.';
+  $('#cam-counter').textContent = f.cams.size ? `${f.cams.size} of 10 cameras chosen` : 'All cameras'; $('#cam-clear').hidden = !f.cams.size;
+  const n = activeCount(f); $('#filters-count').hidden = !n; $('#filters-count').textContent = n + ' active'; $('#summary').textContent = summaryText(f);
+}
+
+/* ===== results ===== */
+const num = n => fmt(n);
+function renderTop(res) {
+  const s = applied;
+  $('#overall').innerHTML = `<div class="card overall" role="group" aria-label="Totals for the selection">
+    <div><div class="k">Photos</div><div class="v">${num(res.total_photos)}</div></div>
+    <div><div class="k">Sols with photos <span class="visually-hidden">(summed over rovers)</span></div><div class="v">${num(res.sols_with_photos)}</div></div>
+    <div><div class="k">First photo</div><div class="v sm">${res.first_date}</div></div>
+    <div><div class="k">Latest photo</div><div class="v sm">${res.last_date}</div></div>
+    ${res.groups.length > 1 ? '<div class="xsmall muted" style="flex-basis:100%">Sols of different rovers are counted separately and added up: they are not calendar days.</div>' : ''}</div>`;
+  $('#cards').innerHTML = res.groups.map(g => { const R = ROVERS[g.rover]; return `<article class="card rcard" aria-labelledby="rc-${g.rover}">
+    <header><h3 id="rc-${g.rover}">${R.name}</h3><span class="badge ${R.status === 'active' ? 'badge-active' : 'badge-complete'}">${R.status === 'active' ? 'Active' : 'Complete'}</span></header>
+    <div class="big">${num(g.total_photos)} <small>photos</small></div>
+    <dl class="stats">
+      <div><dt>Sols with photos</dt><dd>${num(g.sols_with_photos)}</dd></div>
+      <div><dt>Share of selection</dt><dd>${res.total_photos ? (100 * g.total_photos / res.total_photos).toFixed(g.total_photos / res.total_photos < .1 ? 1 : 0) : 0}%</dd></div>
+      <div><dt>First</dt><dd>sol ${num(g.first_sol)} · ${g.first_date}</dd></div>
+      <div><dt>Last</dt><dd>sol ${num(g.last_sol)} · ${g.last_date}</dd></div>
+    </dl>
+    <div><a class="btn btn-sm" href="search.html?${new URLSearchParams({ rovers: g.rover, ...(s.cams.size ? { camera: [...s.cams].filter(c => CAMERAS[g.rover].some(x => x[0] === c)).join(',') } : {}) })}">Search these photos</a></div>
+  </article>`; }).join('');
+}
+
+/* accessible bar chart: role="img" summary, arrow keys / hover read one bar, table view has the same numbers */
+const charts = [];
+function barChart(host, { id, title, unit, data, labelOf, tickEvery }) {
+  const cw = Math.max(host.clientWidth || 640, 320), M = { l: 46, r: 8, t: 10, b: 24 }, Hh = 230, step = Math.max(6, Math.min(48, Math.floor((cw - M.l - M.r) / data.length)));
+  const W = Math.max(cw, M.l + M.r + step * data.length), max = Math.max(...data.map(d => d.v)), mag = 10 ** Math.floor(Math.log10(max)), nm = [1, 2, 4, 8, 10].map(x => x * mag).find(x => x >= max) || max;
+  const ticks = [0, .25, .5, .75, 1].map(k => nm * k), y = v => M.t + (Hh - M.t - M.b) * (1 - v / nm), kfmt = v => v >= 1e6 ? v / 1e6 + 'M' : v >= 1e3 ? v / 1e3 + 'k' : String(v);
+  let g = ticks.map(t => `<line class="gl" x1="${M.l}" x2="${W - M.r}" y1="${y(t)}" y2="${y(t)}"/><text class="ax" x="${M.l - 6}" y="${y(t) + 4}" text-anchor="end">${kfmt(t)}</text>`).join('');
+  g += `<line class="axis-line" x1="${M.l}" x2="${W - M.r}" y1="${y(0)}" y2="${y(0)}"/>`;
+  data.forEach((d, i) => { const x = M.l + i * step, bh = y(0) - y(d.v); g += `<rect class="bar-r" data-i="${i}" x="${x + (step > 10 ? 1 : .5)}" y="${y(d.v)}" width="${Math.max(step - (step > 10 ? 2 : 1), 1)}" height="${Math.max(bh, d.v ? 1 : 0)}"/>`; if (tickEvery(d, i)) g += `<text class="ax" x="${x + step / 2}" y="${Hh - 6}" text-anchor="middle">${labelOf(d)}</text>`; });
+  const peak = data.reduce((a, d) => d.v > a.v ? d : a, data[0]), idc = 'ch-' + id;
+  host.innerHTML = `<p class="chart-read" id="${idc}-read" aria-live="polite" aria-atomic="true"></p>
+    <div class="chart-scroll" id="${idc}" tabindex="0" role="group" aria-roledescription="bar chart" aria-label="${esc(title)}. ${data.length} ${unit}s, peak ${peak.p} with ${fmt(peak.v)} photos. Use left and right arrow keys to read one bar at a time; Home and End jump to the first and last. The Table view lists the same numbers.">
+    <svg width="${W}" height="${Hh}" viewBox="0 0 ${W} ${Hh}" role="img" aria-label="${esc(title)}"><title>${esc(title)}</title>${g}</svg></div>`;
+  const sc = $('#' + idc), rd = $('#' + idc + '-read'), rects = sc.querySelectorAll('rect');
+  let cur = -1;
+  const show = i => { rects.forEach((r, k) => r.classList.toggle('on', k === i)); cur = i; rd.textContent = i < 0 ? `Peak: ${peak.p}, ${fmt(peak.v)} photos. Hover a bar or use the arrow keys to read one.` : `${data[i].p}: ${fmt(data[i].v)} photos` + (data[i].sols ? ` on ${data[i].sols} sols` : ''); };
+  show(-1);
+  sc.addEventListener('pointermove', e => { const r = sc.querySelector('svg').getBoundingClientRect(), i = Math.floor((e.clientX - r.left - M.l) / step); show(i >= 0 && i < data.length ? i : -1); });
+  sc.addEventListener('pointerleave', () => show(-1));
+  sc.addEventListener('keydown', e => {
+    let i = cur; if (e.key === 'ArrowRight') i = Math.min(cur + 1, data.length - 1); else if (e.key === 'ArrowLeft') i = Math.max(cur < 0 ? data.length - 1 : cur - 1, 0); else if (e.key === 'Home') i = 0; else if (e.key === 'End') i = data.length - 1; else return;
+    e.preventDefault(); show(i); const x = M.l + i * step; if (x < sc.scrollLeft + 20 || x > sc.scrollLeft + sc.clientWidth - 20) sc.scrollLeft = x - sc.clientWidth / 2;
+  });
+  sc.scrollLeft = sc.scrollWidth;                 /* newest on the right in view first */
+}
+
+function periodCharts(res) {
+  const unit = by === 'month' ? 'month' : 'year';
+  charts.length = 0;
+  let html = '';
+  roverList(applied).forEach(r => {
+    const gs = res.groups.filter(g => g.rover === r); if (!gs.length) return;
+    html += `<section class="card chart-card" aria-labelledby="ct-${r}"><h3 id="ct-${r}">${ROVERS[r].name}: photos per ${unit}</h3><p class="xsmall muted" style="margin:0">${gs.length} ${unit}${gs.length === 1 ? '' : 's'} with photos · scale 0–${fmt(Math.max(...gs.map(g => g.total_photos)))}+</p><div id="host-${r}"></div></section>`;
+  });
+  $('#panel').innerHTML = html;
+  roverList(applied).forEach(r => {
+    const gs = res.groups.filter(g => g.rover === r); if (!gs.length) return;
+    /* the API leaves out periods without photos: the chart fills them with zeros so time stays continuous */
+    let all = gs.map(g => ({ p: g.period, v: g.total_photos, sols: g.sols_with_photos }));
+    if (by === 'month') { const have = new Map(all.map(d => [d.p, d])), span = monthList([all[0].p, all[all.length - 1].p]); all = span.map(p => have.get(p) || { p, v: 0, sols: 0 }); }
+    else { const have = new Map(all.map(d => [d.p, d])), span = []; for (let y = +all[0].p; y <= +all[all.length - 1].p; y++) span.push(String(y)); all = span.map(p => have.get(p) || { p, v: 0, sols: 0 }); }
+    barChart($('#host-' + r), { id: r, title: `${ROVERS[r].name}: photos per ${unit}`, unit, data: all, labelOf: d => d.p.slice(0, 4), tickEvery: by === 'month' ? (d, i) => d.p.endsWith('-01') && (all.length < 40 || +d.p.slice(0, 4) % 2 === 0) : () => true });
+  });
+}
+function periodTable(res) {
+  const rows = res.groups, pages = Math.max(1, Math.ceil(rows.length / TPER)); tpage = Math.min(tpage, pages);
+  const slice = rows.slice((tpage - 1) * TPER, tpage * TPER);
+  $('#panel').innerHTML = `<div class="card panel table-wrap"><table class="data"><caption>Photos per ${by}, rover by rover, oldest first (${fmt(rows.length)} rows; periods without photos are not listed)</caption>
+    <thead><tr><th scope="col">Rover</th><th scope="col">${by === 'month' ? 'Month' : 'Year'}</th><th scope="col" class="num">Photos</th><th scope="col" class="num">Sols with photos</th><th scope="col">First – last date</th></tr></thead><tbody>
+    ${slice.map(g => `<tr><th scope="row">${ROVERS[g.rover].name}</th><td>${g.period}</td><td class="num">${fmt(g.total_photos)}</td><td class="num">${fmt(g.sols_with_photos)}</td><td>${g.first_date} – ${g.last_date}</td></tr>`).join('')}</tbody></table></div>`;
+  renderPager($('#pager'), tpage, pages, n => { tpage = n; draw(); $('#tabpanel').scrollIntoView({ block: 'start' }); });
+}
+function cameraTable(res) {
+  let rows = res.groups.slice();
+  const tot = {}; rows.forEach(g => tot[g.rover] = (tot[g.rover] || 0) + g.total_photos);
+  const mx = {}; rows.forEach(g => mx[g.rover] = Math.max(mx[g.rover] || 0, g.total_photos));
+  if (camSort !== 'api') rows.sort((a, b) => camSort === 'desc' ? b.total_photos - a.total_photos : a.total_photos - b.total_photos);
+  $('#panel').innerHTML = `<div class="card panel table-wrap"><table class="data"><caption>Photos per camera (${fmt(rows.length)} cameras). Bars are relative to the busiest camera of the same rover.</caption>
+    <thead><tr><th scope="col">Rover</th><th scope="col">Camera</th><th scope="col" class="num" aria-sort="${camSort === 'api' ? 'none' : camSort === 'desc' ? 'descending' : 'ascending'}"><button type="button" id="sort-photos">Photos${camSort === 'desc' ? ' ▼' : camSort === 'asc' ? ' ▲' : ''}</button></th><th scope="col" class="bar-cell">Share of rover</th><th scope="col" class="num">Sols</th><th scope="col">First – last sol</th><th scope="col"><span class="visually-hidden">Link</span></th></tr></thead><tbody>
+    ${rows.map(g => { const share = 100 * g.total_photos / tot[g.rover]; return `<tr><td>${ROVERS[g.rover].name}</td><td><span class="cam-code">${g.camera}</span></td><td class="num">${fmt(g.total_photos)}</td>
+      <td class="bar-cell share"><span class="bar-track" aria-hidden="true"><span class="bar" style="width:${(100 * g.total_photos / mx[g.rover]).toFixed(1)}%"></span></span><span class="xsmall muted">${share < 1 ? '<1' : share.toFixed(share < 10 ? 1 : 0)}%</span></td>
+      <td class="num">${fmt(g.sols_with_photos)}</td><td>${fmt(g.first_sol)} – ${fmt(g.last_sol)}</td><td><a href="search.html?rovers=${g.rover}&amp;camera=${g.camera}&amp;sort=-taken_at" aria-label="Search ${g.camera} photos of ${ROVERS[g.rover].name}">Search</a></td></tr>`; }).join('')}</tbody></table></div>`;
+  $('#sort-photos').onclick = () => { camSort = camSort === 'api' ? 'desc' : camSort === 'desc' ? 'asc' : 'api'; cameraTable(res); $('#sort-photos').focus(); };
+  $('#pager').innerHTML = '';
+}
+
+function draw() {                                   /* panel for the selected tab */
+  const res = stats(applied, by);
+  $('#api-line').textContent = `GET /api/v2/photos/stats?${paramsOf(applied, 'rover')}   ·   GET /api/v2/photos/stats?${paramsOf(applied, by)}`;
+  $('#view-tools').style.display = by === 'camera' ? 'none' : '';
+  $('#pager').innerHTML = '';
+  if (by === 'camera') cameraTable(res); else if (viewMode === 'table') periodTable(res); else periodCharts(res);
+}
+
+function render() {
+  const st = $('#state'), s = applied || f; stopBusy();
+  $$('[data-state]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.state === view)));
+  $('#results').setAttribute('aria-busy', String(view === 'loading'));
+  ['#overall', '#cards', '#pager'].forEach(x => $(x).innerHTML = ''); $('#panel').innerHTML = ''; $('#breakdown').hidden = true; st.innerHTML = '';
+  $('#api-line').textContent = `GET /api/v2/photos/stats?${paramsOf(s, 'rover')}`;
+
+  if (view === 'loading') {
+    $('#cards').innerHTML = ['a', 'b', 'c'].map(() => '<div class="card rcard"><div class="skeleton" style="height:20px;width:50%"></div><div class="skeleton" style="height:36px;width:70%"></div><div class="skeleton" style="height:14px"></div><div class="skeleton" style="height:14px;width:80%"></div></div>').join('');
+    st.innerHTML = '<p class="muted small" role="status">Loading stats…</p>'; return;
+  }
+  if (view === 'e422') {
+    const resp = { error: { code: 'validation_error', message: 'Invalid query parameters', details: [{ field: 'date_min', message: 'sol_min/sol_max and date_min/date_max cannot be used together' }] } };
+    st.innerHTML = `<div class="alert alert-error" role="alert">${ICON_ERR}<div><div class="alert-title">We couldn’t load these stats</div>
+      <p style="margin:0 0 8px"><strong>Period</strong>: use either sols or dates, not both. This link had both.</p>
+      <div class="row" style="align-items:center"><button class="btn btn-sm" type="button" id="fix">Clear the period</button><span class="xsmall muted">Error code: <code>validation_error</code> (HTTP 422)</span></div>
+      <details style="margin-top:8px"><summary class="small">Response details</summary><pre class="raw">${esc(JSON.stringify(resp, null, 2))}</pre></details></div></div>`;
+    $('#fix').onclick = () => { view = 'data'; $('#sol-min').value = $('#sol-max').value = $('#date-min').value = $('#date-max').value = ''; readForm(); hints(); submit(); }; return;
+  }
+  if (view === 'busy') { renderBusy(st, { onRetry: () => { view = 'data'; render(); }, tips: ['narrow the period or pick fewer rovers;', 'try again in a moment.'] }); return; }
+
+  const top = stats(s, 'rover');
+  if (!top.total_photos) {
+    const why = [];
+    if (s.mode === 'sol' && (s.smin !== '' || s.smax !== '')) why.push('The sol range may start after a rover’s latest sol: ' + roverList(s).map(r => `${ROVERS[r].name} ${ROVERS[r].max_sol}`).join(', ') + '.');
+    if (s.mode === 'date') why.push('The dates may fall before landing or after the latest photo.');
+    if (s.cams.size) why.push('None of the chosen cameras belongs to the chosen rovers, or they took no photos in this period.');
+    st.innerHTML = `<div class="card empty">${ICON_EMPTY}<h3 style="margin-top:12px">No photos match these filters</h3><ul class="reasons">${(why.length ? why : ['Try a wider period.']).map(x => `<li>${x}</li>`).join('')}</ul><div class="row"><button class="btn btn-sm" type="button" id="e-reset">Reset filters</button></div></div>
+      <p class="xsmall muted" style="margin-top:var(--s3)">The API answers with <code>total_photos: 0</code>, <code>first_date: null</code> and <code>groups: []</code>.</p>`;
+    $('#e-reset').onclick = () => { view = 'data'; reset(); }; return;
+  }
+  renderTop(top); $('#breakdown').hidden = false; draw();
+}
+
+/* ===== actions ===== */
+function submit() {
+  readForm(); const e = validate(f); showErr(e); if (e) { $('#' + e.ids[0]).focus(); return; }
+  applied = { ...f, rovers: new Set(f.rovers), cams: new Set(f.cams) }; tpage = 1; if (view !== 'data') view = 'data';
+  if (matchMedia('(max-width: 759px)').matches) setFilters(false);
+  render();
+}
+function writeForm(s) { $('#mode-' + s.mode).checked = true; $('#sol-min').value = s.smin; $('#sol-max').value = s.smax; $('#date-min').value = s.dmin; $('#date-max').value = s.dmax; $('#full').checked = s.full; }
+function reset() { f = DEF(); writeForm(f); showErr(null); renderChips(); hints(); applied = { ...f, rovers: new Set(f.rovers), cams: new Set(f.cams) }; render(); }
+const setFilters = bindFiltersToggle();
+$('#form').addEventListener('submit', e => { e.preventDefault(); submit(); });
+$('#form').addEventListener('input', hints); $('#form').addEventListener('change', hints);
+$('#reset').onclick = () => { view = 'data'; reset(); };
+$('#cam-clear').onclick = () => { f.cams.clear(); renderCams(); hints(); };
+$$('[data-state]').forEach(b => b.onclick = () => { view = b.dataset.state; if (view === 'empty') { f = DEF(); f.mode = 'sol'; f.smin = '9000'; writeForm(f); applied = { ...f, rovers: new Set(f.rovers), cams: new Set(f.cams) }; hints(); } else if (view === 'data' && applied && applied.smin === '9000') { view = 'data'; reset(); return; } render(); });
+$$('input[name=view]').forEach(r => r.onchange = () => { viewMode = r.value; tpage = 1; draw(); });
+const tabs = $$('.tabs [role=tab]');
+tabs.forEach((t, i) => {
+  const pick = () => { by = t.dataset.by; tpage = 1; tabs.forEach(x => { const on = x === t; x.setAttribute('aria-selected', String(on)); x.tabIndex = on ? 0 : -1; }); $('#tabpanel').setAttribute('aria-labelledby', t.id); draw(); };
+  t.onclick = pick;
+  t.onkeydown = e => { const k = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0; if (!k) return; e.preventDefault(); const n = tabs[(i + k + tabs.length) % tabs.length]; n.focus(); n.click(); };
+});
+let rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { if (view === 'data' && !$('#breakdown').hidden && by !== 'camera' && viewMode === 'chart') draw(); }, 200); });
+
+/* deep link: ?rovers=…&camera=…&sol_min=…&group_by=month|year|camera&sample_type=full */
+if (q.get('rovers')) f.rovers = new Set(q.get('rovers').split(',').filter(r => ROVERS[r])); if (!f.rovers.size) f.rovers = new Set(ROVER_IDS);
+if (q.get('sol_min')) f.smin = q.get('sol_min'); if (q.get('sol_max')) f.smax = q.get('sol_max');
+if (q.get('date_min') || q.get('date_max')) { f.mode = 'date'; f.dmin = q.get('date_min') || ''; f.dmax = q.get('date_max') || ''; }
+if (q.get('camera')) q.get('camera').toUpperCase().split(',').forEach(c => { if (ROVER_IDS.some(r => f.rovers.has(r) && CAMERAS[r].some(x => x[0] === c)) && f.cams.size < 10) f.cams.add(c); });
+if (q.get('sample_type') === 'full') f.full = true;
+if (['month', 'year', 'camera'].includes(q.get('group_by'))) { by = q.get('group_by'); tabs.forEach(x => { const on = x.dataset.by === by; x.setAttribute('aria-selected', String(on)); x.tabIndex = on ? 0 : -1; $('#tabpanel').setAttribute('aria-labelledby', 'tab-' + by); }); }
+writeForm(f); renderChips(); hints();
+applied = { ...f, rovers: new Set(f.rovers), cams: new Set(f.cams) };
+render();
+</script>
+</body>
+</html>

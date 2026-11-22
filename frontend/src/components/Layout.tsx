@@ -88,6 +88,9 @@ export function Layout({ route, pathname, children }: Props) {
             <Link href={`/rovers/${rover}`} aria-current={cur("photos")} title="Latest sol">
               Photos
             </Link>
+            <Link href="/search" aria-current={cur("search")} title="Search photos across rovers">
+              Search
+            </Link>
             <Link href={`/rovers/${rover}/timeline`} aria-current={cur("timeline")}>
               Timeline
             </Link>
@@ -104,6 +107,13 @@ export function Layout({ route, pathname, children }: Props) {
                 Samples
               </Link>
             )}
+            <Link
+              href="/stats"
+              aria-current={cur("stats")}
+              title="Photo counts by month, year and camera"
+            >
+              Stats
+            </Link>
             <a href="/docs">API docs</a>
           </nav>
           <button

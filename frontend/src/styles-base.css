@@ -49,6 +49,14 @@
   --map-latest: #1f5fbf;
   --map-sample: #6a3da8;
 
+  /* charts and the search point (stage 19): bars >= 3:1 on --surface, the grid is decorative */
+  --chart-bar: #a83c17;
+  --chart-bar-hi: #1d1a17;
+  --chart-grid: #e4ded6;
+  --chart-axis: #5a534b;
+  --map-pin: #1f5fbf; /* 5.8:1 on --map-bg */
+  --map-radius: #1f5fbf;
+
   --focus: #1f5fbf;
   --skeleton: #e6e0d8;
   --skeleton-hi: #f3efea;
@@ -114,6 +122,12 @@
     --map-stop: #b3aaa0;
     --map-latest: #7fb2ff;
     --map-sample: #c8aaff;
+    --chart-bar: #f08f62;
+    --chart-bar-hi: #eee8e1;
+    --chart-grid: #2e2924;
+    --chart-axis: #b3aaa0;
+    --map-pin: #7fb2ff;
+    --map-radius: #7fb2ff;
     --focus: #7fb2ff;
     --skeleton: #2a2621;
     --skeleton-hi: #36312b;
@@ -155,6 +169,12 @@
   --map-stop: #b3aaa0;
   --map-latest: #7fb2ff;
   --map-sample: #c8aaff;
+  --chart-bar: #f08f62;
+  --chart-bar-hi: #eee8e1;
+  --chart-grid: #2e2924;
+  --chart-axis: #b3aaa0;
+  --map-pin: #7fb2ff;
+  --map-radius: #7fb2ff;
   --focus: #7fb2ff;
   --skeleton: #2a2621;
   --skeleton-hi: #36312b;
@@ -162,6 +182,9 @@
 }
 
 /* ---------- Base ---------- */
+[hidden] {
+  display: none !important;
+}
 *,
 *::before,
 *::after {
@@ -410,6 +433,8 @@ main {
 }
 input[type="number"],
 input[type="date"],
+input[type="time"],
+input[type="text"],
 select {
   min-height: 40px;
   padding: 0 var(--s3);
@@ -517,6 +542,14 @@ select:disabled {
 }
 .alert-error .alert-title {
   color: var(--err);
+}
+.alert-warn {
+  background: var(--warn-soft);
+  border-color: var(--warn);
+}
+.alert-warn .alert-title,
+.alert-warn svg {
+  color: var(--warn);
 }
 .alert-title {
   font-weight: 700;

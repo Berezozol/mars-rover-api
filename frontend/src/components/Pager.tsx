@@ -55,7 +55,7 @@ export function Pager({ page, pages, hrefFor }: Props) {
       {nav("Next ›", page + 1, page >= pages, "Next page")}
       <span class="xsmall muted">
         Page {page} of {pages}
-      </span>
+      </span>{" "}
       <GoToPage page={page} pages={pages} hrefFor={hrefFor} />
     </nav>
   );

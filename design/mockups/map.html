@@ -18,6 +18,10 @@
   .view-tabs a[aria-disabled="true"] { cursor: not-allowed; opacity: .75; }
   .view-tabs a[aria-disabled="true"]:hover { color: var(--text-muted); }
 
+  .mode-switch { display: inline-flex; margin-bottom: var(--s4); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); overflow: hidden; background: var(--surface); }
+  .mode-switch a { padding: 8px 14px; font-size: var(--fs-sm); font-weight: 500; text-decoration: none; color: var(--text-muted); border-right: 1px solid var(--border); }
+  .mode-switch a:last-child { border-right: 0; }
+  .mode-switch a[aria-current="page"] { background: var(--accent); color: var(--on-accent); }
   .latest-pos { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4); align-items: center; padding: var(--s3) var(--s4); margin: var(--s3) 0; border-left: 4px solid var(--map-latest); }
   .latest-pos[hidden] { display: none; }
   .latest-pos .k { font-size: var(--fs-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; display: flex; align-items: center; gap: 6px; }
@@ -127,10 +131,12 @@
     <nav class="nav" aria-label="Main">
       <a href="index.html">Rovers</a>
       <a href="photos.html?rover=perseverance" title="Latest sol">Photos</a>
+      <a href="search.html">Search</a>
       <a href="manifest.html">Timeline</a>
       <a href="map.html" aria-current="page">Route map</a>
       <a href="flights.html">Flights</a>
       <a href="samples.html">Samples</a>
+      <a href="stats.html">Stats</a>
       <a href="index.html#api">API</a>
     </nav>
     <button class="theme-toggle" type="button" aria-label="Toggle colour theme">Theme</button>
@@ -168,6 +174,10 @@
       <a href="samples.html" id="tab-samples" title="Rock samples sealed by Perseverance">Samples</a>
       <a href="flights.html" id="tab-ingenuity" title="Flights of the Ingenuity helicopter, which flew from Perseverance's landing site">Flights</a>
     </nav>
+    <div class="mode-switch" role="navigation" aria-label="Route map mode">
+      <a href="map.html" id="mode-browse" aria-current="page">Browse stops</a>
+      <a href="near.html" id="mode-near">Photos near a point</a>
+    </div>
 
     <h1 id="title">Perseverance route map</h1>
     <p class="muted" id="lede">Where the rover has stopped, sol by sol. Select a stop to see its details and open that sol&rsquo;s photos.</p>
@@ -483,6 +493,7 @@ function renderSel() {
   <div class="row" style="margin-top:var(--s3);align-items:center">
     <a class="btn btn-primary btn-sm" href="photos.html?rover=${r.id}&amp;sol=${w.sol}" id="open-photos">Photos of sol ${w.sol}</a>
     <a class="btn btn-sm" href="photos.html?rover=${r.id}&amp;site=${w.site}&amp;drive=${w.drive}" id="open-stop-photos" title="Photos taken at site ${w.site}, drive ${w.drive}">Photos at this stop</a>
+    <a class="btn btn-sm" href="near.html?rover=${r.id}&amp;near=${w.lat.toFixed(4)},${w.lon.toFixed(4)}&amp;radius_km=1" id="open-near" title="Photos taken at stops within 1 km of this stop">Photos within 1 km</a>
     <button class="btn btn-sm" type="button" id="clear-sel">Clear</button>
   </div>
   ${sampleCards(w)}
@@ -545,7 +556,7 @@ function render() {
   document.title = r.name + ' route map — Sol Index';
   $('#title').textContent = r.name + ' route map';
   document.querySelectorAll('.rover-tabs a').forEach(a => { a.removeAttribute('aria-current'); if (a.dataset.rover === state.rover) a.setAttribute('aria-current', 'page'); });
-  $('#tab-photos').href = `photos.html?rover=${r.id}`; $('#tab-timeline').href = `manifest.html?rover=${r.id}`;
+  $('#tab-photos').href = `photos.html?rover=${r.id}`; $('#mode-near').href = `near.html?rover=${r.id}`; $('#tab-timeline').href = `manifest.html?rover=${r.id}`;
   $('#tgl-samples').hidden = $('#lg-sample').hidden = state.rover !== 'perseverance';
   $('#tab-ingenuity').hidden = state.rover !== 'perseverance'; $('#tab-samples').hidden = state.rover !== 'perseverance'; /* Ingenuity flew from Perseverance's site; Flights link only here */
   $('#from-sol').value = state.from ?? ''; $('#to-sol').value = state.to ?? '';

@@ -103,6 +103,8 @@ export type RouteMatch =
   | { name: "flights"; rover: string }
   | { name: "samples"; rover: string }
   | { name: "photo"; id: string }
+  | { name: "search" }
+  | { name: "stats" }
   | { name: "notfound" };
 
 export function matchRoute(pathname: string): RouteMatch {
@@ -123,6 +125,8 @@ export function matchRoute(pathname: string): RouteMatch {
     return { name: "samples", rover: b.toLowerCase() };
   }
   if (a === "photos" && b && parts.length === 2) return { name: "photo", id: b };
+  if (a === "search" && parts.length === 1) return { name: "search" };
+  if (a === "stats" && parts.length === 1) return { name: "stats" };
   return { name: "notfound" };
 }
 

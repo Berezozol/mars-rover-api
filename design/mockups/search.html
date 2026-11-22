@@ -1,0 +1,612 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Search photos — Sol Index</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  .page-head { display: flex; gap: var(--s3); align-items: baseline; flex-wrap: wrap; margin-bottom: var(--s2); }
+  .page-head h1 { margin: 0; }
+  .lede { max-width: 70ch; }
+  .filters-card { margin: var(--s4) 0; }
+  .filters-bar { border-bottom: 1px solid transparent; }
+  .filters-card:has(#filters-panel:not([data-collapsed="true"])) .filters-bar { border-bottom-color: var(--border); }
+  .actions { display: flex; gap: var(--s3); align-items: center; flex-wrap: wrap; }
+  .time-opts { display: grid; gap: var(--s2); }
+  .stepper-note { margin: 0; }
+  .cam-box { max-height: 320px; overflow: auto; padding: var(--s2) 2px; }
+  .counter { font-size: var(--fs-xs); color: var(--text-muted); }
+  .sr-timer { position: absolute; left: -9999px; }
+  .busy-count { font-variant-numeric: tabular-nums; font-weight: 700; }
+  .reasons { margin: var(--s2) 0 0; padding-left: 1.2em; text-align: left; font-size: var(--fs-sm); }
+  .reasons li + li { margin-top: 4px; }
+  .empty .reasons { display: inline-block; }
+  .sample-note { font-size: var(--fs-xs); color: var(--text-muted); margin-top: var(--s3); }
+</style>
+</head>
+<body>
+<header class="site-header">
+  <div class="container">
+    <a class="brand" href="index.html" aria-label="Sol Index home">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="8" fill="var(--accent)"/><ellipse cx="13" cy="13" rx="12" ry="4.5" fill="none" stroke="var(--text-muted)" stroke-width="1.4" transform="rotate(-20 13 13)"/></svg>
+      Sol Index <small>unofficial</small>
+    </a>
+    <nav class="nav" aria-label="Main">
+      <a href="index.html">Rovers</a>
+      <a href="photos.html?rover=perseverance" title="Latest sol">Photos</a>
+      <a href="search.html" aria-current="page" title="Search photos across rovers">Search</a>
+      <a href="manifest.html">Timeline</a>
+      <a href="map.html">Route map</a>
+      <a href="flights.html">Flights</a>
+      <a href="samples.html">Samples</a>
+      <a href="stats.html" title="Photo counts by month, year and camera">Stats</a>
+      <a href="index.html#api">API</a>
+    </nav>
+    <button class="theme-toggle" type="button" aria-label="Toggle colour theme">Theme</button>
+  </div>
+</header>
+
+<main>
+  <div class="container">
+
+    <div class="mock-bar" role="group" aria-label="Mockup state switcher (not part of the product)">
+      <strong>Mockup</strong> state:
+      <button class="btn btn-sm" type="button" data-state="data">Results</button>
+      <button class="btn btn-sm" type="button" data-state="loading">Loading</button>
+      <button class="btn btn-sm" type="button" data-state="empty">Empty</button>
+      <button class="btn btn-sm" type="button" data-state="e422a">422: time window</button>
+      <button class="btn btn-sm" type="button" data-state="e422b">422: page limit</button>
+      <button class="btn btn-sm" type="button" data-state="busy">503 service_busy</button>
+      <button class="btn btn-sm" type="button" data-state="deep">Deep page (cap)</button>
+      <span>· data is generated in the page, not fetched; totals are estimates from the filters</span>
+    </div>
+
+    <div class="page-head">
+      <h1>Search photos</h1>
+      <span class="small muted" id="head-sub">Across all rovers · GET /api/v2/photos</span>
+    </div>
+    <p class="lede muted">Find photos from several rovers at once: by sol or date, camera, time of day on Mars and frame size. For one rover and one sol, the <a href="photos.html">rover photo browser</a> is quicker.</p>
+
+    <form class="card filters-card" id="form" novalidate aria-label="Photo search filters">
+      <div class="filters-bar">
+        <button class="btn btn-sm filters-toggle" id="filters-toggle" type="button" aria-expanded="true" aria-controls="filters-panel"><span>Hide filters</span><span class="badge badge-warn no-dot" id="filters-count" hidden>0</span></button>
+        <div class="summary-text" id="summary" aria-live="polite"></div>
+        <button class="btn btn-sm" type="button" id="reset">Reset</button>
+      </div>
+
+      <div class="filters-panel" id="filters-panel" data-collapsed="false">
+
+        <fieldset class="fieldset">
+          <legend>Rovers</legend>
+          <div class="chips" id="rover-chips" role="group" aria-label="Rovers"></div>
+          <span class="hint">At least one. Ingenuity uses Perseverance&rsquo;s sols.</span>
+        </fieldset>
+
+        <fieldset class="fieldset">
+          <legend>When</legend>
+          <div class="segmented" role="radiogroup" aria-label="Find by">
+            <input type="radio" name="mode" id="mode-sol" value="sol" checked><label for="mode-sol">Sol</label>
+            <input type="radio" name="mode" id="mode-date" value="date"><label for="mode-date">Earth date</label>
+          </div>
+          <div class="inline-fields" id="when-sol">
+            <div class="field"><label for="sol-min">From sol</label><input id="sol-min" type="number" min="0" step="1" inputmode="numeric" placeholder="first"></div>
+            <div class="field"><label for="sol-max">To sol</label><input id="sol-max" type="number" min="0" step="1" inputmode="numeric" placeholder="last"></div>
+          </div>
+          <div class="inline-fields" id="when-date" hidden>
+            <div class="field"><label for="date-min">From date</label><input id="date-min" type="date"></div>
+            <div class="field"><label for="date-max">To date</label><input id="date-max" type="date"></div>
+          </div>
+          <span class="hint" id="when-hint">Sols are counted separately for each rover: sol 1000 is a different day for Curiosity and Perseverance. Leave both empty for all sols; the same value in both means one sol.</span>
+          <div class="field-err" id="err-when" role="alert" hidden></div>
+        </fieldset>
+
+        <fieldset class="fieldset wide">
+          <legend>Cameras</legend>
+          <div class="row" style="align-items:center"><span class="counter" id="cam-counter">All cameras</span><button class="btn btn-sm" type="button" id="cam-clear" hidden>Clear cameras</button></div>
+          <details class="more" id="cam-details">
+            <summary>Choose cameras</summary>
+            <div class="cam-box" id="cam-box" tabindex="0" role="group" aria-label="Camera list, scrollable"></div>
+          </details>
+          <span class="hint">Up to 10. A rover without any of the chosen cameras adds no photos.</span>
+        </fieldset>
+
+        <fieldset class="fieldset">
+          <legend>Time of day on Mars</legend>
+          <div class="segmented" role="radiogroup" aria-label="Local time on Mars">
+            <input type="radio" name="tmode" id="t-any" value="any" checked><label for="t-any">Any time</label>
+            <input type="radio" name="tmode" id="t-golden" value="golden"><label for="t-golden">Golden hour</label>
+            <input type="radio" name="tmode" id="t-custom" value="custom"><label for="t-custom">Custom window</label>
+          </div>
+          <div class="time-opts">
+            <p class="note" id="golden-note" hidden>Golden hour = 05:30&ndash;07:00 and 17:00&ndash;18:30 local solar time. A simplification: real sunrise and sunset move by tens of minutes with the season.</p>
+            <div class="inline-fields" id="custom-time" hidden>
+              <div class="field"><label for="t-min">From (local)</label><input id="t-min" type="time"></div>
+              <div class="field"><label for="t-max">Until (local)</label><input id="t-max" type="time"></div>
+            </div>
+            <p class="note" id="wrap-note" hidden></p>
+            <div class="field-err" id="err-time" role="alert" hidden></div>
+            <p class="note warn" id="time-cover" hidden>Photos without a local time are left out: about half of Curiosity&rsquo;s, and Perseverance photos loaded before 20 Nov 2026. Scale: mean solar time for Curiosity, Perseverance and Ingenuity; the same clock reading is used as is for every chosen rover.</p>
+          </div>
+        </fieldset>
+
+        <fieldset class="fieldset">
+          <legend>Minimum frame size (px)</legend>
+          <div class="inline-fields">
+            <div class="field"><label for="min-w">Width at least</label><input id="min-w" type="number" min="1" max="32767" step="1" inputmode="numeric" placeholder="any"></div>
+            <div class="field"><label for="min-h">Height at least</label><input id="min-h" type="number" min="1" max="32767" step="1" inputmode="numeric" placeholder="any"></div>
+          </div>
+          <div class="field-err" id="err-size" role="alert" hidden></div>
+          <p class="note warn" id="size-cover" hidden>Curiosity photos have no known frame size, so they never match a size filter.</p>
+        </fieldset>
+
+        <fieldset class="fieldset">
+          <legend>Order and paging</legend>
+          <div class="inline-fields">
+            <div class="field"><label for="sort">Sort</label>
+              <select id="sort">
+                <option value="-taken_at">Newest on Mars (latest taken first)</option>
+                <option value="taken_at">Oldest on Mars (earliest taken first)</option>
+                <option value="-sol">Latest sol first (per rover)</option>
+                <option value="sol">Earliest sol first (per rover)</option>
+              </select></div>
+            <div class="field"><label for="sample">Frame type</label>
+              <select id="sample"><option value="">All</option><option value="full">Full</option><option value="subframe">Subframe</option><option value="downsampled">Downsampled</option></select></div>
+            <div class="field"><label for="per-page">Per page</label>
+              <select id="per-page"><option>24</option><option>48</option><option>96</option></select></div>
+          </div>
+          <p class="note" id="sort-note" hidden>&ldquo;Latest sol first&rdquo; mixes eras when several rovers are chosen: Curiosity&rsquo;s sol 5066 outranks Perseverance&rsquo;s sol 2031. Use &ldquo;Newest on Mars&rdquo; for a feed of what arrived last.</p>
+        </fieldset>
+
+        <div class="wide actions">
+          <button class="btn btn-primary" type="submit">Search</button>
+          <span class="badge badge-warn" id="heavy" hidden>May be slow</span>
+          <span class="hint" id="heavy-note" hidden>This kind of search covers a lot of photos. If the server is busy it will ask you to retry; a single sol makes it fast.</span>
+        </div>
+      </div>
+    </form>
+
+    <section id="results" aria-labelledby="result-title" aria-busy="false">
+      <div class="result-head">
+        <h2 id="result-title">Results</h2>
+        <span class="muted small" id="result-sub" role="status"></span>
+      </div>
+      <div id="body"></div>
+      <div id="pager"></div>
+    </section>
+    <p class="api-line" id="api-line"></p>
+    <p class="sample-note">Mockup data: photos are generated to match the filters and credited like real ones; counts are rough estimates, not API output.</p>
+  </div>
+</main>
+<footer class="site-footer">
+  <div class="container">Sol Index is an independent, unofficial project, not affiliated with or endorsed by NASA or JPL. Image credit is shown next to every photo.</div>
+</footer>
+
+<script>
+/* ===== Shared mockup helpers (copied into each page so every file stays self-contained) ===== */
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const fmt = n => n == null ? '—' : Number(n).toLocaleString('en-US');
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/* GET /api/v2/rovers — only rovers with data (Spirit and Opportunity are hidden until their archives are imported) */
+const ROVERS = {
+  perseverance: {"id":"perseverance","name":"Perseverance","mission":"mars2020","launch_date":"2020-07-30","landing_date":"2021-02-18","end_date":null,"status":"active","max_sol":2031,"max_date":"2026-11-06","total_photos":579518,"cameras_count":23,"last_synced_at":"2026-11-17T06:00:12Z","data_source":"sync"},
+  curiosity:    {"id":"curiosity","name":"Curiosity","mission":"msl","launch_date":"2011-11-26","landing_date":"2012-08-06","end_date":null,"status":"active","max_sol":5066,"max_date":"2026-11-07","total_photos":1184530,"cameras_count":17,"last_synced_at":"2026-11-17T06:00:08Z","data_source":"sync"},
+  ingenuity:    {"id":"ingenuity","name":"Ingenuity","mission":"mars2020","launch_date":"2020-07-30","landing_date":"2021-02-18","end_date":"2024-01-25","status":"complete","max_sol":1042,"max_date":"2024-01-25","total_photos":7412,"cameras_count":2,"last_synced_at":"2026-11-12T09:41:03Z","data_source":"archive"}
+};
+const ROVER_IDS = Object.keys(ROVERS);
+/* GET /api/v2/rovers/{rover}/cameras -> [{code, name, total_photos}] (abridged) */
+const CAMERAS = {
+  perseverance: [
+    ["CACHECAM","CacheCam",6120],["EDL_RDCAM","Rover Down-Look Camera",2114],["FRONT_HAZCAM_LEFT_A","Front Hazard Avoidance Camera - Left",41877],
+    ["FRONT_HAZCAM_RIGHT_A","Front Hazard Avoidance Camera - Right",40215],["MCZ_LEFT","Mastcam-Z Left",118342],["MCZ_RIGHT","Mastcam-Z Right",109877],
+    ["NAVCAM_LEFT","Left Navigation Camera (Navcam)",96210],["NAVCAM_RIGHT","Right Navigation Camera (Navcam)",71433],["PIXL_MCC","PIXL Micro Context Camera",10544],
+    ["REAR_HAZCAM_LEFT","Rear Hazard Avoidance Camera - Left",16202],["REAR_HAZCAM_RIGHT","Rear Hazard Avoidance Camera - Right",15987],
+    ["SHERLOC_ACI","SHERLOC Autofocus and Context Imager",9311],["SHERLOC_WATSON","SHERLOC WATSON Camera",14270],["SKYCAM","MEDA Skycam",7820],
+    ["SUPERCAM_RMI","SuperCam Remote Micro Imager",13087]],
+  curiosity: [
+    ["CHEMCAM_RMI","Chemistry and Camera Complex",71230],["FHAZ_LEFT_A","Front Hazard Avoidance Camera - Left A",9877],["FHAZ_LEFT_B","Front Hazard Avoidance Camera - Left B",24102],
+    ["FHAZ_RIGHT_A","Front Hazard Avoidance Camera - Right A",9640],["FHAZ_RIGHT_B","Front Hazard Avoidance Camera - Right B",23988],["MAHLI","Mars Hand Lens Imager",88431],
+    ["MARDI","Mars Descent Imager",21115],["MAST_LEFT","Mast Camera - Left",402554],["MAST_RIGHT","Mast Camera - Right",318760],["NAV_LEFT_A","Navigation Camera - Left A",31220],
+    ["NAV_LEFT_B","Navigation Camera - Left B",96513],["NAV_RIGHT_A","Navigation Camera - Right A",12007],["NAV_RIGHT_B","Navigation Camera - Right B",41389],
+    ["RHAZ_LEFT_A","Rear Hazard Avoidance Camera - Left A",5902],["RHAZ_LEFT_B","Rear Hazard Avoidance Camera - Left B",13350],["RHAZ_RIGHT_A","Rear Hazard Avoidance Camera - Right A",5811],
+    ["RHAZ_RIGHT_B","Rear Hazard Avoidance Camera - Right B",13241]],
+  ingenuity: [["HELI_NAV","Helicopter Navigation Camera",5230],["HELI_RTE","Helicopter Return-to-Earth Camera",2182]]
+};
+const camName = (rover, code) => (CAMERAS[rover].find(c => c[0] === code) || [code, code])[1];
+const phClass = code =>
+  /RMI/.test(code) ? 'ph ph-rmi' : /NAV/.test(code) ? 'ph ph-gray' : /HAZ/.test(code) ? 'ph ph-haz' :
+  /WATSON|MAHLI|ACI|PIXL/.test(code) ? 'ph ph-close' : /SKY|HELI/.test(code) ? 'ph ph-sky' : 'ph';
+const creditOf = code =>
+  /MCZ/.test(code) ? 'NASA/JPL-Caltech/ASU' : /SUPERCAM|CHEMCAM/.test(code) ? 'NASA/JPL-Caltech/LANL' :
+  /MAST|MAHLI|MARDI|WATSON/.test(code) ? 'NASA/JPL-Caltech/MSSS' : 'NASA/JPL-Caltech';
+
+/* Sol <-> date. A sol is 1.0275 days; Ingenuity uses Perseverance sols. Close enough for a mockup. */
+const SOL_DAYS = 1.0274912;
+const landingOf = r => Date.parse((r === 'ingenuity' ? ROVERS.perseverance : ROVERS[r]).landing_date + 'T00:00:00Z');
+const solToMs = (r, sol) => landingOf(r) + Math.round(sol * SOL_DAYS * 86400000);
+const solToDate = (r, sol) => new Date(solToMs(r, sol)).toISOString().slice(0, 10);
+const dateToSol = (r, d) => Math.max(0, Math.round((Date.parse(d + 'T00:00:00Z') - landingOf(r)) / 86400000 / SOL_DAYS));
+
+/* Deterministic pseudo-random so the mock data does not jump on re-render */
+const rnd = seed => { let t = (Math.imul(seed + 1, 2654435761)) >>> 0; t ^= t << 13; t >>>= 0; t ^= t >>> 17; t ^= t << 5; t >>>= 0; return t / 4294967296; };
+
+/* One Photo exactly as in GET /api/v2/photos items (docs/API.md "Photo").
+   No local_time here: that field exists only in PhotoDetail. */
+function makePhoto(rover, sol, camCode, seed, ms) {
+  const r = rnd(seed), id = 100000 + ROVER_IDS.indexOf(rover) * 3000000 + sol * 211 + (seed % 211);
+  const taken = new Date(ms ?? (solToMs(rover, sol) + Math.floor(r * 86400000)));
+  const nav = /NAV|HAZ/.test(camCode);
+  const type = rover === 'curiosity' ? ['full', 'full', 'subframe', 'downsampled', 'mixed'][seed % 5] : ['full', 'full', 'subframe', 'downsampled'][seed % 4];
+  const w = rover === 'curiosity' ? null : (nav ? 1280 : 1648), h = rover === 'curiosity' ? null : (nav ? 960 : 1200);
+  const base = `https://images.invalid/${rover}/${id}`;
+  return {
+    id, rover, sol, earth_date: taken.toISOString().slice(0, 10), taken_at: taken.toISOString().replace('.000Z', 'Z'),
+    camera: { code: camCode, name: camName(rover, camCode) }, sample_type: type,
+    title: `${ROVERS[rover].name} Sol ${sol}: ${camName(rover, camCode)}`,
+    img_src: `${base}_full.png`,
+    images: rover === 'curiosity' ? { small: null, medium: null, large: null, full: `${base}_full.jpg` } : { small: `${base}_320.jpg`, medium: `${base}_800.jpg`, large: `${base}_1200.jpg`, full: `${base}_full.png` },
+    credit: creditOf(camCode), source: { id: `${camCode}_${sol}_${id}`, link: `https://images.invalid/raw/${id}` }, width: w, height: h
+  };
+}
+const FILTERABLE = ['full', 'subframe', 'downsampled'];
+function tile(p, showRover = true) {
+  const st = FILTERABLE.includes(p.sample_type) ? 'st' : 'st other';
+  const time = p.taken_at.slice(11, 16);
+  return `<a class="tile" href="photo.html?id=${p.id}&amp;rover=${p.rover}">
+    <div class="${phClass(p.camera.code)}" role="img" aria-label="${esc(p.camera.name)}, ${ROVERS[p.rover].name} sol ${p.sol}, ${esc(p.earth_date)} ${time} UTC"></div>
+    <div class="tile-meta"><span class="cam" title="${esc(p.camera.name)}">${p.camera.code}</span><span class="${st}">${p.sample_type}</span></div>
+    <div class="tile-meta muted tile-line">${showRover ? `<span><strong>${ROVERS[p.rover].name}</strong> · sol ${p.sol}</span>` : `<span>Sol ${p.sol}</span>`}</div>
+    <div class="tile-meta muted tile-line"><time datetime="${p.taken_at}">${p.earth_date} ${time} UTC</time></div>
+    <div class="tile-credit" title="Credit: ${esc(p.credit)}">Credit: ${esc(p.credit)}</div>
+  </a>`;
+}
+const skeletonGrid = n => `<div class="photo-grid">${Array.from({ length: n }, () => `<div><div class="skeleton" style="aspect-ratio:4/3"></div><div class="skeleton" style="height:10px;margin-top:8px;width:70%"></div><div class="skeleton" style="height:10px;margin-top:6px;width:45%"></div></div>`).join('')}</div>`;
+
+const ICON_ERR = '<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" style="flex:none;color:var(--err)"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7v6M12 16.5v.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
+const ICON_WARN = '<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" style="flex:none;color:var(--warn)"><path d="M12 3 2 20h20z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M12 10v4.5M12 17v.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
+const ICON_EMPTY = '<svg width="48" height="48" viewBox="0 0 48 48" aria-hidden="true"><rect x="6" y="10" width="36" height="28" rx="4" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="17" cy="21" r="3.5" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="M8 35l11-9 7 6 6-5 9 8" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/></svg>';
+
+/* Pager: same behaviour as frontend/src/components/Pager.tsx (window of pages, "Go to page" with inline error). */
+function pageWindow(page, pages) {
+  const set = new Set([1, pages, page - 1, page, page + 1].filter(n => n >= 1 && n <= pages));
+  const out = []; let last = 0;
+  for (const n of [...set].sort((a, b) => a - b)) { if (n - last > 1) out.push('gap'); out.push(n); last = n; }
+  return out;
+}
+let pagerSeq = 0;
+function renderPager(el, page, pages, onPage) {
+  el.innerHTML = '';
+  if (pages <= 1) return;
+  const id = 'goto-' + (++pagerSeq), btn = (label, target, dis, aria) =>
+    dis ? `<span class="btn btn-sm" aria-disabled="true" aria-label="${aria}">${label}</span>` : `<button class="btn btn-sm" type="button" data-p="${target}" aria-label="${aria}">${label}</button>`;
+  let h = `<nav class="pager" aria-label="Pagination">` + btn('‹ Prev', page - 1, page <= 1, 'Previous page');
+  for (const n of pageWindow(page, pages)) h += n === 'gap' ? '<span class="muted" aria-hidden="true">…</span>' : `<button class="btn btn-sm" type="button" data-p="${n}" ${n === page ? 'aria-current="page"' : ''} aria-label="Page ${n}">${n}</button>`;
+  h += btn('Next ›', page + 1, page >= pages, 'Next page') + `<span class="xsmall muted">Page ${fmt(page)} of ${fmt(pages)}</span>
+    <form class="goto-page" novalidate><label for="${id}" class="xsmall muted">Go to page</label>
+    <input id="${id}" type="number" inputmode="numeric" min="1" max="${pages}" step="1" placeholder="${page}">
+    <button type="submit" class="btn btn-sm">Go</button><span class="goto-page-err" id="${id}-e" role="alert" hidden></span></form></nav>`;
+  el.innerHTML = h;
+  el.querySelectorAll('button[data-p]').forEach(b => b.onclick = () => onPage(+b.dataset.p));
+  const f = el.querySelector('form'), inp = f.querySelector('input'), err = f.querySelector('.goto-page-err');
+  const setErr = m => {
+    err.hidden = !m; err.textContent = m;
+    if (m) { inp.setAttribute('aria-invalid', 'true'); inp.setAttribute('aria-describedby', id + '-e'); }
+    else { inp.removeAttribute('aria-invalid'); inp.removeAttribute('aria-describedby'); }
+  };
+  inp.oninput = () => setErr('');
+  f.onsubmit = e => {
+    e.preventDefault();
+    const t = inp.value.trim(), n = Number(t);
+    if (t === '') return setErr(`Enter a page number from 1 to ${fmt(pages)}.`);
+    if (!/^\d+$/.test(t) || !Number.isSafeInteger(n) || n < 1 || n > pages) return setErr(`Enter a whole number from 1 to ${fmt(pages)}.`);
+    setErr(''); if (n !== page) onPage(n);
+  };
+}
+
+/* Collapsible filter panel (phones): the button toggles aria-expanded; wide screens ignore it (CSS). */
+function bindFiltersToggle() {
+  const b = $('#filters-toggle'), p = $('#filters-panel');
+  const set = open => { b.setAttribute('aria-expanded', String(open)); p.dataset.collapsed = String(!open); b.firstElementChild.textContent = open ? 'Hide filters' : 'Filters'; };
+  set(matchMedia('(min-width: 760px)').matches);
+  b.onclick = () => set(b.getAttribute('aria-expanded') !== 'true');
+  return set;
+}
+$('.theme-toggle').onclick = () => {
+  const r = document.documentElement, dark = r.dataset.theme ? r.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  r.dataset.theme = dark ? 'light' : 'dark';
+};
+
+/* 503 with Retry-After: countdown, then enable the button (screen readers hear the message twice only). */
+let _busyT = null;
+const stopBusy = () => clearInterval(_busyT);
+function renderBusy(body, { onRetry, tips }) {
+  const resp = { error: { code: 'service_busy', message: 'Server is busy, retry later', details: null } };
+  let left = 5;
+  body.innerHTML = `<div class="alert alert-warn">${ICON_WARN}<div style="min-width:0"><div class="alert-title">The server is busy</div>
+    <p style="margin:0 0 8px"><span id="busy-line"><span aria-hidden="true">Try again in <span class="busy-count" id="busy-n">${left}</span> s.</span></span></p>
+    <div class="row" style="align-items:center"><button class="btn btn-primary btn-sm" type="button" id="retry" disabled>Try again</button>
+      <span class="xsmall muted">Error code: <code>service_busy</code> (HTTP 503, <code>Retry-After: 5</code>)</span></div>
+    <p class="small" style="margin:12px 0 4px"><strong>Or narrow the search:</strong></p><ul class="reasons" style="margin:0">${tips.map(t => `<li>${t}</li>`).join('')}</ul>
+    <details style="margin-top:8px"><summary class="small">Response details</summary><pre class="raw">HTTP/1.1 503
+Retry-After: 5
+Cache-Control: no-store
+
+${esc(JSON.stringify(resp, null, 2))}</pre></details></div></div><p class="visually-hidden" role="status" id="busy-sr">The server is busy. You can try again in 5 seconds.</p>`;
+  stopBusy();
+  _busyT = setInterval(() => {
+    left--; const n = $('#busy-n'); if (n) n.textContent = left;
+    if (left <= 0) { stopBusy(); $('#retry').disabled = false; $('#busy-line').textContent = 'You can try again now.'; $('#busy-sr').textContent = 'You can try again now.'; }
+  }, 1000);
+  $('#retry').onclick = onRetry;
+}
+
+
+/* ===== Search page (mockup of the idea; mimics what the app would send to GET /api/v2/photos) ===== */
+const MAX_DEEP = 10000;                         /* page x per_page <= 10 000, else 422 */
+const DEF = () => ({ rovers: new Set(ROVER_IDS), mode: 'sol', smin: '', smax: '', dmin: '', dmax: '', cams: new Set(), sample: '', sort: '-taken_at', tmode: 'any', tmin: '', tmax: '', minw: '', minh: '', per: 24 });
+let f = DEF();                                  /* form state, edited live */
+let applied = null;                             /* snapshot used for the results */
+let page = 1, view = 'data', busyTimer = null;
+const q = new URLSearchParams(location.search);
+
+/* ---------- reading the form / validation ---------- */
+function readForm() {
+  f.mode = $('input[name=mode]:checked').value; f.smin = $('#sol-min').value; f.smax = $('#sol-max').value;
+  f.dmin = $('#date-min').value; f.dmax = $('#date-max').value; f.sort = $('#sort').value; f.sample = $('#sample').value;
+  f.tmode = $('input[name=tmode]:checked').value; f.tmin = $('#t-min').value; f.tmax = $('#t-max').value;
+  f.minw = $('#min-w').value; f.minh = $('#min-h').value; f.per = +$('#per-page').value;
+}
+function validate(s) {
+  const errs = [];
+  const isInt = v => /^\d+$/.test(v) && Number(v) <= 2147483647;
+  if (s.mode === 'sol') {
+    if ((s.smin !== '' && !isInt(s.smin)) || (s.smax !== '' && !isInt(s.smax))) errs.push({ key: 'when', ids: ['sol-min', 'sol-max'], text: 'Sols must be whole numbers from 0 to 2,147,483,647.' });
+    else if (s.smin !== '' && s.smax !== '' && +s.smin > +s.smax) errs.push({ key: 'when', ids: ['sol-min', 'sol-max'], text: '“From sol” must not be greater than “To sol”.' });
+  } else if (s.dmin && s.dmax && s.dmin > s.dmax) errs.push({ key: 'when', ids: ['date-min', 'date-max'], text: '“From date” must not be after “To date”.' });
+  if (s.tmode === 'custom' && s.tmin && s.tmax && s.tmin === s.tmax) errs.push({ key: 'time', ids: ['t-min', 't-max'], text: 'Start and end of the time window must differ. To cover the whole day, choose “Any time”.' });
+  if (s.tmode === 'custom' && !s.tmin && !s.tmax) errs.push({ key: 'time', ids: ['t-min'], text: 'Enter at least one end of the time window, or choose “Any time”.' });
+  for (const [k, id] of [['minw', 'min-w'], ['minh', 'min-h']]) if (s[k] !== '' && (!/^\d+$/.test(s[k]) || +s[k] < 1 || +s[k] > 32767)) errs.push({ key: 'size', ids: [id], text: 'Frame size must be a whole number from 1 to 32,767.' });
+  return errs;
+}
+function showErrors(errs) {
+  ['when', 'time', 'size'].forEach(k => { const e = $('#err-' + k), m = errs.find(x => x.key === k); e.hidden = !m; e.textContent = m ? m.text : ''; });
+  $$('#form input, #form select').forEach(i => i.removeAttribute('aria-invalid'));
+  errs.forEach(e => e.ids.forEach(id => $('#' + id).setAttribute('aria-invalid', 'true')));
+}
+
+/* ---------- derived values ---------- */
+const solRange = (s, r) => {                    /* [lo, hi] sols for one rover */
+  const max = ROVERS[r].max_sol;
+  if (s.mode === 'sol') return [s.smin === '' ? 0 : +s.smin, s.smax === '' ? max : Math.min(+s.smax, max)];
+  return [s.dmin ? dateToSol(r, s.dmin) : 0, s.dmax ? Math.min(dateToSol(r, s.dmax), max) : max];
+};
+const singleSol = s => s.mode === 'sol' && s.smin !== '' && s.smin === s.smax;
+const roverList = s => ROVER_IDS.filter(r => s.rovers.has(r));
+const camsOf = (s, r) => s.cams.size ? CAMERAS[r].filter(c => s.cams.has(c[0])) : CAMERAS[r];
+function estimate(s, r) {                       /* rough share of the rover's photos that pass the filters */
+  const [lo, hi] = solRange(s, r); if (lo > hi) return 0;
+  const cams = camsOf(s, r), allSum = CAMERAS[r].reduce((a, c) => a + c[2], 0), camShare = cams.reduce((a, c) => a + c[2], 0) / allSum;
+  let share = camShare * (hi - lo + 1) / (ROVERS[r].max_sol + 1);
+  share *= { '': 1, full: .6, subframe: .2, downsampled: .2 }[s.sample];
+  if (s.tmode === 'golden') share *= (r === 'curiosity' ? .5 : .9) * (3 / 24);
+  if (s.tmode === 'custom') { const a = s.tmin ? s.tmin : '00:00', b = s.tmax ? s.tmax : '24:00'; const m = t => (+t.slice(0, 2)) * 60 + (+t.slice(3, 5)); let len = m(b) - m(a); if (len <= 0) len += 1440; share *= (r === 'curiosity' ? .5 : .9) * len / 1440; }
+  if (s.minw !== '' || s.minh !== '') share *= r === 'curiosity' ? 0 : (+s.minw > 1648 || +s.minh > 1200 ? 0 : .8);
+  return Math.floor(ROVERS[r].total_photos * Math.min(share, 1));
+}
+const isHeavy = s => !singleSol(s) && (s.mode === 'date' && (s.dmin || s.dmax) || s.tmode !== 'any' || s.minw !== '' || s.minh !== '' || (s.sample && s.sample !== 'full') || (s.cams.size && /taken_at/.test(s.sort)));
+
+/* what would be sent to GET /api/v2/photos */
+function apiParams(s, pg) {
+  const p = new URLSearchParams();
+  if (s.rovers.size < ROVER_IDS.length) p.set('rovers', roverList(s).join(','));
+  if (s.mode === 'sol') { if (singleSol(s)) p.set('sol', s.smin); else { if (s.smin !== '') p.set('sol_min', s.smin); if (s.smax !== '') p.set('sol_max', s.smax); } }
+  else { if (s.dmin) p.set('date_min', s.dmin); if (s.dmax) p.set('date_max', s.dmax); }
+  if (s.cams.size) p.set('camera', [...s.cams].join(','));
+  if (s.sample) p.set('sample_type', s.sample);
+  p.set('sort', s.sort);
+  if (s.tmode === 'golden') p.set('golden_hour', 'true');
+  if (s.tmode === 'custom') { if (s.tmin) p.set('local_time_min', s.tmin); if (s.tmax) p.set('local_time_max', s.tmax); }
+  if (s.minw !== '') p.set('min_width', s.minw); if (s.minh !== '') p.set('min_height', s.minh);
+  p.set('page', pg); p.set('per_page', s.per);
+  return p;
+}
+
+/* ---------- mock result generator: k-way merge of per-rover streams in the requested order ---------- */
+function results(s, pg) {
+  const rs = roverList(s).map(r => ({ r, n: estimate(s, r) })).filter(x => x.n > 0);
+  const total = rs.reduce((a, x) => a + x.n, 0);
+  const desc = s.sort[0] === '-', byTime = /taken_at/.test(s.sort);
+  const streams = rs.map(x => {
+    const [lo, hi] = solRange(s, x.r), nSols = hi - lo + 1, per = Math.max(1, Math.round(x.n / nSols)), cams = camsOf(s, x.r);
+    const at = k => {
+      const solIdx = Math.min(Math.floor(k / per), nSols - 1), sol = desc ? hi - solIdx : lo + solIdx, slot = k - solIdx * per;
+      const ms = solToMs(x.r, sol) + Math.floor(86400000 * (desc ? 1 - (slot + .5) / Math.max(per, slot + 1) : (slot + .5) / Math.max(per, slot + 1)));
+      return { sol, ms, cam: cams[Math.floor(rnd(k * 7 + sol) * cams.length)][0], seed: k * 13 + sol };
+    };
+    return { r: x.r, n: x.n, k: 0, at };
+  });
+  const better = (a, b) => byTime ? (desc ? a.ms > b.ms : a.ms < b.ms) : (a.sol !== b.sol ? (desc ? a.sol > b.sol : a.sol < b.sol) : (desc ? a.ms > b.ms : a.ms < b.ms));
+  const out = [], from = (pg - 1) * s.per, to = Math.min(from + s.per, total);
+  for (let i = 0; i < to; i++) {
+    let best = null, bs = null;
+    for (const st of streams) { if (st.k >= st.n) continue; const c = st.at(st.k); if (!best || better(c, best)) { best = c; bs = st; } }
+    if (!bs) break; bs.k++;
+    if (i >= from) out.push(makePhoto(bs.r, best.sol, best.cam, best.seed, best.ms));
+  }
+  return { items: out, page: pg, per_page: s.per, total };
+}
+
+/* ---------- rendering ---------- */
+function summaryText(s) {
+  const parts = [];
+  parts.push(s.rovers.size === ROVER_IDS.length ? 'All rovers' : roverList(s).map(r => ROVERS[r].name).join(' + '));
+  if (s.mode === 'sol') parts.push(s.smin === '' && s.smax === '' ? 'any sol' : singleSol(s) ? `sol ${s.smin}` : `sols ${s.smin || 'first'}–${s.smax || 'last'}`);
+  else parts.push(!s.dmin && !s.dmax ? 'any date' : `${s.dmin || 'start'} → ${s.dmax || 'now'}`);
+  parts.push(s.cams.size ? (s.cams.size === 1 ? [...s.cams][0] : s.cams.size + ' cameras') : 'all cameras');
+  if (s.tmode === 'golden') parts.push('golden hour'); if (s.tmode === 'custom') parts.push(`local ${s.tmin || '00:00'}–${s.tmax || '24:00'}`);
+  if (s.minw !== '' || s.minh !== '') parts.push(`≥ ${s.minw || '·'}×${s.minh || '·'} px`);
+  if (s.sample) parts.push(s.sample + ' frames');
+  parts.push({ '-taken_at': 'newest on Mars', taken_at: 'oldest on Mars', '-sol': 'latest sol first', sol: 'earliest sol first' }[s.sort]);
+  return parts.join(' · ');
+}
+const activeCount = s => [s.rovers.size < ROVER_IDS.length, s.mode === 'sol' ? (s.smin !== '' || s.smax !== '') : (s.dmin || s.dmax), s.cams.size, s.tmode !== 'any', s.minw !== '' || s.minh !== '', s.sample, s.sort !== '-taken_at'].filter(Boolean).length;
+
+function renderChips() {
+  $('#rover-chips').innerHTML = ROVER_IDS.map(r => `<button class="chip" type="button" data-r="${r}" aria-pressed="${f.rovers.has(r)}">${ROVERS[r].name}<span class="count">${fmt(ROVERS[r].total_photos)}</span></button>`).join('');
+  $$('#rover-chips .chip').forEach(b => b.onclick = () => {
+    const r = b.dataset.r;
+    if (f.rovers.has(r)) { if (f.rovers.size === 1) return; f.rovers.delete(r); CAMERAS[r].forEach(c => f.cams.delete(c[0])); } else f.rovers.add(r);
+    renderChips(); renderCams(); refreshHints();
+  });
+  renderCams();
+}
+function renderCams() {
+  $('#cam-box').innerHTML = roverList(f).map(r => `<div class="cam-group"><h4>${ROVERS[r].name}</h4><div class="chips">${CAMERAS[r].map(c =>
+    `<button class="chip" type="button" data-c="${c[0]}" aria-pressed="${f.cams.has(c[0])}" ${!f.cams.has(c[0]) && f.cams.size >= 10 ? 'aria-disabled="true"' : ''} title="${esc(c[1])}"><span class="mono">${c[0]}</span><span class="count">${fmt(c[2])}</span></button>`).join('')}</div></div>`).join('');
+  $$('#cam-box .chip').forEach(b => b.onclick = () => {
+    const c = b.dataset.c;
+    if (f.cams.has(c)) f.cams.delete(c); else if (f.cams.size < 10) f.cams.add(c); else return;
+    renderCams(); refreshHints();
+    $(`#cam-box [data-c="${c}"]`)?.focus();
+  });
+  $('#cam-counter').textContent = f.cams.size ? `${f.cams.size} of 10 cameras chosen` : 'All cameras';
+  $('#cam-clear').hidden = !f.cams.size;
+}
+function refreshHints() {
+  readForm();
+  const dateMode = f.mode === 'date';
+  $('#when-sol').hidden = dateMode; $('#when-date').hidden = !dateMode;
+  $('#when-hint').textContent = dateMode ? 'Dates are the day the photo was taken (UTC), inclusive. Either end may be left empty.' : 'Sols are counted separately for each rover: sol 1000 is a different day for Curiosity and Perseverance. Leave both empty for all sols; the same value in both means one sol.';
+  $('#golden-note').hidden = f.tmode !== 'golden'; $('#custom-time').hidden = f.tmode !== 'custom';
+  $('#time-cover').hidden = f.tmode === 'any';
+  const wrap = f.tmode === 'custom' && f.tmin && f.tmax && f.tmin > f.tmax;
+  $('#wrap-note').hidden = !wrap; if (wrap) $('#wrap-note').textContent = `${f.tmin} is after ${f.tmax}, so the window runs through midnight: from ${f.tmin} until ${f.tmax} the next morning.`;
+  $('#size-cover').hidden = !((f.minw !== '' || f.minh !== '') && f.rovers.has('curiosity'));
+  $('#sort-note').hidden = !(f.sort.endsWith('sol') && f.rovers.size > 1);
+  const heavy = isHeavy(f); $('#heavy').hidden = $('#heavy-note').hidden = !heavy;
+  const n = activeCount(f); $('#filters-count').hidden = !n; $('#filters-count').textContent = n + ' active';
+  $('#summary').textContent = summaryText(f);
+  $('#cam-counter').textContent = f.cams.size ? `${f.cams.size} of 10 cameras chosen` : 'All cameras';
+  $('#cam-clear').hidden = !f.cams.size;
+}
+
+function emptyReasons(s) {
+  const r = [];
+  if (s.tmode !== 'any') r.push(s.rovers.has('curiosity') ? 'Time-of-day filters skip photos without a local time (about half of Curiosity’s).' : 'Time-of-day filters skip photos without a local time.');
+  if (s.minw !== '' || s.minh !== '') r.push('Size filters skip photos with no known frame size (all of Curiosity’s), and frames smaller than asked.');
+  if (s.cams.size && roverList(s).every(x => !CAMERAS[x].some(c => s.cams.has(c[0])))) r.push('None of the chosen cameras belongs to the chosen rovers.');
+  if (s.mode === 'sol' && (s.smin !== '' || s.smax !== '')) r.push('The sol range may lie beyond a rover’s latest sol: ' + roverList(s).map(x => `${ROVERS[x].name} ${ROVERS[x].max_sol}`).join(', ') + '.');
+  if (s.sample) r.push(`Only “${s.sample}” frames are included.`);
+  return r.length ? r : ['Try a wider sol or date range, or fewer cameras.'];
+}
+
+function render() {
+  const body = $('#body'), pager = $('#pager'), s = applied || f;
+  clearInterval(busyTimer); pager.innerHTML = '';
+  $('#results').setAttribute('aria-busy', String(view === 'loading'));
+  $('#api-line').textContent = 'GET /api/v2/photos?' + apiParams(s, page).toString().replace(/%2C/g, ',').replace(/%3A/g, ':');
+  $('#head-sub').textContent = `${s.rovers.size === ROVER_IDS.length ? 'Across all rovers' : roverList(s).map(r => ROVERS[r].name).join(' + ')} · GET /api/v2/photos`;
+  $$('[data-state]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.state === view)));
+
+  if (view === 'loading') { $('#result-sub').textContent = 'Searching…'; body.innerHTML = skeletonGrid(12); return; }
+
+  if (view === 'e422a' || view === 'e422b') {
+    const a = view === 'e422a';
+    const resp = a ? { error: { code: 'validation_error', message: 'Invalid query parameters', details: [{ field: 'local_time_max', message: 'local_time_min and local_time_max must differ' }] } }
+                   : { error: { code: 'validation_error', message: 'Invalid query parameters', details: [{ field: 'page', message: 'page × per_page must not exceed 10000' }] } };
+    $('#result-sub').textContent = '';
+    body.innerHTML = `<div class="alert alert-error" role="alert">${ICON_ERR}<div><div class="alert-title">We couldn’t run this search</div>
+      <p style="margin:0 0 8px">${a ? '<strong>Time of day</strong>: the start and the end of the window must differ.' : '<strong>Page</strong>: only the first 10,000 photos of a search can be browsed (page × per page ≤ 10,000). Narrow the search to see the rest.'}</p>
+      <div class="row" style="align-items:center">${a ? '<button class="btn btn-sm" type="button" id="fix">Edit time window</button>' : '<button class="btn btn-sm" type="button" id="fix">Back to page 1</button>'}<span class="xsmall muted">Error code: <code>validation_error</code> (HTTP 422)</span></div>
+      <details style="margin-top:8px"><summary class="small">Response details</summary><pre class="raw">${esc(JSON.stringify(resp, null, 2))}</pre></details></div></div>`;
+    $('#fix').onclick = () => { view = 'data'; page = 1; if (a) { $('#filters-toggle').getAttribute('aria-expanded') !== 'true' && $('#filters-toggle').click(); $('#t-custom').checked = true; refreshHints(); $('#t-min').focus(); } else render(); };
+    return;
+  }
+
+  if (view === 'busy') {
+    const resp = { error: { code: 'service_busy', message: 'Server is busy, retry later', details: null } };
+    let left = 5;
+    $('#result-sub').textContent = '';
+    body.innerHTML = `<div class="alert alert-warn">${ICON_WARN}<div style="min-width:0"><div class="alert-title">The server is busy</div>
+      <p style="margin:0 0 8px">Heavy searches are limited so everyone gets answers. <span id="busy-line"><span aria-hidden="true">Try again in <span class="busy-count" id="busy-n">${left}</span> s.</span></span></p>
+      <div class="row" style="align-items:center"><button class="btn btn-primary btn-sm" type="button" id="retry" disabled>Try again</button>
+        <span class="xsmall muted">Error code: <code>service_busy</code> (HTTP 503, <code>Retry-After: 5</code>)</span></div>
+      <p class="small" style="margin:12px 0 4px"><strong>Or narrow the search</strong>, which also makes it faster:</p>
+      <ul class="reasons" style="margin:0"><li>pick a single sol, or a short range of sols;</li><li>remove the time-of-day, frame-size or frame-type filter;</li><li>use fewer cameras.</li></ul>
+      <div class="row">${isHeavy(s) && (s.tmode !== 'any' || s.minw !== '' || s.minh !== '') ? '<button class="btn btn-sm" type="button" id="drop">Drop time-of-day and size filters</button>' : ''}</div>
+      <details style="margin-top:8px"><summary class="small">Response details</summary><pre class="raw">HTTP/1.1 503\nRetry-After: 5\nCache-Control: no-store\n\n${esc(JSON.stringify(resp, null, 2))}</pre></details></div></div>
+      <p class="visually-hidden" role="status" id="busy-sr">The server is busy. You can try again in 5 seconds.</p>`;
+    const retry = $('#retry');
+    busyTimer = setInterval(() => {
+      left--; if ($('#busy-n')) $('#busy-n').textContent = left;
+      if (left <= 0) { clearInterval(busyTimer); retry.disabled = false; $('#busy-line').textContent = 'You can try again now.'; $('#busy-sr').textContent = 'You can try again now.'; }
+    }, 1000);
+    retry.onclick = () => { view = 'data'; render(); };
+    const drop = $('#drop'); if (drop) drop.onclick = () => { $('#t-any').checked = true; $('#min-w').value = $('#min-h').value = ''; refreshHints(); submit(); };
+    return;
+  }
+
+  const forcedEmpty = view === 'empty';
+  const res = forcedEmpty ? { items: [], total: 0 } : results(s, page);
+  const cap = Math.floor(MAX_DEEP / s.per), want = Math.ceil(res.total / s.per), pages = Math.min(want, cap);
+  if (res.total === 0) {
+    $('#result-sub').textContent = '0 photos';
+    body.innerHTML = `<div class="card empty">${ICON_EMPTY}<h3 style="margin-top:12px">No photos match this search</h3>
+      <p class="muted small" style="margin-bottom:8px">Check these, from most to least likely:</p><ul class="reasons">${emptyReasons(s).map(x => `<li>${x}</li>`).join('')}</ul>
+      <div class="row"><button class="btn btn-sm" type="button" id="reset2">Reset filters</button><a class="btn btn-sm" href="photos.html?rover=perseverance">Latest sol of Perseverance</a></div></div>`;
+    $('#reset2').onclick = () => { view = 'data'; resetAll(); };
+    return;
+  }
+  $('#result-sub').textContent = `${fmt(res.total)} photos (estimate in this mockup) · page ${fmt(page)} of ${fmt(pages)}`;
+  body.innerHTML = (want > pages ? `<div class="note warn" style="margin-bottom:var(--s3)">Only the first ${fmt(MAX_DEEP)} photos can be browsed (${fmt(cap)} pages at ${s.per} per page). Narrow the search to reach the rest, for example a shorter range of sols.</div>` : '') +
+    `<div class="photo-grid">${res.items.map(p => tile(p, true)).join('')}</div>`;
+  renderPager(pager, page, pages, n => { page = n; render(); $('#results').scrollIntoView({ block: 'start' }); });
+}
+
+/* ---------- actions ---------- */
+function submit() {
+  readForm(); const errs = validate(f); showErrors(errs);
+  if (errs.length) { $('#' + errs[0].ids[0]).focus(); return; }
+  applied = { ...f, rovers: new Set(f.rovers), cams: new Set(f.cams) }; page = 1; if (view !== 'data') view = 'data';
+  if (matchMedia('(max-width: 759px)').matches) setFilters(false);
+  render();
+}
+function writeForm(s) {
+  $('#mode-' + s.mode).checked = true; $('#sol-min').value = s.smin; $('#sol-max').value = s.smax; $('#date-min').value = s.dmin; $('#date-max').value = s.dmax;
+  $('#sort').value = s.sort; $('#sample').value = s.sample; $('#t-' + s.tmode).checked = true; $('#t-min').value = s.tmin; $('#t-max').value = s.tmax;
+  $('#min-w').value = s.minw; $('#min-h').value = s.minh; $('#per-page').value = s.per;
+}
+function resetAll() { f = DEF(); writeForm(f); showErrors([]); renderChips(); refreshHints(); applied = null; page = 1; render(); }
+
+const setFilters = bindFiltersToggle();
+$('#form').addEventListener('submit', e => { e.preventDefault(); submit(); });
+$('#form').addEventListener('input', refreshHints); $('#form').addEventListener('change', refreshHints);
+$('#reset').onclick = () => { view = 'data'; resetAll(); };
+$('#cam-clear').onclick = () => { f.cams.clear(); renderCams(); refreshHints(); };
+$$('[data-state]').forEach(b => b.onclick = () => {
+  const s = b.dataset.state; view = s;
+  if (s === 'deep') { f = DEF(); writeForm(f); showErrors([]); renderChips(); refreshHints(); applied = { ...f, rovers: new Set(f.rovers), cams: new Set(f.cams) }; page = Math.floor(MAX_DEEP / 24); view = 'data'; }
+  else page = 1;
+  if (s === 'e422a') { $('#t-custom').checked = true; $('#t-min').value = $('#t-max').value = '06:00'; refreshHints(); applied = { ...f, rovers: new Set(f.rovers), cams: new Set(f.cams) }; }
+  render();
+});
+/* deep-link: ?rovers=…&sol_min=…&camera=…&sort=… (links from Stats and the sol browser) */
+function fromQuery() {
+  const g = k => q.get(k);
+  if (g('rovers')) f.rovers = new Set(g('rovers').split(',').filter(r => ROVERS[r]));
+  if (!f.rovers.size) f.rovers = new Set(ROVER_IDS);
+  if (g('sol') != null) f.smin = f.smax = g('sol'); if (g('sol_min')) f.smin = g('sol_min'); if (g('sol_max')) f.smax = g('sol_max');
+  if (g('date_min') || g('date_max')) { f.mode = 'date'; f.dmin = g('date_min') || ''; f.dmax = g('date_max') || ''; }
+  if (g('camera')) g('camera').toUpperCase().split(',').forEach(c => { if (ROVER_IDS.some(r => f.rovers.has(r) && CAMERAS[r].some(x => x[0] === c)) && f.cams.size < 10) f.cams.add(c); });
+  if (g('sort')) f.sort = g('sort');
+  if (g('golden_hour') === 'true') f.tmode = 'golden';
+  if (g('sample_type')) f.sample = g('sample_type');
+}
+fromQuery(); writeForm(f); renderChips(); refreshHints();
+applied = { ...f, rovers: new Set(f.rovers), cams: new Set(f.cams) };
+render();
+</script>
+</body>
+</html>

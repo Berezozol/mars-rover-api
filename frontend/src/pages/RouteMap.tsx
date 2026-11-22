@@ -2,6 +2,7 @@ import type { JSX } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { api } from "../api/client";
 import type { LocationResponse, Rover, Sample, Traverse, Waypoint } from "../api/types";
+import { NearView } from "../components/NearView";
 import { RoverTabs } from "../components/RoverTabs";
 import { SampleBadges, TubeLink } from "../components/SampleParts";
 import { EmptyState, ErrorAlert, PageSkeleton } from "../components/States";
@@ -42,7 +43,8 @@ import {
   solPhotosHref,
   stopKey,
 } from "../lib/samples";
-import { Link, navigate, qs, useQuery } from "../router";
+import { nearHref, parseNearState, supportsNear, type NearState } from "../lib/near";
+import { Link, navigate, qs, useLocation, useQuery } from "../router";
 
 const LIST_PAGE = 8;
 
@@ -51,7 +53,9 @@ const intParam = (v: string | null): number | null =>
 
 export function RouteMapPage({ roverId }: { roverId: string }) {
   const [rovers, reload] = useRovers();
-  useTitle(`Route map — ${roverId} — Sol Index`);
+  const { search } = useLocation();
+  const near = parseNearState(search);
+  useTitle(`${near.active ? "Photos near a point" : "Route map"} — ${roverId} — Sol Index`);
   if (rovers.status === "loading") return <PageSkeleton label="Loading rover…" />;
   if (rovers.status === "error") return <ErrorAlert error={rovers.error} onRetry={reload} />;
   const rover = rovers.data.find((r) => r.id === roverId);
@@ -69,16 +73,53 @@ export function RouteMapPage({ roverId }: { roverId: string }) {
       </EmptyState>
     );
   }
+  const canNear = supportsNear(rover.id);
   return (
     <>
       <RoverTabs rovers={rovers.data} current={rover.id} to={(id) => `/rovers/${id}/map`} />
       <ViewTabs rover={rover} rovers={rovers.data} />
-      <h1>{rover.name} route map</h1>
-      <p class="muted">
-        Where the rover has stopped, sol by sol. Select a stop to see its details and open that
-        sol’s photos.
-      </p>
-      <MapLoader rover={rover} />
+      {canNear && (
+        <nav class="mode-switch" aria-label="Route map mode" data-testid="near-mode-switch">
+          <Link href={`/rovers/${rover.id}/map`} aria-current={near.active ? undefined : "page"}>
+            Browse stops
+          </Link>
+          <Link href={nearHref(rover.id)} aria-current={near.active ? "page" : undefined}>
+            Photos near a point
+          </Link>
+        </nav>
+      )}
+      {near.active && !canNear ? (
+        <div class="card empty" data-testid="near-unsupported">
+          <h1 style={{ fontSize: "var(--fs-lg)" }}>
+            Photos near a point is not available for {rover.name}
+          </h1>
+          <p class="muted small">
+            Searching by place works for Curiosity and Perseverance only: they are the rovers whose
+            stops are published. {rover.name}’s photos are still available.
+          </p>
+          <div class="row">
+            <Link class="btn btn-sm" href={`/rovers/${rover.id}`}>
+              Browse {rover.name} photos
+            </Link>
+            <Link class="btn btn-sm" href="/rovers/perseverance/map?near=">
+              Perseverance near a point
+            </Link>
+            <Link class="btn btn-sm" href="/rovers/curiosity/map?near=">
+              Curiosity near a point
+            </Link>
+          </div>
+        </div>
+      ) : (
+        <>
+          <h1>{near.active ? "Photos near a point" : `${rover.name} route map`}</h1>
+          <p class="muted">
+            {near.active
+              ? "Click the map (or a stop) to drop a pin, choose how far to look, and see the photos the rover took while stopped within that distance."
+              : "Where the rover has stopped, sol by sol. Select a stop to see its details and open that sol’s photos."}
+          </p>
+          <MapLoader rover={rover} near={near.active ? near : null} />
+        </>
+      )}
     </>
   );
 }
@@ -175,7 +216,7 @@ interface Loaded {
   samples: Sample[] | null;
 }
 
-function MapLoader({ rover }: { rover: Rover }) {
+function MapLoader({ rover, near }: { rover: Rover; near: NearState | null }) {
   const [state, retry] = useAsync<Loaded>(async () => {
     const [traverse, location, samples] = await Promise.all([
       api.traverse(rover.id),
@@ -236,6 +277,7 @@ function MapLoader({ rover }: { rover: Rover }) {
       traverse={state.data.traverse}
       location={state.data.location}
       samples={state.data.samples}
+      near={near}
     />
   );
 }
@@ -245,11 +287,13 @@ function MapData({
   traverse,
   location,
   samples,
+  near,
 }: {
   rover: Rover;
   traverse: Traverse;
   location: LocationResponse;
   samples: Sample[] | null;
+  near: NearState | null;
 }) {
   const unavailable = !traverse.available || !location.available;
   const prepared = useMemo(
@@ -294,6 +338,7 @@ function MapData({
       </section>
     );
   }
+  if (near) return <NearView rover={rover} data={prepared} near={near} />;
   return <RouteMapView rover={rover} data={prepared} location={location} samples={samples} />;
 }
 
@@ -1049,6 +1094,19 @@ function RouteMapView({
                   >
                     Photos at this stop
                   </Link>
+                  {supportsNear(rover.id) && (
+                    <Link
+                      class="btn btn-sm"
+                      href={nearHref(rover.id, {
+                        point: { lat: selected.lat, lon: selected.lon },
+                        radius: 1,
+                      })}
+                      data-testid="stop-near-button"
+                      title="Photos taken at stops within 1 km of this stop"
+                    >
+                      Photos within 1 km
+                    </Link>
+                  )}
                   <button class="btn btn-sm" type="button" onClick={() => setSel(null)}>
                     Clear
                   </button>

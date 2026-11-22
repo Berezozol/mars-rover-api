@@ -48,3 +48,21 @@ export function useTitle(title: string): void {
 export function useRovers(): [Async<Rover[]>, () => void] {
   return useAsync(() => api.rovers(), []);
 }
+
+/** True while the viewport matches the media query; `fallback` where `matchMedia` does not exist (tests). */
+export function useMedia(query: string, fallback = true): boolean {
+  const get = () =>
+    typeof window !== "undefined" && typeof window.matchMedia === "function"
+      ? window.matchMedia(query).matches
+      : fallback;
+  const [matches, setMatches] = useState(get);
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const mq = window.matchMedia(query);
+    const on = () => setMatches(mq.matches);
+    on();
+    mq.addEventListener?.("change", on);
+    return () => mq.removeEventListener?.("change", on);
+  }, [query]);
+  return matches;
+}

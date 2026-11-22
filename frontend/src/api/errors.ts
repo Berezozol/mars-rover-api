@@ -26,6 +26,21 @@ const FIELD_LABELS: Record<string, string> = {
   page: "Page",
   per_page: "Per page",
   size: "Size",
+  rovers: "Rovers",
+  sol_min: "From sol",
+  sol_max: "To sol",
+  date_min: "From date",
+  date_max: "To date",
+  local_time_min: "Time of day (from)",
+  local_time_max: "Time of day (until)",
+  golden_hour: "Golden hour",
+  min_width: "Minimum width",
+  min_height: "Minimum height",
+  near: "Search point",
+  radius_km: "Radius",
+  sort: "Sort",
+  group_by: "Group by",
+  site: "Stop",
 };
 
 export function fieldLabel(field: string): string {
@@ -38,12 +53,23 @@ const MAX_INT = "2,147,483,647";
 /** Pydantic-style messages are terse; say the same thing in plain words where we can. */
 export function humanizeIssue(field: string, message: string): string {
   const last = field.split(".").pop() ?? field;
-  const isSol = last === "sol" || last === "from_sol" || last === "to_sol";
+  const isSol =
+    last === "sol" ||
+    last === "from_sol" ||
+    last === "to_sol" ||
+    last === "sol_min" ||
+    last === "sol_max";
   if (isSol && /less than or equal|greater than or equal|valid integer|parsing/i.test(message)) {
     return `must be a whole number from 0 to ${MAX_INT}.`;
   }
-  if (last === "earth_date" && /date/i.test(message)) {
+  if (
+    (last === "earth_date" || last === "date_min" || last === "date_max") &&
+    /date/i.test(message)
+  ) {
     return "must be a date in the format YYYY-MM-DD.";
+  }
+  if (last === "page" && /10000|10,000|exceed/i.test(message)) {
+    return "only the first 10,000 photos of a search can be browsed (page × per page ≤ 10,000). Narrow the search to see the rest.";
   }
   if (last === "page" && /equal|integer/i.test(message)) {
     return "must be a whole number from 1 to 1,000,000.";
@@ -110,6 +136,16 @@ export function describeError(error: unknown): ErrorView {
       return { ...base, title: "Photo not found", message: "There is no photo with that id." };
     case "not_found":
       return { ...base, title: "Not found", message: "That resource doesn’t exist." };
+    case "service_busy": {
+      const wait = error.retryAfter ? ` Try again in about ${Math.ceil(error.retryAfter)} s.` : "";
+      return {
+        ...base,
+        title: "The server is busy",
+        message: `Heavy searches are limited so that everyone gets answers.${wait}`,
+        retryable: true,
+        unavailable: true,
+      };
+    }
     case "converter_busy": {
       const wait = error.retryAfter ? ` Try again in about ${Math.ceil(error.retryAfter)} s.` : "";
       return {

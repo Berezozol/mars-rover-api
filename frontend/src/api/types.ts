@@ -151,6 +151,66 @@ export interface PhotoQuery {
   per_page?: number;
 }
 
+/** Query of `GET /api/v2/photos` (cross-rover search, stage 18B). Every value is sent as given. */
+export interface SearchQuery {
+  rovers?: string;
+  sol?: number | string;
+  sol_min?: number | string;
+  sol_max?: number | string;
+  earth_date?: string;
+  date_min?: string;
+  date_max?: string;
+  camera?: string;
+  sample_type?: string;
+  sort?: string;
+  local_time_min?: string;
+  local_time_max?: string;
+  golden_hour?: string;
+  min_width?: number | string;
+  min_height?: number | string;
+  near?: string;
+  radius_km?: number | string;
+  page?: number;
+  per_page?: number;
+}
+
+export type StatsGroupBy = "rover" | "camera" | "year" | "month";
+
+/** Query of `GET /api/v2/photos/stats` (stage 18C). */
+export interface StatsQuery {
+  rovers?: string;
+  camera?: string;
+  sol_min?: number | string;
+  sol_max?: number | string;
+  date_min?: string;
+  date_max?: string;
+  sample_type?: string;
+  group_by?: StatsGroupBy;
+}
+
+export interface StatsGroup {
+  rover: string;
+  /** Camera code for `group_by=camera`, else null. */
+  camera: string | null;
+  /** `YYYY` or `YYYY-MM` for `group_by=year|month`, else null. */
+  period: string | null;
+  total_photos: number;
+  sols_with_photos: number;
+  first_sol: number;
+  last_sol: number;
+  first_date: string;
+  last_date: string;
+}
+
+export interface StatsResponse {
+  group_by: StatsGroupBy;
+  total_photos: number;
+  sols_with_photos: number;
+  first_date: string | null;
+  last_date: string | null;
+  groups: StatsGroup[];
+}
+
 export type ImageSize = "small" | "medium" | "large" | "full";
 
 /** Sample types accepted by the `sample_type` filter. */

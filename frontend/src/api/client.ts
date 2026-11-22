@@ -11,6 +11,9 @@ import type {
   PhotoQuery,
   Rover,
   SamplesResponse,
+  SearchQuery,
+  StatsQuery,
+  StatsResponse,
   Traverse,
 } from "./types";
 
@@ -116,7 +119,12 @@ export function buildPath(path: string, params?: Params): string {
   return `/api/v2${path}${s ? `?${s}` : ""}`;
 }
 
-async function request<T>(path: string, params?: Params, signal?: AbortSignal): Promise<T> {
+async function request<T>(
+  path: string,
+  params?: Params,
+  signal?: AbortSignal,
+  retry429 = true,
+): Promise<T> {
   let res: Response;
   try {
     res = await fetch(apiBase() + buildPath(path, params), {
@@ -127,7 +135,17 @@ async function request<T>(path: string, params?: Params, signal?: AbortSignal): 
     if (signal?.aborted) throw e;
     throw new ApiError({ status: 0, code: NETWORK_ERROR, message: "Network error" });
   }
-  if (!res.ok) throw await errorFromResponse(res);
+  if (!res.ok) {
+    const err = await errorFromResponse(res);
+    // The limit on concurrent requests answers 429 with `Retry-After: 1`: wait that long once and
+    // repeat. A long wait (the per-minute window) is left to the visitor.
+    if (err.status === 429 && retry429 && (err.retryAfter ?? 1) <= 2 && !signal?.aborted) {
+      const wait = Math.min(Math.max(err.retryAfter ?? 1, 1), 5) * 1000;
+      await new Promise((resolve) => setTimeout(resolve, wait));
+      if (!signal?.aborted) return request<T>(path, params, signal, false);
+    }
+    throw err;
+  }
   try {
     return (await res.json()) as T;
   } catch {
@@ -168,6 +186,16 @@ async function queued<T>(run: () => Promise<T>): Promise<T> {
   }
 }
 
+/** Cross-rover photo search: `GET /api/v2/photos`. Can answer `503 service_busy` with `Retry-After`. */
+export function searchPhotos(query: SearchQuery, signal?: AbortSignal): Promise<PhotoPage> {
+  return request<PhotoPage>("/photos", { ...query }, signal);
+}
+
+/** Counts by rover, camera, year or month: `GET /api/v2/photos/stats`. */
+export function photoStats(query: StatsQuery, signal?: AbortSignal): Promise<StatsResponse> {
+  return request<StatsResponse>("/photos/stats", { ...query }, signal);
+}
+
 const slug = (rover: string) => encodeURIComponent(rover);
 
 export const api = {
@@ -177,7 +205,11 @@ export const api = {
   /** Cameras of a rover; with `sol`, `total_photos` counts that sol only. */
   cameras: (rover: string, sol?: number) =>
     cached(`cameras:${rover}:${sol ?? ""}`, () =>
-      request<{ items: Camera[] }>(`/rovers/${slug(rover)}/cameras`, { sol }).then((r) => r.items),
+      queued(() =>
+        request<{ items: Camera[] }>(`/rovers/${slug(rover)}/cameras`, { sol }).then(
+          (r) => r.items,
+        ),
+      ),
     ),
   /** Same data and cache as `cameras(rover, sol)`, but at most a few requests in flight (one per sample row). */
   camerasQueued: (rover: string, sol: number) =>
@@ -205,6 +237,8 @@ export const api = {
     cached(`manifest:${rover}:${range?.from_sol ?? ""}:${range?.to_sol ?? ""}`, () =>
       request<Manifest>(`/rovers/${slug(rover)}/manifest`, range),
     ),
+  searchPhotos,
+  photoStats,
   /** Stops of a rover (whole list is fetched once per rover and cached). */
   location: (rover: string) =>
     cached(`location:${rover}`, () => request<LocationResponse>(`/rovers/${slug(rover)}/location`)),
@@ -234,6 +268,11 @@ export const api = {
   traverse: (rover: string) =>
     cached(`traverse:${rover}`, () => request<Traverse>(`/rovers/${slug(rover)}/traverse`)),
 };
+
+/** The query string for the "API: GET ..." line of the search and stats pages. */
+export function requestLine(path: string, q: Record<string, string | number | undefined | null>) {
+  return `GET ${buildPath(path, q).replace(/%2C/g, ",").replace(/%3A/g, ":")}`;
+}
 
 /** Path (with API base) of the photo image endpoint, e.g. for "Open image". */
 export function imageEndpoint(id: number, size: ImageSize): string {
