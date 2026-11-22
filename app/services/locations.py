@@ -3,14 +3,13 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
 
-from sqlalchemy import Row
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import InvalidParam
 from app.db.models import Photo, RoverWaypoint
 from app.repositories import locations as locations_repo
+from app.repositories._common import AnyRow
 from app.services.rover_lookup import find_rover
 from app.sources.locations import LOCATION_MISSIONS
 
@@ -32,7 +31,7 @@ class TraverseData:
     updated_at: datetime | None
     source_max_sol: int | None
     # Rows of (sol, length_m, coordinates) in driving order.
-    segments: Sequence[Row[Any]]
+    segments: Sequence[AnyRow]
 
 
 @dataclass(frozen=True)

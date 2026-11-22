@@ -39,9 +39,10 @@ import asyncio
 import json
 import logging
 import sys
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Coroutine
 from contextlib import AsyncExitStack
 from pathlib import Path
+from typing import Any
 
 from app.core.config import Settings, get_settings
 from app.core.errors import NoSourceForRover, SyncInProgress
@@ -83,7 +84,7 @@ _STATUS_EXIT_CODES = {"success": EXIT_SUCCESS, "partial": EXIT_PARTIAL, "failed"
 MER_ROVERS: tuple[str, ...] = tuple(ROVER_PREFIXES)
 
 AdapterBuilder = Callable[[AsyncExitStack], Awaitable[SourceAdapter]]
-BatchesCommand = Callable[[str, int, int | None, int, bool, Settings], Awaitable[int]]
+BatchesCommand = Callable[[str, int, int | None, int, bool, Settings], Coroutine[Any, Any, int]]
 
 
 def _rover_argument(parser: argparse.ArgumentParser, *, one_off: bool = False) -> None:

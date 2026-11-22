@@ -12,7 +12,6 @@ from sqlalchemy import (
     DateTime,
     FromClause,
     Integer,
-    Select,
     SmallInteger,
     Text,
     and_,
@@ -32,10 +31,16 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import ARRAY, Insert, aggregate_order_by
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import InstrumentedAttribute, contains_eager, joinedload, selectinload
+from sqlalchemy.orm import (
+    InstrumentedAttribute,
+    QueryableAttribute,
+    contains_eager,
+    joinedload,
+    selectinload,
+)
 
 from app.db.models import Camera, CameraSolCount, Photo, RoverWaypoint, SolSummary
-from app.repositories._common import FRESH
+from app.repositories._common import FRESH, AnySelect
 from app.repositories.rovers import get_or_create_cameras
 from app.sources.base import PhotoRecord
 from app.sources.photo_meta import STORED_META_PATHS, StoredMeta, stored_meta
@@ -81,7 +86,7 @@ MARS_RADIUS_KM = 3389.5
 # drive count comes anywhere near it.
 _MAX_DRIVE = 2_147_483_647
 
-_EMPTY_TEXT_ARRAY = literal_column("'{}'::text[]")
+_EMPTY_TEXT_ARRAY: ColumnElement[Any] = literal_column("'{}'::text[]")
 
 
 @dataclass
@@ -200,12 +205,12 @@ def _upsert_statement(rows: list[dict[str, Any]]) -> Insert:
 
 
 def _filtered(
-    stmt: Select[Any],
+    stmt: AnySelect,
     flt: PhotoFilter,
     *,
     joined_camera: bool = False,
     bound_taken_at: bool = True,
-) -> Select[Any]:
+) -> AnySelect:
     """Apply the filter; joins cameras only for a non-empty camera filter (unless joined)."""
     stmt = stmt.where(Photo.rover_id == flt.rover_id)
     if flt.sol is not None:
@@ -233,7 +238,7 @@ def _filtered(
     return _meta_filtered(stmt, flt)
 
 
-def _meta_filtered(stmt: Select[Any], flt: PhotoFilter) -> Select[Any]:
+def _meta_filtered(stmt: AnySelect, flt: PhotoFilter) -> AnySelect:
     """Local time windows and minimum frame size (columns filled from ``extra``)."""
     if flt.local_time_ranges:
         stmt = stmt.where(or_(*(_time_window(low, high) for low, high in flt.local_time_ranges)))
@@ -265,7 +270,7 @@ def _day_start(day: date, shift_days: int) -> datetime | None:
         return None
 
 
-def _ranged(stmt: Select[Any], flt: PhotoFilter, bound_taken_at: bool = True) -> Select[Any]:
+def _ranged(stmt: AnySelect, flt: PhotoFilter, bound_taken_at: bool = True) -> AnySelect:
     """Sol, date and site ranges.
 
     A date range also bounds ``taken_at`` by a day on each side: ``earth_date`` is the UTC date
@@ -368,9 +373,7 @@ def _per_camera(flt: PhotoFilter) -> list[PhotoFilter]:
     return [replace(flt, camera_ids=[camera_id]) for camera_id in flt.camera_ids]
 
 
-def _keys_query(
-    flt: PhotoFilter, sort: PhotoSort, limit: int, offset: int, part: int
-) -> Select[Any]:
+def _keys_query(flt: PhotoFilter, sort: PhotoSort, limit: int, offset: int, part: int) -> AnySelect:
     """Sort keys of the rover's photos ``offset .. offset + limit``, id first.
 
     ``sol`` is selected only for the sol sorts: for ``taken_at`` sorts a constant is
@@ -457,7 +460,7 @@ def _photos_of_stops(
 
 def _near_keys_query(
     flt: PhotoFilter, sort: PhotoSort, sol: Any, limit: int, offset: int
-) -> Select[Any]:
+) -> AnySelect:
     """Sort keys of the photos of stops in the radius (see ``_keys_query``)."""
     stops = _stops_in_radius(flt)
     photos = _photos_of_stops(stops, [Photo.id, sol, Photo.taken_at], flt, bound_taken_at=True)
@@ -468,7 +471,7 @@ def _near_keys_query(
     return stmt.limit(limit).offset(offset or None)
 
 
-def _near_count_query(flt: PhotoFilter) -> Select[Any]:
+def _near_count_query(flt: PhotoFilter) -> AnySelect:
     stops = _stops_in_radius(flt)
     photos = _photos_of_stops(stops, [Photo.id], flt, bound_taken_at=False)
     return select(func.count()).select_from(stops).join(photos, true())
@@ -644,12 +647,14 @@ async def summary_stats(
         where.append(SolSummary.earth_date >= date_min)
     if date_max is not None:
         where.append(SolSummary.earth_date <= date_max)
-    camera_col: ColumnElement[Any] = Camera.code if by_camera else literal_column("NULL::text")
+    camera_col: ColumnElement[Any] | QueryableAttribute[Any] = (
+        Camera.code if by_camera else literal_column("NULL::text")
+    )
     period_col: ColumnElement[Any] = literal_column("NULL::text")
     if group_by in _PERIOD_FORMATS:
         # Format strings are literals: a bound format would not match its twin in GROUP BY.
         period_col = func.to_char(SolSummary.earth_date, literal_column(_PERIOD_FORMATS[group_by]))
-    keys: list[ColumnElement[Any]] = [src.base.rover_id]
+    keys: list[ColumnElement[Any] | QueryableAttribute[Any]] = [src.base.rover_id]
     if by_camera:
         keys.append(Camera.code)
     elif group_by in _PERIOD_FORMATS:
@@ -705,7 +710,7 @@ async def recompute_sol_summaries(
 
 
 async def _recompute_camera_counts(
-    session: AsyncSession, rover_id: str, sols_param: BindParameter[list[int]]
+    session: AsyncSession, rover_id: str, sols_param: BindParameter[Sequence[int]]
 ) -> None:
     """Replace the camera counts of the given sols with fresh aggregates."""
     await session.execute(
@@ -728,7 +733,7 @@ async def _recompute_camera_counts(
     await session.execute(pg_insert(CameraSolCount).from_select(columns, aggregated))
 
 
-def _summary_upsert(rover_id: str, sols_param: BindParameter[list[int]]) -> Insert:
+def _summary_upsert(rover_id: str, sols_param: BindParameter[Sequence[int]]) -> Insert:
     """INSERT ... SELECT of per-sol aggregates for the given sols."""
     is_full = Photo.sample_type == FULL_SAMPLE_TYPE
     codes = func.array_agg(aggregate_order_by(distinct(Camera.code), Camera.code))

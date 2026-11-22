@@ -4,11 +4,12 @@ from collections.abc import Sequence
 from dataclasses import asdict
 from typing import Any
 
-from sqlalchemy import Row, delete, select
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import LocationDataset, RoverTraverseSegment, RoverWaypoint
+from app.repositories._common import AnyRow
 from app.sources.locations import TraverseSegment, WaypointRecord
 
 # asyncpg allows at most 32767 bind parameters per statement (14 per waypoint row).
@@ -84,7 +85,7 @@ async def list_waypoints(
     return (await session.scalars(query)).all()
 
 
-async def list_traverse(session: AsyncSession, rover_id: str) -> Sequence[Row[Any]]:
+async def list_traverse(session: AsyncSession, rover_id: str) -> Sequence[AnyRow]:
     """The whole route as ``(sol, length_m, coordinates)`` rows in driving order."""
     query = (
         select(

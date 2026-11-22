@@ -1,6 +1,6 @@
 """Sync run journal."""
 
-from collections.abc import Sequence
+from collections.abc import Collection
 from datetime import datetime
 from typing import Literal
 
@@ -37,7 +37,7 @@ async def finish_run(
     status: Literal["success", "partial", "failed"],
     photos_upserted: int,
     error: str | None,
-    failed_sols: Sequence[int] = (),
+    failed_sols: Collection[int] = (),
     source_total: int | None = None,
 ) -> None:
     stmt = (

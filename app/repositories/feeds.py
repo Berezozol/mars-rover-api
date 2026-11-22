@@ -8,14 +8,14 @@ so ``now()`` is the same for all of its photos.
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, TypedDict
 
-from sqlalchemy import Select, func, select, tuple_
+from sqlalchemy import func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.db.models import Camera, Photo
-from app.repositories._common import FRESH
+from app.repositories._common import FRESH, AnySelect
 
 BatchKey = tuple[datetime, int]
 
@@ -31,14 +31,22 @@ class FeedBatchRow:
     credits: list[str]
 
 
+class FeedFilterArgs(TypedDict):
+    """The keyword filters shared by the feed queries."""
+
+    camera_id: int | None
+    sample_type: str | None
+    since: datetime
+
+
 def _feed_filter(
-    stmt: Select[Any],
+    stmt: AnySelect,
     rover_id: str,
     *,
     camera_id: int | None,
     sample_type: str | None,
     since: datetime,
-) -> Select[Any]:
+) -> AnySelect:
     stmt = stmt.where(
         Photo.rover_id == rover_id, Photo.feed_at.is_not(None), Photo.feed_at >= since
     )
@@ -101,7 +109,7 @@ async def feed_batches(
     limit: int,
 ) -> list[FeedBatchRow]:
     """Batches (feed_at, sol) newest first: by ``feed_at DESC, sol DESC``."""
-    flt = {"camera_id": camera_id, "sample_type": sample_type, "since": since}
+    flt: FeedFilterArgs = {"camera_id": camera_id, "sample_type": sample_type, "since": since}
     head = _feed_filter(select(Photo.feed_at, Photo.sol, func.count(Photo.id)), rover_id, **flt)
     head = (
         head.group_by(Photo.feed_at, Photo.sol)

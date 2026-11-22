@@ -87,6 +87,8 @@ async def sol_positions(
     )
     result: dict[int, list[tuple[int, int]]] = {}
     for sol, site, drive in await session.execute(query):
+        if site is None or drive is None:
+            continue  # excluded by the WHERE clause; narrows the types
         result.setdefault(sol, []).append((site, drive))
     return result
 

@@ -29,18 +29,17 @@ def to_int(value: Any, *, field: str) -> int | None:
     value = clean(value)
     if value is None:
         return None
-    if isinstance(value, bool):
-        return _unparsable(field, value)
-    if isinstance(value, int):
+    if isinstance(value, int) and not isinstance(value, bool):
         return value
-    if isinstance(value, float):
-        return int(value) if value.is_integer() else _unparsable(field, value)
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
     if isinstance(value, str):
         try:
             return int(value)
         except ValueError:
-            return _unparsable(field, value)
-    return _unparsable(field, value)
+            pass
+    _unparsable(field, value)
+    return None
 
 
 def parse_datetime_utc(value: Any, *, field: str) -> datetime | None:
@@ -54,9 +53,11 @@ def parse_datetime_utc(value: Any, *, field: str) -> datetime | None:
         try:
             parsed = datetime.fromisoformat(value)
         except ValueError:
-            return _unparsable(field, value)
+            _unparsable(field, value)
+            return None
     else:
-        return _unparsable(field, value)
+        _unparsable(field, value)
+        return None
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=UTC)
     return parsed.astimezone(UTC)
@@ -79,4 +80,3 @@ def compact(value: Any) -> Any:
 
 def _unparsable(field: str, value: Any) -> None:
     logger.warning("Cannot parse field %s from value %r; using None", field, value)
-    return None

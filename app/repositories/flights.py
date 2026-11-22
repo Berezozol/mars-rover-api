@@ -1,17 +1,15 @@
 """Ingenuity flights (the NASA flight log) with the photo count of the flight's sol."""
 
-from typing import Any
-
-from sqlalchemy import Select, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import IngenuityFlight, SolSummary
-from app.repositories._common import FRESH
+from app.repositories._common import FRESH, AnySelect
 
 INGENUITY = "ingenuity"
 
 
-def _with_photo_counts() -> Select[Any]:
+def _with_photo_counts() -> AnySelect:
     """Flights left-joined with ``sol_summaries`` of Ingenuity (all sample types)."""
     total = SolSummary.total_photos
     return select(IngenuityFlight, total).outerjoin(

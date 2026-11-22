@@ -82,7 +82,11 @@ async def build_feed(session: AsyncSession, query: FeedQuery, now: datetime | No
     last = await feeds_repo.latest_feed_at(
         session, rover.id, camera_id=camera_id, sample_type=sample_type, since=since
     )
-    args = {"camera_id": camera_id, "sample_type": sample_type, "since": since}
+    args: feeds_repo.FeedFilterArgs = {
+        "camera_id": camera_id,
+        "sample_type": sample_type,
+        "since": since,
+    }
     if group == "photo":
         items: list[FeedBatch] | list[Photo] = await feeds_repo.feed_photos(
             session, rover.id, limit=limit, **args
