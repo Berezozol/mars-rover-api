@@ -55,7 +55,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     - ``rate_limiter`` (only with RATE_LIMIT_ENABLED) and ``admin_auth_limiter`` (only with
       admin enabled): ``RateLimiter`` instances; tests may replace their ``clock``.
     - ``v1_bytes_per_request`` (only with RATE_LIMIT_ENABLED): bytes of a v1 response per charged
-      request; tests may change it.
+      request; tests may change it. ``v1_raw_bytes_per_request``: same for the uncompressed body.
     - ``alert_monitor``: ``AlertMonitor`` when Telegram alerts are configured, else None.
     - ``mer_image_service``: ``MerImageService`` of the Spirit/Opportunity full frames (a stub
       with ``async get_full_jpeg(photo) -> bytes`` also works; ``aclose()`` is optional).
@@ -156,6 +156,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.add_middleware(RateLimitMiddleware)
         # Test hook: bytes of a v1 response that cost one request.
         app.state.v1_bytes_per_request = settings.rate_limit_v1_bytes_per_request
+        # Test hook: bytes of the uncompressed v1 body that cost one request.
+        app.state.v1_raw_bytes_per_request = settings.rate_limit_v1_raw_bytes_per_request
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,

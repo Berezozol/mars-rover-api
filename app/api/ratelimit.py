@@ -10,8 +10,9 @@ or its clock); without one, nothing is limited. The key is ``scope["client"][0]`
 ``--proxy-headers`` has already replaced it with the X-Forwarded-For address when the request
 came from a trusted proxy.
 
-ResponseSizeMiddleware additionally charges v1 responses one extra request per started
-chunk of bytes sent to the client (after gzip).
+ResponseSizeMiddleware additionally charges v1 responses the larger of: wire units (started
+chunks of bytes sent to the client, after gzip) and raw units (started chunks of the
+uncompressed body, reported by the caching layer via scope["mars.response_size"]).
 """
 
 import ipaddress
@@ -22,7 +23,7 @@ from fastapi.responses import JSONResponse
 from starlette.datastructures import MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from app.api.caching import API_PREFIXES
+from app.api.caching import API_PREFIXES, RESPONSE_SIZE_SCOPE_KEY
 from app.core.errors import (
     is_legacy_path,
     rate_limit_headers,
@@ -128,16 +129,28 @@ def _too_many_requests(scope: Scope, wait: float, extra: dict[str, str]) -> JSON
     return response
 
 
+def response_cost(wire: int, raw: int | None, unit: int, raw_unit: int) -> int:
+    """Requests a v1 response costs: the larger of the started ``unit``-byte chunks on the wire
+    and the started ``raw_unit``-byte chunks of the uncompressed body, at least one.
+    ``raw`` is None when the uncompressed size is unknown (wire only)."""
+    cost = max(1, math.ceil(wire / unit))
+    if raw is not None:
+        cost = max(cost, math.ceil(raw / raw_unit))
+    return cost
+
+
 def extra_hits(body_bytes: int, unit: int) -> int:
     """Requests to charge after the first one: started ``unit``-byte chunks minus one."""
-    return max(0, math.ceil(body_bytes / unit) - 1)
+    return response_cost(body_bytes, None, unit, unit) - 1
 
 
 class ResponseSizeMiddleware:
-    """Charges v1 responses by their size on the wire (docs/API.md, "Размер ответов v1").
+    """Charges v1 responses by size (docs/API.md, "Размер ответов v1"): the larger of the wire
+    units (compressed bytes sent) and the raw units (uncompressed body built by the server,
+    reported by the caching layer via ``scope["mars.response_size"]``, also for HEAD and 304).
 
-    Sits outside GZip, so it counts compressed bytes. The unit is read per request from
-    ``app.state.v1_bytes_per_request`` (falling back to the settings). The extra hits are
+    Sits outside GZip. The units are read per request from ``app.state.v1_bytes_per_request`` and
+    ``app.state.v1_raw_bytes_per_request`` (falling back to the settings). The extra hits are
     charged in ``finally``, also after a disconnect, with the bytes actually sent.
     """
 
@@ -150,6 +163,10 @@ class ResponseSizeMiddleware:
             await self.app(scope, receive, send)
             return
         unit = _bytes_unit(scope)
+        raw_unit = max(unit, _raw_bytes_unit(scope))
+        # Shared with the caching middleware, which stores the uncompressed size under "raw".
+        info: dict[str, int] = {}
+        scope[RESPONSE_SIZE_SCOPE_KEY] = info
         sent = 0
 
         async def counting_send(message: Message) -> None:
@@ -162,7 +179,16 @@ class ResponseSizeMiddleware:
         try:
             await self.app(scope, receive, counting_send)
         finally:
-            limiter.charge(client_key(scope), extra_hits(sent, unit))
+            cost = response_cost(sent, info.get("raw"), unit, raw_unit)
+            limiter.charge(client_key(scope), cost - 1)
+
+
+def _raw_bytes_unit(scope: Scope) -> int:
+    state = scope["app"].state
+    unit = getattr(state, "v1_raw_bytes_per_request", None)
+    if unit is None:
+        unit = state.settings.rate_limit_v1_raw_bytes_per_request
+    return max(1024, int(unit))
 
 
 def _bytes_unit(scope: Scope) -> int:
