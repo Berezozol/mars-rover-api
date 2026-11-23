@@ -38,6 +38,7 @@ from app.repositories import rad as rad_repo
 from app.sources.http import (
     ConditionalBody,
     IncompleteResponse,
+    RequestStats,
     ResponseRejected,
     TailProbe,
     UpstreamClient,
@@ -119,6 +120,12 @@ class RadRunResult:
     sols_deleted: int = 0
     notes: list[str] = field(default_factory=list)
     error: str | None = None
+    # HTTP requests of the run (retries and redirect hops included) and the body bytes read.
+    requests_get: int = 0
+    requests_probe: int = 0
+    requests_conditional: int = 0
+    bytes_received: int = 0
+    slowest_wait: float = 0.0
 
 
 class _ServerDown(Exception):
@@ -399,6 +406,7 @@ class RadLoader:
                 logger.warning("Another RAD sync or import is running; nothing done")
                 return RadRunResult(exit_code=EXIT_USAGE, locked=True)
             result = RadRunResult()
+            before = self._client.stats.snapshot()
             try:
                 await self._run(result, from_sol, to_sol)
             except _ListingFailed as exc:
@@ -410,9 +418,26 @@ class RadLoader:
                 result.exit_code = EXIT_SERVER_DOWN
                 result.stopped = "server_down"
                 result.error = _describe(exc)
+            self._count_requests(result, before)
             if result.stopped is not None:
                 await self._record_failure(result)
             return result
+
+    def _count_requests(self, result: RadRunResult, before: RequestStats) -> None:
+        now = self._client.stats
+        result.requests_get = now.gets - before.gets
+        result.requests_probe = now.probes - before.probes
+        result.requests_conditional = now.conditional - before.conditional
+        result.bytes_received = now.bytes_received - before.bytes_received
+        result.slowest_wait = now.slowest_wait
+        logger.info(
+            "RAD sync requests: %d full, %d range, %d conditional; %d bytes; slowest wait %.1f s",
+            result.requests_get,
+            result.requests_probe,
+            result.requests_conditional,
+            result.bytes_received,
+            result.slowest_wait,
+        )
 
     async def _run(self, result: RadRunResult, lo: int | None, hi: int | None) -> None:
         now = datetime.now(UTC)

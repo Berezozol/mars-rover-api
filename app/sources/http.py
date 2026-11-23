@@ -63,6 +63,28 @@ class SolsFetchFailed(UpstreamError):
         super().__init__(cause.url, cause.status, f"refetch of sols {listed} failed: {cause}")
 
 
+@dataclass
+class RequestStats:
+    """Counters of the HTTP requests a client sent (redirect hops and retries count too):
+    ``gets`` full GETs, ``probes`` ``Range`` requests, ``conditional`` conditional listing
+    requests; ``bytes_received`` is the size of the bodies read; ``slowest_wait`` the longest
+    wait (seconds) from sending a request to its response headers."""
+
+    gets: int = 0
+    probes: int = 0
+    conditional: int = 0
+    bytes_received: int = 0
+    slowest_wait: float = 0.0
+
+    def snapshot(self) -> "RequestStats":
+        return RequestStats(
+            self.gets, self.probes, self.conditional, self.bytes_received, self.slowest_wait
+        )
+
+
+SLOW_HEADERS_SECONDS = 10.0
+
+
 @dataclass(frozen=True)
 class ConditionalBody:
     """Result of a conditional GET: ``304`` (no body) or ``200`` with the body and validators."""
@@ -178,7 +200,9 @@ def _check_host(url: str, target: str, allowed_origin: str | None) -> None:
         raise ResponseRejected(url, None, "host is not allowed")
 
 
-async def _collect(url: str, response: httpx.Response, max_bytes: int) -> bytes:
+async def _collect(
+    url: str, response: httpx.Response, max_bytes: int, stats: RequestStats | None = None
+) -> bytes:
     """The body of a streamed response, capped at ``max_bytes`` and checked for completeness."""
     expected = _content_length(response)
     if expected is not None and expected > max_bytes:
@@ -187,6 +211,8 @@ async def _collect(url: str, response: httpx.Response, max_bytes: int) -> bytes:
     received = 0
     async for chunk in response.aiter_raw():
         received += len(chunk)
+        if stats is not None:
+            stats.bytes_received += len(chunk)
         if received > max_bytes:
             raise ResponseRejected(url, response.status_code, "response is too large")
         chunks.append(chunk)
@@ -233,6 +259,8 @@ class UpstreamClient:
         request, instead of ``UPSTREAM_MAX_RPS``) and ``timeout`` (httpx timeout, seconds)
         override the settings for this client; by default the settings apply."""
         self._sleep = sleep
+        self._clock = clock
+        self.stats = RequestStats()
         retries = settings.upstream_max_retries if max_retries is None else max_retries
         self._max_retries = max(retries, 0)
         self._retry_base = settings.upstream_retry_base_seconds
@@ -350,18 +378,26 @@ class UpstreamClient:
 
     @asynccontextmanager
     async def _open(
-        self, url: str, allowed_origin: str | None, headers: Mapping[str, str]
+        self,
+        url: str,
+        allowed_origin: str | None,
+        headers: Mapping[str, str],
+        kind: str = "gets",
     ) -> AsyncIterator[httpx.Response]:
-        """A streamed GET with redirects checked against ``allowed_origin`` by hand."""
+        """A streamed GET with redirects checked against ``allowed_origin`` by hand; ``kind``
+        is the ``RequestStats`` counter the request is counted in."""
         current = url
         try:
             for _ in range(MAX_REDIRECTS + 1):
                 _check_host(url, current, allowed_origin)
                 await self._limiter.acquire()
                 follow = allowed_origin is None
+                setattr(self.stats, kind, getattr(self.stats, kind) + 1)
+                started = self._clock()
                 async with self._http.stream(
                     "GET", current, headers=headers, follow_redirects=follow
                 ) as response:
+                    self._note_wait(current, self._clock() - started)
                     if not follow and response.is_redirect and "location" in response.headers:
                         current = str(httpx.URL(current).join(response.headers["location"]))
                         continue
@@ -370,6 +406,11 @@ class UpstreamClient:
             raise ResponseRejected(url, None, "too many redirects")
         finally:
             self._limiter.release()
+
+    def _note_wait(self, url: str, waited: float) -> None:
+        self.stats.slowest_wait = max(self.stats.slowest_wait, waited)
+        if waited >= SLOW_HEADERS_SECONDS:
+            logger.info("Slow response from %s: headers after %.1f s", url, waited)
 
     async def _stream_sink[T](
         self,
@@ -389,6 +430,7 @@ class UpstreamClient:
             received = 0
             async for chunk in response.aiter_raw():
                 received += len(chunk)
+                self.stats.bytes_received += len(chunk)
                 if received > max_bytes:
                     raise ResponseRejected(url, response.status_code, "response is too large")
                 sink.feed(chunk)
@@ -400,14 +442,14 @@ class UpstreamClient:
 
     async def _probe(self, url: str, n: int, allowed_origin: str | None) -> TailProbe:
         headers = {"Accept-Encoding": "identity", "Range": f"bytes=-{n}"}
-        async with self._open(url, allowed_origin, headers) as response:
+        async with self._open(url, allowed_origin, headers, "probes") as response:
             self._check_status(url, response)
             if response.status_code == 200:
                 return TailProbe(200, _content_length(response), None)
             if response.status_code != 206:
                 raise UpstreamError(url, response.status_code, "unexpected status")
             total = _content_range_total(response.headers.get("Content-Range"))
-            return TailProbe(206, total, await _collect(url, response, n))
+            return TailProbe(206, total, await _collect(url, response, n, self.stats))
 
     async def _with_retries[T](
         self,
@@ -494,7 +536,7 @@ class UpstreamClient:
             headers["If-Modified-Since"] = last_modified
         return await self._with_retries(
             url,
-            lambda: self._read_response(url, max_bytes, allowed_origin, headers),
+            lambda: self._read_response(url, max_bytes, allowed_origin, headers, "conditional"),
             retryable=_is_download_retryable,
         )
 
@@ -510,9 +552,10 @@ class UpstreamClient:
         max_bytes: int,
         allowed_origin: str | None,
         extra_headers: Mapping[str, str],
+        kind: str = "gets",
     ) -> ConditionalBody:
         headers = {"Accept-Encoding": "identity", **extra_headers}
-        async with self._open(url, allowed_origin, headers) as response:
+        async with self._open(url, allowed_origin, headers, kind) as response:
             self._check_status(url, response)
             etag = response.headers.get("ETag")
             last_modified = response.headers.get("Last-Modified")
@@ -520,7 +563,7 @@ class UpstreamClient:
                 return ConditionalBody(True, None, etag, last_modified)
             if response.status_code != 200:
                 raise UpstreamError(url, response.status_code, "unexpected status")
-            body = await _collect(url, response, max_bytes)
+            body = await _collect(url, response, max_bytes, self.stats)
             return ConditionalBody(False, body, etag, last_modified)
 
     def _backoff(self, state: RetryCallState) -> float:

@@ -602,6 +602,10 @@ def _rad_summary(result: RadRunResult) -> str:
         f"duplicate={result.files_duplicate} empty={result.files_empty} "
         f"failed={result.files_failed} deleted={result.files_deleted}"
     )
+    line += (
+        f"; requests full={result.requests_get} range={result.requests_probe} "
+        f"conditional={result.requests_conditional}, bytes={result.bytes_received}"
+    )
     if result.not_modified:
         line += "; listing not modified"
     if result.stopped:

@@ -493,3 +493,38 @@ def test_parse_timing_errors_repeated_file_is_one_name_ac10() -> None:
 
 def test_parse_timing_errors_text_without_blocks_is_an_empty_set_ac10() -> None:
     assert parse_timing_errors("") == set()
+
+
+# --- byte-exact CRLF fixtures (real PDS3 line ends) ------------------------------------------
+
+
+@pytest.mark.parametrize("name", [F_4843, F_1649_B], ids=["sol4843", "sol1649"])
+def test_parse_crlf_fixture_and_its_lf_copy_give_the_same_content(name: str) -> None:
+    raw = fixture(name)
+    assert b"\r\n" in raw, "fixtures must be stored byte-exact with CRLF"
+    lf = raw.replace(b"\r\n", b"\n")
+    assert lf != raw
+
+    crlf_result = parse(raw)
+    lf_result = parse(lf)
+
+    assert attr(crlf_result, "start_sol") == attr(lf_result, "start_sol")
+    assert attr(crlf_result, "blocks") == attr(lf_result, "blocks")
+    assert [obs_tuple(o) for o in attr(crlf_result, "observations")] == [
+        obs_tuple(o) for o in attr(lf_result, "observations")
+    ]
+    assert attr(crlf_result, "observations")  # not vacuous
+
+
+@pytest.mark.parametrize("name", [F_4843, F_1649_B, F_SOL10], ids=["sol4843", "sol1649", "sol10"])
+def test_parse_md5_and_size_are_those_of_the_raw_crlf_bytes(name: str) -> None:
+    import hashlib
+
+    raw = fixture(name)
+
+    result = parse(raw, chunk=4096)
+
+    assert attr(result, "md5") == hashlib.md5(raw).hexdigest()  # noqa: S324
+    assert attr(result, "size") == len(raw)
+    lf = parse(raw.replace(b"\r\n", b"\n"))
+    assert attr(lf, "md5") != attr(result, "md5")  # line ends are part of the checksum

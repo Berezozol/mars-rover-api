@@ -390,13 +390,7 @@ describe("Search: navigation and layout", () => {
     expect(toggle.getAttribute("aria-expanded")).not.toBe(was);
   });
 
-  // The horizontal-scroll and the real-data scenarios need a browser and a local server; Playwright is not set up yet.
-  it.todo(
-    "AC-24: at 360 px there is no horizontal page scroll (needs e2e; Playwright not installed)",
-  );
-  it.todo(
-    "AC-25: Stats -> By camera -> Search by camera -> open a photo on the built frontend (needs e2e)",
-  );
+  // AC-24 (360 px, no horizontal scroll) and AC-25 (Stats -> Search -> photo) are covered in frontend/e2e/.
 });
 
 describe("Search: load", () => {
