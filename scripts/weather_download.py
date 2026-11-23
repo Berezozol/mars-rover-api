@@ -7,7 +7,10 @@ Usage:
 
 Layout: data/weather_raw/<mission>/<path relative to the dataset root>.
 Resumable (finished files are skipped; downloads go to .part, then renamed).
-Polite: one sequential request at a time, at most one request per second.
+Polite: one sequential request at a time, at most one request per --interval seconds
+(default and minimum 1.0). --stop-at HH:MM (local time) ends the run cleanly at that time.
+If the server keeps failing (connection resets), the run pauses 15 minutes, tries once more
+and otherwise stops with exit code 3.
 """
 
 from __future__ import annotations
@@ -19,7 +22,7 @@ import re
 import sys
 import time
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
@@ -28,6 +31,7 @@ import httpx
 BASE = "https://atmos.nmsu.edu"
 USER_AGENT = "weather-archive-mirror/1.0 (research mirror, polite crawler)"
 MIN_INTERVAL = 1.0
+COOLDOWN = 15 * 60.0  # pause after a request exhausted its retries
 MAX_ATTEMPTS = 6
 OUT_ROOT = Path("data/weather_raw")
 
@@ -72,8 +76,28 @@ def parse_size(text: str) -> int | None:
     return int(float(m.group(1)) * {"": 1, "K": 1024, "M": 1024**2, "G": 1024**3}[m.group(2)])
 
 
+class StopRun(Exception):
+    """The --stop-at time was reached; stop cleanly."""
+
+
+class ServerUnreachable(Exception):
+    """The server kept failing even after the cool-down."""
+
+
+def next_deadline(hhmm: str, now: datetime | None = None) -> datetime:
+    """Next local occurrence of HH:MM strictly after now (handles windows across midnight)."""
+    now = now or datetime.now().astimezone()
+    hour, minute = (int(x) for x in hhmm.split(":"))
+    target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if target <= now:
+        target += timedelta(days=1)
+    return target
+
+
 class Client:
-    def __init__(self) -> None:
+    def __init__(self, interval: float = MIN_INTERVAL, deadline: datetime | None = None) -> None:
+        self.interval = max(interval, MIN_INTERVAL)
+        self.deadline = deadline
         self.http = httpx.Client(
             headers={"User-Agent": USER_AGENT},
             timeout=httpx.Timeout(60.0, connect=20.0),
@@ -83,11 +107,29 @@ class Client:
         self.requests = 0
 
     def _wait(self) -> None:
-        delay = MIN_INTERVAL - (time.monotonic() - self.last)
+        self._check_deadline()
+        delay = self.interval - (time.monotonic() - self.last)
         if delay > 0:
             time.sleep(delay)
         self.last = time.monotonic()
         self.requests += 1
+
+    def _check_deadline(self) -> None:
+        if self.deadline is not None and datetime.now().astimezone() >= self.deadline:
+            raise StopRun
+
+    def _cooldown(self, what: str) -> None:
+        """Wait COOLDOWN seconds before the one extra attempt (stop if the deadline passes)."""
+        print(
+            f"  {what}: server keeps failing, waiting {COOLDOWN / 60:.0f} min "
+            "before one more attempt",
+            flush=True,
+        )
+        end = time.monotonic() + COOLDOWN
+        while time.monotonic() < end:
+            self._check_deadline()
+            time.sleep(min(30.0, max(end - time.monotonic(), 0)))
+        self.last = time.monotonic()
 
     def _backoff(self, attempt: int, resp: httpx.Response | None) -> None:
         delay = min(2.0**attempt * 2, 120.0)
@@ -98,6 +140,16 @@ class Client:
 
     def listing(self, url: str) -> list[tuple[str, int | None, bool]]:
         """Return (name, approx size, is_dir) for entries of a directory."""
+        try:
+            return self._listing(url)
+        except RuntimeError:
+            self._cooldown(f"listing {url}")
+        try:
+            return self._listing(url)
+        except RuntimeError as exc:
+            raise ServerUnreachable(str(exc)) from exc
+
+    def _listing(self, url: str) -> list[tuple[str, int | None, bool]]:
         for attempt in range(1, MAX_ATTEMPTS + 1):
             self._wait()
             resp = None
@@ -121,7 +173,29 @@ class Client:
         return out
 
     def download(self, url: str, dest: Path) -> tuple[int, str]:
-        """Download to .part then rename. Returns (bytes, status)."""
+        """Download to .part then rename. Returns (bytes, status).
+
+        Server trouble (transport errors, 429, 5xx, short reads) that survives all retries
+        triggers one cool-down and one more round; if that fails too, ServerUnreachable.
+        """
+        nbytes, status = self._download(url, dest)
+        if not self._is_server_trouble(status):
+            return nbytes, status
+        self._cooldown(f"download {url} ({status})")
+        nbytes, status = self._download(url, dest)
+        if self._is_server_trouble(status):
+            raise ServerUnreachable(f"download failed: {url} ({status})")
+        return nbytes, status
+
+    @staticmethod
+    def _is_server_trouble(status: str) -> bool:
+        if status in ("ok", "404"):
+            return False
+        if status.isdigit():
+            return status == "429" or int(status) >= 500
+        return True  # transport error class name, "short"
+
+    def _download(self, url: str, dest: Path) -> tuple[int, str]:
         part = dest.with_name(dest.name + ".part")
         dest.parent.mkdir(parents=True, exist_ok=True)
         status = "error"
@@ -166,7 +240,9 @@ def already_have(dest: Path, listed: int | None) -> bool:
 
 
 def run(args: argparse.Namespace) -> int:
-    client = Client()
+    deadline = next_deadline(args.stop_at) if args.stop_at else None
+    client = Client(args.interval, deadline)
+    exit_code = 0
     log_path = OUT_ROOT / "download-log.csv"
     OUT_ROOT.mkdir(parents=True, exist_ok=True)
     new_log = not log_path.exists()
@@ -259,6 +335,11 @@ def run(args: argparse.Namespace) -> int:
                             continue
                         if not handle(f"{top}{rname}/{sname}/{n}", s):
                             break
+    except StopRun:
+        print(f"Stop time {args.stop_at} reached, stopping cleanly; rerun to resume.", flush=True)
+    except ServerUnreachable as exc:
+        print(f"server unreachable, stopping ({exc})", flush=True)
+        exit_code = 3
     except KeyboardInterrupt:
         print("\nInterrupted; partial files removed on next run, finished files kept.", flush=True)
     finally:
@@ -274,7 +355,7 @@ def run(args: argparse.Namespace) -> int:
         f"{(time.monotonic() - started) / 60:.1f} min",
         flush=True,
     )
-    return 1 if files_failed else 0
+    return exit_code or (1 if files_failed else 0)
 
 
 def main() -> int:
@@ -287,7 +368,24 @@ def main() -> int:
         "--dry-run", action="store_true", help="crawl listings only, count files and size"
     )
     ap.add_argument("--only-range", default="", help="substring filter for first-level range dirs")
-    return run(ap.parse_args())
+    ap.add_argument(
+        "--interval",
+        type=float,
+        default=MIN_INTERVAL,
+        help="seconds between requests (default and minimum 1.0)",
+    )
+    ap.add_argument(
+        "--stop-at",
+        default="",
+        metavar="HH:MM",
+        help="local time to stop cleanly before the next request (may be after midnight)",
+    )
+    args = ap.parse_args()
+    if args.interval < MIN_INTERVAL:
+        ap.error(f"--interval must be >= {MIN_INTERVAL}")
+    if args.stop_at and not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", args.stop_at):
+        ap.error("--stop-at must be HH:MM (24h)")
+    return run(args)
 
 
 if __name__ == "__main__":
