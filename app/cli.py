@@ -29,6 +29,18 @@
   columns local_time_s, width and height of stored photos from ``extra`` (all rovers by
   default), sol batches upwards, one commit per batch; offline and idempotent, safe to rerun
   or resume with --from-sol. Exit codes: 0 done, 1 failed, 2 invalid input.
+- ``rad sync [--from-sol N] [--to-sol M]``: load the MSL RAD radiation summaries (Curiosity) from
+  the PDS volume into the database, streaming the files without writing them to disk; the whole
+  history without bounds (resumable, files that left the listing are forgotten), else only the
+  sols in the range. Exit codes: 0 done, 1 some files stay unloaded (or the listing shrank),
+  2 invalid input or another ``rad sync`` / ``rad import`` holds the lock, 3 the server stayed
+  unavailable after the cooldown, 130 interrupted (rerun to continue).
+- ``rad status``: the state of the RAD data (files by status, sols, last check and error).
+- ``rad export --output PATH``: write the RAD tables to a gzip JSON Lines file. Exit codes:
+  0 written, 2 the file cannot be written.
+- ``rad import --input PATH [--force]``: replace the RAD tables with an export file. Exit codes:
+  0 imported or already identical, 1 the file has far fewer sols than the database (``--force``
+  imports it anyway), 2 invalid file or input, or the lock is taken.
 - ``openapi [--output PATH]``: write the OpenAPI schema (admin routes excluded) as JSON, to
   stdout by default. Exit codes: 0 written, 2 the file cannot be written.
 - ``openapi-ts [--output PATH]``: the same schemas as TypeScript declarations; same exit codes.
@@ -41,14 +53,19 @@ import logging
 import sys
 from collections.abc import Awaitable, Callable, Coroutine
 from contextlib import AsyncExitStack
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.core.config import Settings, get_settings
 from app.core.errors import NoSourceForRover, SyncInProgress
 from app.core.logging import configure_logging
 from app.db.session import create_engine, create_session_factory
+from app.repositories import rad as rad_repo
 from app.services import reconcile
+from app.services.alerts import TelegramNotifier, rad_sync_message
 from app.services.backfill import (
     BackfillArgumentError,
     BackfillOptions,
@@ -58,6 +75,14 @@ from app.services.backfill import (
 from app.services.location_sync import DatasetResult, LocationSyncService
 from app.services.mer_download import download_indexes
 from app.services.meta_backfill import DEFAULT_BATCH_SOLS, MetaBackfillService
+from app.services.rad_sync import RadLoader, RadRunResult, build_rad_client
+from app.services.rad_transfer import (
+    RadBusy,
+    RadImportError,
+    RadImportRefused,
+    export_rad,
+    import_rad,
+)
 from app.services.sample_sync import SampleSyncResult, SampleSyncService
 from app.services.sync import SyncResult, SyncService, compact_ranges
 from app.services.v2 import ROVER_SLUGS
@@ -113,6 +138,24 @@ def _batch_arguments(parser: argparse.ArgumentParser) -> None:
         dest="resume",
         action="store_false",
         help="redo batches already loaded by a successful backfill run",
+    )
+
+
+def _add_rad_parser(commands: Any) -> None:
+    rad = commands.add_parser("rad", help="MSL RAD radiation data: sync, status, export, import")
+    actions = rad.add_subparsers(dest="rad_command")
+    sync = actions.add_parser(
+        "sync", help="load the summaries from the PDS volume (whole history without bounds)"
+    )
+    sync.add_argument("--from-sol", type=int, default=None, help="lowest sol (default: all)")
+    sync.add_argument("--to-sol", type=int, default=None, help="highest sol (default: all)")
+    actions.add_parser("status", help="show the state of the RAD data")
+    export = actions.add_parser("export", help="write the RAD tables to a gzip JSON Lines file")
+    export.add_argument("--output", required=True, type=Path, help="file to write")
+    imported = actions.add_parser("import", help="replace the RAD tables with an export file")
+    imported.add_argument("--input", required=True, type=Path, help="file to read")
+    imported.add_argument(
+        "--force", action="store_true", help="import even a file with far fewer sols"
     )
 
 
@@ -177,6 +220,8 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="no conditional request or no-op, accept a page where a stored sample is missing",
     )
+
+    _add_rad_parser(commands)
 
     openapi = commands.add_parser(
         "openapi", help="write the OpenAPI schema of the application as JSON (no database needed)"
@@ -245,6 +290,8 @@ def main(argv: list[str] | None = None) -> int:
         return _main_locations(args)
     if args.command == "samples":
         return _main_samples(args)
+    if args.command == "rad":
+        return _main_rad(args)
     if args.command == "openapi":
         return _main_openapi(args)
     if args.command == "openapi-ts":
@@ -342,6 +389,37 @@ def _main_samples(args: argparse.Namespace) -> int:
     settings = get_settings()
     configure_logging(settings.log_level)
     return asyncio.run(run_samples_command(args.force, settings))
+
+
+def _main_rad(args: argparse.Namespace) -> int:
+    settings = get_settings()
+    configure_logging(settings.log_level)
+    command = args.rad_command
+    try:
+        if command == "sync":
+            return _main_rad_sync(args, settings)
+        if command == "status":
+            return asyncio.run(run_rad_status_command(settings))
+        if command == "export":
+            return asyncio.run(run_rad_export_command(args.output, settings))
+        if command == "import":
+            return asyncio.run(run_rad_import_command(args.input, args.force, settings))
+    except KeyboardInterrupt:
+        print("interrupted: rerun the same command to continue", file=sys.stderr)
+        return EXIT_INTERRUPTED
+    print("error: choose one of: sync, status, export, import", file=sys.stderr)
+    return EXIT_USAGE
+
+
+def _main_rad_sync(args: argparse.Namespace, settings: Settings) -> int:
+    for value in (args.from_sol, args.to_sol):
+        if value is not None and value < 1:
+            print("error: sols start at 1", file=sys.stderr)
+            return EXIT_USAGE
+    if None not in (args.from_sol, args.to_sol) and args.from_sol > args.to_sol:
+        print("error: --from-sol must not be greater than --to-sol", file=sys.stderr)
+        return EXIT_USAGE
+    return asyncio.run(run_rad_sync_command(args.from_sol, args.to_sol, settings))
 
 
 def _main_openapi(args: argparse.Namespace, *, typescript: bool = False) -> int:
@@ -471,6 +549,131 @@ async def run_samples_command(force: bool, settings: Settings) -> int:
 def _samples_line(result: SampleSyncResult) -> str:
     line = f"perseverance samples: {result.status}, items={result.items}"
     return f"{line}, error: {result.error}" if result.error else line
+
+
+async def run_rad_sync_command(from_sol: int | None, to_sol: int | None, settings: Settings) -> int:
+    """Run ``rad sync`` and return the exit code (see the module docstring)."""
+    engine = create_engine(
+        settings.database_url, connect_timeout=settings.db_connect_timeout_seconds
+    )
+    try:
+        async with build_rad_client(settings) as client:
+            result = await RadLoader(engine, client, settings).run(from_sol, to_sol)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+    except Exception as exc:
+        logger.exception("RAD sync crashed")
+        await _report_rad_crash(engine, settings, exc)
+        return EXIT_PARTIAL
+    finally:
+        await engine.dispose()
+    print(_rad_summary(result))
+    if result.locked:
+        print("error: another rad sync or import is running", file=sys.stderr)
+    elif result.exit_code in (EXIT_PARTIAL, EXIT_IN_PROGRESS):
+        notifier = TelegramNotifier.from_settings(settings)
+        if notifier is not None:
+            await notifier.send(rad_sync_message(result.exit_code, result.error))
+    return result.exit_code
+
+
+async def _report_rad_crash(engine: AsyncEngine, settings: Settings, exc: Exception) -> None:
+    """A crashed ``rad sync``: the reason in ``rad_dataset.last_error`` and an alert (if
+    Telegram is set up); neither may raise."""
+    error = f"{type(exc).__name__}: {exc}"[:500]
+    try:
+        async with create_session_factory(engine)() as session:
+            await rad_repo.save_dataset(session, checked_at=datetime.now(UTC), last_error=error)
+            await session.commit()
+    except Exception:
+        logger.exception("Could not record the RAD crash")
+    notifier = TelegramNotifier.from_settings(settings)
+    if notifier is not None:
+        await notifier.send(rad_sync_message(EXIT_PARTIAL, error))
+
+
+def _rad_summary(result: RadRunResult) -> str:
+    if result.locked:
+        return "rad sync: not started"
+    line = (
+        f"rad sync: sols planned={result.sols_planned} loaded={result.sols_loaded} "
+        f"failed={len(result.sols_failed)}; files loaded={result.files_loaded} "
+        f"duplicate={result.files_duplicate} empty={result.files_empty} "
+        f"failed={result.files_failed} deleted={result.files_deleted}"
+    )
+    if result.not_modified:
+        line += "; listing not modified"
+    if result.stopped:
+        line += f"; stopped: {result.stopped}"
+    for note in (*result.notes, *([result.error] if result.error else [])):
+        line += f"\n  note: {note}"
+    return line
+
+
+async def run_rad_status_command(settings: Settings) -> int:
+    engine = create_engine(
+        settings.database_url, connect_timeout=settings.db_connect_timeout_seconds
+    )
+    try:
+        async with create_session_factory(engine)() as session:
+            state = await rad_repo.status(session)
+    finally:
+        await engine.dispose()
+    by_status = ", ".join(
+        f"{name}={count}" for name, count in sorted(state.files_by_status.items())
+    )
+    print(f"files: {by_status or 'none'}")
+    print(
+        f"sols: {state.sols} (from {state.min_sol} to {state.max_sol}), updated {state.updated_at}"
+    )
+    dataset = state.dataset
+    if dataset is None:
+        print("dataset: never checked")
+        return EXIT_SUCCESS
+    print(
+        f"dataset: checked {dataset.checked_at}, succeeded {dataset.succeeded_at}, "
+        f"listing changed {dataset.changed_at}, files listed {dataset.files_listed}, "
+        f"imported {dataset.imported_at}"
+    )
+    if dataset.last_error:
+        print(f"last error: {dataset.last_error}")
+    return EXIT_SUCCESS
+
+
+async def run_rad_export_command(path: Path, settings: Settings) -> int:
+    engine = create_engine(
+        settings.database_url, connect_timeout=settings.db_connect_timeout_seconds
+    )
+    try:
+        async with create_session_factory(engine)() as session:
+            result = await export_rad(session, path)
+    except OSError as exc:
+        print(f"error: {path}: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+    finally:
+        await engine.dispose()
+    print(f"exported {result.files} files, {result.daily} sols to {path}")
+    return EXIT_SUCCESS
+
+
+async def run_rad_import_command(path: Path, force: bool, settings: Settings) -> int:
+    engine = create_engine(
+        settings.database_url, connect_timeout=settings.db_connect_timeout_seconds
+    )
+    try:
+        async with create_session_factory(engine)() as session:
+            result = await import_rad(session, path, force, settings=settings)
+    except (RadBusy, RadImportError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+    except RadImportRefused as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_PARTIAL
+    finally:
+        await engine.dispose()
+    print(f"{result.status}: {result.files} files, {result.daily} sols")
+    return EXIT_SUCCESS
 
 
 async def run_backfill_command(

@@ -53,9 +53,6 @@ export function Layout({ route, pathname, children }: Props) {
   // Only Ingenuity flies; the item appears once the API lists it.
   const hasFlights = rovers.status === "ok" && rovers.data.some((r) => r.id === "ingenuity");
 
-  // The samples page exists for Perseverance only.
-  const hasSamples = rovers.status === "ok" && rovers.data.some((r) => r.id === "perseverance");
-
   const cur = (name: RouteMatch["name"]) => (route.name === name ? "page" : undefined);
 
   return (
@@ -109,11 +106,13 @@ export function Layout({ route, pathname, children }: Props) {
                 Flights
               </Link>
             )}
-            {hasSamples && (
-              <Link href="/rovers/perseverance/samples" aria-current={cur("samples")}>
-                Samples
-              </Link>
-            )}
+            <Link
+              href="/data"
+              aria-current={route.name === "data" || route.name === "samples" ? "page" : undefined}
+              title="Rock samples and radiation"
+            >
+              Data
+            </Link>
             <Link
               href="/stats"
               aria-current={cur("stats")}

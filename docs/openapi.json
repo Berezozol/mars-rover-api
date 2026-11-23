@@ -1784,6 +1784,108 @@
         }
       }
     },
+    "/api/v2/rovers/{rover}/radiation": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "summary": "Daily radiation summaries of Curiosity (MSL RAD)",
+        "operationId": "get_radiation_api_v2_rovers__rover__radiation_get",
+        "parameters": [
+          {
+            "name": "rover",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rover"
+            }
+          },
+          {
+            "name": "sol_min",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2147483647,
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "First sol, inclusive.",
+              "title": "Sol Min"
+            },
+            "description": "First sol, inclusive."
+          },
+          {
+            "name": "sol_max",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2147483647,
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Last sol, inclusive.",
+              "title": "Sol Max"
+            },
+            "description": "Last sol, inclusive."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RadiationResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "rover_not_found / not_found (rover without RAD)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "db_unavailable / service_busy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v2/rovers/{rover}/feed.xml": {
       "get": {
         "tags": [
@@ -2910,6 +3012,29 @@
         ],
         "title": "CamerasResponse"
       },
+      "DoseStats": {
+        "properties": {
+          "mean": {
+            "type": "number",
+            "title": "Mean"
+          },
+          "min": {
+            "type": "number",
+            "title": "Min"
+          },
+          "max": {
+            "type": "number",
+            "title": "Max"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mean",
+          "min",
+          "max"
+        ],
+        "title": "DoseStats"
+      },
       "ErrorBody": {
         "properties": {
           "code": {
@@ -3442,6 +3567,34 @@
         ],
         "title": "NearestSolsOut"
       },
+      "ObservationCounts": {
+        "properties": {
+          "used": {
+            "type": "integer",
+            "title": "Used"
+          },
+          "dropped_qc": {
+            "type": "integer",
+            "title": "Dropped Qc"
+          },
+          "dropped_low_rate": {
+            "type": "integer",
+            "title": "Dropped Low Rate"
+          },
+          "dropped_invalid": {
+            "type": "integer",
+            "title": "Dropped Invalid"
+          }
+        },
+        "type": "object",
+        "required": [
+          "used",
+          "dropped_qc",
+          "dropped_low_rate",
+          "dropped_invalid"
+        ],
+        "title": "ObservationCounts"
+      },
       "PhotoBatchResponse": {
         "properties": {
           "items": {
@@ -3905,6 +4058,154 @@
           "groups"
         ],
         "title": "PhotoStatsResponse"
+      },
+      "RadiationResponse": {
+        "properties": {
+          "rover": {
+            "type": "string",
+            "title": "Rover"
+          },
+          "credit": {
+            "type": "string",
+            "title": "Credit"
+          },
+          "citation": {
+            "type": "string",
+            "title": "Citation"
+          },
+          "source_url": {
+            "type": "string",
+            "title": "Source Url"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "source_max_sol": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Max Sol"
+          },
+          "source_release": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Release"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RadiationSol"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rover",
+          "credit",
+          "citation",
+          "source_url",
+          "updated_at",
+          "source_max_sol",
+          "source_release",
+          "items"
+        ],
+        "title": "RadiationResponse"
+      },
+      "RadiationSol": {
+        "properties": {
+          "sol": {
+            "type": "integer",
+            "title": "Sol"
+          },
+          "earth_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Earth Date"
+          },
+          "dose_b_ugy_day": {
+            "$ref": "#/components/schemas/DoseStats"
+          },
+          "dose_e_ugy_day": {
+            "$ref": "#/components/schemas/DoseStats"
+          },
+          "count_rate_b_per_s": {
+            "type": "number",
+            "title": "Count Rate B Per S"
+          },
+          "coverage": {
+            "type": "number",
+            "title": "Coverage"
+          },
+          "observations": {
+            "$ref": "#/components/schemas/ObservationCounts"
+          },
+          "timing_caveat": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timing Caveat"
+          },
+          "source": {
+            "$ref": "#/components/schemas/RadiationSource"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sol",
+          "earth_date",
+          "dose_b_ugy_day",
+          "dose_e_ugy_day",
+          "count_rate_b_per_s",
+          "coverage",
+          "observations",
+          "timing_caveat",
+          "source"
+        ],
+        "title": "RadiationSol"
+      },
+      "RadiationSource": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "title": "File"
+          },
+          "link": {
+            "type": "string",
+            "title": "Link"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file",
+          "link"
+        ],
+        "title": "RadiationSource"
       },
       "RoverCameraOut": {
         "properties": {

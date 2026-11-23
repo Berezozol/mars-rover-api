@@ -27,6 +27,7 @@ from app.services.api_keys import (
     normalize_email,
 )
 from app.services.locations import LocationData, PhotoLocation, TraverseData
+from app.services.radiation import RAD_CITATION, RAD_CREDIT, SOL_SECONDS, RadiationData
 from app.services.samples import SampleLocation, SamplesData, SampleView
 from app.services.v2 import (
     CameraInfo,
@@ -241,6 +242,47 @@ class SamplesResponse(BaseModel):
     source_updated_at: UtcDateTime | None
     updated_at: UtcDateTime | None
     items: list[SampleOut]
+
+
+class DoseStats(BaseModel):
+    mean: float
+    min: float
+    max: float
+
+
+class ObservationCounts(BaseModel):
+    used: int
+    dropped_qc: int
+    dropped_low_rate: int
+    dropped_invalid: int
+
+
+class RadiationSource(BaseModel):
+    file: str
+    link: str
+
+
+class RadiationSol(BaseModel):
+    sol: int
+    earth_date: date
+    dose_b_ugy_day: DoseStats
+    dose_e_ugy_day: DoseStats
+    count_rate_b_per_s: float
+    coverage: float
+    observations: ObservationCounts
+    timing_caveat: bool | None
+    source: RadiationSource
+
+
+class RadiationResponse(BaseModel):
+    rover: str
+    credit: str
+    citation: str
+    source_url: str
+    updated_at: UtcDateTime | None
+    source_max_sol: int | None
+    source_release: date | None
+    items: list[RadiationSol]
 
 
 class WaypointOut(BaseModel):
@@ -580,6 +622,45 @@ def samples_body(data: SamplesData, source_url: str) -> Json:
         "source_updated_at": _utc_z_or_none(data.source_modified_at),
         "updated_at": _utc_z_or_none(data.updated_at),
         "items": [sample_dict(view) for view in data.items],
+    }
+
+
+def _dose_day(mean: float, low: float, high: float) -> Json:
+    """uGy/h of the store as uGy/day, to 0.01."""
+    return {"mean": round(mean * 24, 2), "min": round(low * 24, 2), "max": round(high * 24, 2)}
+
+
+def radiation_dict(row: Any, source_url: str) -> Json:
+    """One summary: doses x24, the rate of detector B per second of live time, the coverage."""
+    return {
+        "sol": row.sol,
+        "earth_date": row.earth_date,
+        "dose_b_ugy_day": _dose_day(row.dose_b_mean, row.dose_b_min, row.dose_b_max),
+        "dose_e_ugy_day": _dose_day(row.dose_e_mean, row.dose_e_min, row.dose_e_max),
+        "count_rate_b_per_s": round(row.bu_count / row.live_s, 3),
+        "coverage": round(min(1.0, row.live_s / SOL_SECONDS), 2),
+        "observations": {
+            "used": row.n_used,
+            "dropped_qc": row.n_dropped_qc,
+            "dropped_low_rate": row.n_dropped_low_rate,
+            "dropped_invalid": row.n_dropped_invalid,
+        },
+        "timing_caveat": row.timing_caveat,
+        "source": {"file": row.source_path, "link": source_url + row.source_path},
+    }
+
+
+def radiation_body(data: RadiationData, source_url: str) -> Json:
+    """``source_url`` is the address of the archive volume (with a trailing slash)."""
+    return {
+        "rover": data.rover,
+        "credit": RAD_CREDIT,
+        "citation": RAD_CITATION,
+        "source_url": source_url,
+        "updated_at": _utc_z_or_none(data.updated_at),
+        "source_max_sol": data.source_max_sol,
+        "source_release": data.source_release,
+        "items": [radiation_dict(row, source_url) for row in data.items],
     }
 
 

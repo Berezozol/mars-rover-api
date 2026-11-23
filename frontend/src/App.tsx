@@ -1,5 +1,6 @@
 import { Component, type ComponentChildren } from "preact";
 import { Layout } from "./components/Layout";
+import { Data } from "./pages/Data";
 import { Flights } from "./pages/Flights";
 import { Home } from "./pages/Home";
 import { NotFound } from "./pages/NotFound";
@@ -74,6 +75,9 @@ export function App() {
       break;
     case "samples":
       page = <Samples key={route.rover} roverId={route.rover} />;
+      break;
+    case "data":
+      page = <Data />;
       break;
     case "search":
       page = <Search />;

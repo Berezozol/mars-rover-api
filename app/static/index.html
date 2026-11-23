@@ -86,7 +86,8 @@ curl "$origin/mars-photos/api/v1/manifests/opportunity"</pre>
 curl "$origin/api/v2/rovers/perseverance/photos?sol=100&amp;per_page=50"
 curl "$origin/api/v2/photos?rovers=curiosity,perseverance&amp;date_min=2026-11-06&amp;sort=-taken_at&amp;per_page=50"
 curl "$origin/api/v2/photos/stats?rovers=perseverance&amp;group_by=month"
-curl "$origin/api/v2/photos/batch?ids=81234,81235,900000000"</pre>
+curl "$origin/api/v2/photos/batch?ids=81234,81235,900000000"
+curl "$origin/api/v2/rovers/curiosity/radiation?sol_min=1600&amp;sol_max=1700"</pre>
 <p>Stats counts photos and sols with the first and last date, grouped by rover, camera, year or month
 (<code>group_by</code>). <code>sample_type</code> accepts only <code>full</code>;
 <code>date_min</code>/<code>date_max</code> filter by the date of the sol, not of each photo.
@@ -115,6 +116,7 @@ It only shrinks the response: it does not speed up searches or change rate limit
 Each photo also has <code>mast</code>: the camera direction as <code>azimuth</code> (0 to 360) and <code>elevation</code>
 (-90 to 90) in degrees. The angles are relative to the rover body, not to north, so they are not a compass bearing.
 It is <code>null</code> when the source gives no angles.</p>
+<p><code>GET /api/v2/rovers/curiosity/radiation</code> returns one summary per sol from the RAD instrument (NASA PDS dataset <code>MSL-M-RAD-3-RDR-V1.0</code>), Curiosity only; other rovers answer <code>404 not_found</code>. Optional <code>sol_min</code> and <code>sol_max</code> are inclusive; without them you get the whole history in one response. <code>dose_b_ugy_day</code> and <code>dose_e_ugy_day</code> (<code>mean</code>, <code>min</code>, <code>max</code>) are the <em>absorbed dose rate</em> in the instrument's detectors, in microgray per day. This is not equivalent dose: the data has no sieverts and we do not convert. The dataset lags the mission by months, so the latest sols are missing. The response always has <code>credit</code> and <code>citation</code>: keep them when you show or redistribute the data.</p>
 <p>Interactive documentation of every endpoint: <a href="/docs">/docs</a>.
 Machine-readable: <a href="/openapi.json">/openapi.json</a>, and a short reference for
 LLM assistants: <a href="/llms.txt">/llms.txt</a>.</p>
@@ -123,6 +125,7 @@ LLM assistants: <a href="/llms.txt">/llms.txt</a>.</p>
 <footer>
   <p>Images courtesy of NASA/JPL-Caltech and instrument partners. Each photo keeps its
   <code>credit</code> field.</p>
+  <p>Radiation data: MSL RAD (SwRI) / NASA PDS; keep the <code>credit</code> and <code>citation</code> fields.</p>
 </footer>
 </body>
 </html>

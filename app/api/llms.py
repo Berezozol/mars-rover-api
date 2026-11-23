@@ -87,6 +87,13 @@ unknown ids are not an error)
 `GET /api/v2/rovers/{{rover}}/samples`, `GET /api/v2/rovers/{{rover}}/samples/{{number}}`
 - [Feed]({origin}/api/v2/rovers/perseverance/feed.xml): \
 `GET /api/v2/rovers/{{rover}}/feed.xml` (RSS of new photos)
+- [Radiation]({origin}/api/v2/rovers/curiosity/radiation?sol_min=1600&sol_max=1700): \
+`GET /api/v2/rovers/curiosity/radiation` (Curiosity only; daily summaries of the RAD instrument, \
+NASA PDS dataset MSL-M-RAD-3-RDR-V1.0; optional `sol_min`/`sol_max`, inclusive; no pagination). \
+`dose_b_ugy_day` and `dose_e_ugy_day` (`mean`, `min`, `max`) are the absorbed dose rate in the \
+instrument's detectors, in microgray per day: not equivalent dose, no sieverts. The dataset lags \
+the mission by months, so the latest sols are missing. Other rovers: `404 not_found`. Keep the \
+`credit` and `citation` fields when you show or redistribute the data
 
 ## Docs
 
@@ -98,6 +105,9 @@ unknown ids are not an error)
 
 Images courtesy of NASA/JPL-Caltech and instrument partners. Every photo has a `credit` \
 field: keep it when you show or redistribute an image.
+
+Radiation data: MSL RAD (SwRI) / NASA PDS. Keep the `credit` and `citation` fields of the \
+radiation response.
 """
 
 

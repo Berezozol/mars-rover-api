@@ -7,7 +7,8 @@ the observed feed behaviour (filtering, pagination, field values).
 
 Usage::
 
-    uv run python scripts/record_fixtures.py [--raw-dir DIR] [--part all|base|m2020-range|mer|mmgis]
+    uv run python scripts/record_fixtures.py [--raw-dir DIR]
+        [--part all|base|m2020-range|mer|mmgis|rad]
 
 ``--part mer`` makes no requests: it copies the real MER index samples prepared by
 data-engineer (``data/mer-samples/<volume>/``) into ``tests/fixtures/upstream/mer/``.
@@ -20,6 +21,10 @@ come from the ``source_link`` column of the dev database), stores every one unde
 ``data/mer-img/`` (git-ignored, for manual checks) and copies into
 ``tests/fixtures/upstream/mer/img/`` only those not larger than ``SMALL_IMG_BYTES``.
 
+``--part rad`` (stage 21) makes no requests: it trims the local MSL RAD samples
+(``data/rad_sample/``) into ``tests/fixtures/upstream/rad/`` (PHA sections cut, a few
+observations kept, ``CHECKSUMS.TXT`` rebuilt with md5 of the trimmed files).
+
 ``--raw-dir`` optionally stores full untrimmed responses and the summary
 outside the repository for analysis. Untrimmed responses are never written
 into the repository.
@@ -28,6 +33,7 @@ into the repository.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import re
@@ -504,12 +510,140 @@ def build_mmgis_fixtures(source_dir: Path = MMGIS_SOURCE_DIR, out_dir: Path = MM
         logger.info("wrote %s (%d features, %d bytes)", path, len(features), path.stat().st_size)
 
 
+RAD_SOURCE_DIR = ROOT / "data" / "rad_sample"
+RAD_DIR = FIXTURES_DIR / "rad"
+RAD_VOLUME_FOLDERS = {
+    10: "SOL_00000_00089",
+    222: "SOL_00180_00269",
+    1649: "SOL_01649_01772",
+    4842: "SOL_04710_04843",
+    4843: "SOL_04710_04843",
+}
+# Sections kept verbatim in every kept block; PHA is cut, histograms/LET only on request.
+_RAD_KEEP = (b"OBSERVATION", b"COUNTERS", b"COUNTER_L1", b"COUNTER_L2", b"DOSIMETRY")
+_RAD_SECTION = re.compile(rb"(?m)^(?=\[[A-Z0-9_]+: \d+\])")
+
+
+def _rad_trim_block(block: bytes, *, pha_lines: int, extras: bool) -> bytes:
+    out = []
+    for section in _RAD_SECTION.split(block):
+        name = re.match(rb"\[([A-Z0-9_]+): ", section)
+        if name is None:
+            continue
+        key = name.group(1)
+        if key == b"PHA":
+            lines = section.splitlines(keepends=True)
+            out.append(b"".join(lines[: 2 + pha_lines]))
+        elif key.startswith((b"HISTOGRAM", b"DOSIMETRY_LET")):
+            if extras:
+                out.append(section)
+        elif key.startswith(_RAD_KEEP):
+            out.append(section)
+    return b"".join(out)
+
+
+def _rad_pick(
+    src: Path, picks: dict[int, int], *, extras: tuple[int, ...] = ()
+) -> tuple[bytes, list[bytes]]:
+    """Header and trimmed blocks of the observations in ``picks`` (index -> PHA lines kept)."""
+    data = src.read_bytes()
+    head, *blocks = re.split(rb"(?m)^(?=\[OBSERVATION: )", data)
+    kept = []
+    for block in blocks:
+        index = int(re.match(rb"\[OBSERVATION: (\d+)\]", block).group(1))  # type: ignore[union-attr]
+        if index in picks:
+            kept.append(_rad_trim_block(block, pha_lines=picks[index], extras=index in extras))
+    return head, kept
+
+
+def build_rad_fixtures(source_dir: Path = RAD_SOURCE_DIR, out_dir: Path = RAD_DIR) -> None:
+    """Trim the local MSL RAD RDR samples (offline, no requests); see rad/README.md."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    files: dict[str, bytes] = {}
+
+    # Sol 10 (early format): garbage UTC (12), low BU rate (13), last block (25).
+    head, blocks = _rad_pick(
+        source_dir / "RAD_RDR_2012_228_20_41_0010_V00.TXT", {0: 8, 12: 8, 13: 8, 25: 8}
+    )
+    files["RAD_RDR_2012_228_20_41_0010_V00.TXT"] = head + b"".join(blocks)
+
+    # Sol 4843 (recent format, CRLF): twins (PHA only), QC=00000001 (22), wrapped time (174).
+    picks = {0: 120, 1: 3, 2: 3, 22: 3, 23: 3, 174: 3, 175: 3}
+    head, blocks = _rad_pick(source_dir / "RAD_RDR_2026_080_17_18_4843_V00.TXT", picks, extras=(0,))
+    body = head + b"".join(blocks)
+    files["RAD_RDR_2026_080_17_18_4843_V00.TXT"] = body
+    files["RAD_RDR_2026_079_17_02_4842_V00.TXT"] = body.replace(
+        b"START_SOL=4843", b"START_SOL=4842", 1
+    ).replace(b'START_TIME="2026-080 17:18:00"', b'START_TIME="2026-079 17:02:00"', 1)
+
+    # Sol 1649: two copies, different headers, identical body (> 64 KiB so that the tail of
+    # the probe covers the body only); a UTC jump of about +6 h (17), QC=00000001 (14).
+    for name in (
+        "RAD_RDR_2017_085_15_54_1649_V00.TXT",
+        "RAD_RDR_2017_085_16_28_1649_V00.TXT",
+    ):
+        head, blocks = _rad_pick(source_dir / name, {1: 60, 3: 60, 14: 60, 17: 60})
+        files[name] = head + b"".join(blocks)
+
+    for name, data in files.items():
+        (out_dir / name).write_bytes(data)
+        logger.info("wrote %s (%d bytes)", name, len(data))
+
+    # CHECKSUMS.TXT: md5 of the trimmed files plus decoys (md5 of the real volume for the rest).
+    lines = [
+        f"{hashlib.md5(data).hexdigest()}  ./DATA/{RAD_VOLUME_FOLDERS[int(name[-12:-8])]}/{name}"
+        for name, data in sorted(files.items())
+    ]
+    lines += [
+        "2f163cee76c3eeb82e8825286680f873  ./DATA/SOL_00180_00269/"
+        "RAD_RDR_2013_081_04_32_0222_V00.TXT",
+        "3705ba26fdf486deb3f1d15fb39c89e3  ./DATA/SOL_00180_00269/"
+        "RAD_RDR_2013_123_21_52_0222_V00.TXT",
+        "ef47364389027e9d601d7d4a6e5f6f0e  ./DATA/SOL_00000_00089/"
+        "RAD_RDR_2012_228_20_41_0010_V00.LBL",
+        "7a3d810511291f6585fb6f1b3273d526  ./DATA/CRUISE/D_LETCNT.FMT",
+        "0077b6b04eee7b13d925126720190938  ./DATA/CRUISE/RAD_RDR_2011_341_17_42_C011_V00.TXT",
+        "923244344bc49a2395f29ced5dd0558b  ./DOCUMENT/RAD_RDR_SIS.HTM",
+        "af10ea76e30a7ae0149ca852217f73b3  ./AAREADME.TXT",
+        "this line is not a checksum entry",
+    ]
+    (out_dir / "CHECKSUMS.TXT").write_bytes(("\n".join(lines) + "\n").encode("ascii"))
+
+    # TIMING_ERRORS.TXT: 2 Timing Error + 1 Date Range Error, one name is the sol 10 file.
+    def block(kind: str, text: str, name: str, obs: int) -> str:
+        crlf = "\r\n"
+        return crlf.join(
+            [
+                f"***** {kind} *****",
+                f"     {text}",
+                f"     Found in File: {name}",
+                f"     Observation: {obs}",
+                "     Time of previous observation: 2012-229 07:50:45 (28245000) UTC",
+                "     Time of current observation: 2013-123 21:52:00 (78720000) UTC",
+                "",
+            ]
+        )
+
+    back = "Time found running backward, this can not occur!"
+    timing = (
+        block("Timing Error", back, "RAD_RDR_2011_354_00_00_C024_V00.TXT", 136)
+        + block("Timing Error", back, "RAD_RDR_2012_002_00_03_C037_V00.TXT", 2)
+        + block(
+            "Date Range Error",
+            "The Observation Date was found to be Out-of-Range!",
+            "RAD_RDR_2012_228_20_41_0010_V00.TXT",
+            12,
+        )
+    )
+    (out_dir / "TIMING_ERRORS.TXT").write_bytes(timing.encode("ascii"))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--raw-dir", type=Path, default=None, help="dir for untrimmed dumps")
     parser.add_argument(
         "--part",
-        choices=["all", "base", "m2020-range", "mer", "mer-img", "mmgis"],
+        choices=["all", "base", "m2020-range", "mer", "mer-img", "mmgis", "rad"],
         default="all",
         help="which group of requests to record (default: all); "
         "'mer' copies data/mer-samples into tests/fixtures/upstream/mer offline; "
@@ -525,6 +659,9 @@ def main() -> None:
         return
     if args.part == "mmgis":
         build_mmgis_fixtures()
+        return
+    if args.part == "rad":
+        build_rad_fixtures()
         return
     settings = Settings()
 

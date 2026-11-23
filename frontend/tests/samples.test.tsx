@@ -320,24 +320,21 @@ describe("Samples page", () => {
 });
 
 describe("Samples entry points", () => {
-  it("adds 'Samples' to the main navigation and a button to the Perseverance card", async () => {
+  it("replaces 'Samples' in the main navigation with 'Data'; the Perseverance card keeps its Samples button", async () => {
     routes({
       "/api/v2/rovers/perseverance/photos/latest": { sol: 2031, ...page([], 0) },
     });
     window.history.replaceState(null, "", "/");
     render(<App />);
     const nav = await screen.findByRole("navigation", { name: "Main" });
-    await waitFor(() => expect(within(nav).getByRole("link", { name: "Samples" })).toBeTruthy());
-    expect(within(nav).getByRole("link", { name: "Samples" }).getAttribute("href")).toBe(
-      "/rovers/perseverance/samples",
-    );
-    // the other one is the button on the Perseverance card
+    await waitFor(() => expect(within(nav).getByRole("link", { name: "Data" })).toBeTruthy());
+    expect(within(nav).getByRole("link", { name: "Data" }).getAttribute("href")).toBe("/data");
+    expect(within(nav).queryByRole("link", { name: "Samples" })).toBeNull();
+    // the button on the Perseverance card stays
     const links = screen.getAllByRole("link", { name: "Samples" });
-    expect(links).toHaveLength(2);
-    expect(links.every((l) => l.getAttribute("href") === "/rovers/perseverance/samples")).toBe(
-      true,
-    );
-    expect(nav.contains(links[1]!)).toBe(false);
+    expect(links).toHaveLength(1);
+    expect(links[0]!.getAttribute("href")).toBe("/rovers/perseverance/samples");
+    expect(nav.contains(links[0]!)).toBe(false);
   });
 
   it("has no Samples item without Perseverance", async () => {

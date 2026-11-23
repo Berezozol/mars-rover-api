@@ -23,7 +23,7 @@ const M = { l: 46, r: 8, t: 10, b: 24 };
 const HEIGHT = 230;
 
 /** Width of an element, kept up to date; `fallback` where nothing can be measured (tests). */
-function useWidth(ref: { current: HTMLElement | null }, fallback: number): number {
+export function useWidth(ref: { current: HTMLElement | null }, fallback: number): number {
   const [w, setW] = useState(fallback);
   useEffect(() => {
     const el = ref.current;

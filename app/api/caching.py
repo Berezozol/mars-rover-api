@@ -75,6 +75,9 @@ def cache_control_for(path: str) -> str:
     # "/rovers/{rover}/samples" and "/rovers/{rover}/samples/{number}" (stage 13)
     if len(parts) in (4, 5) and parts[1] == "rovers" and parts[2] and parts[3] == "samples":
         return LOCATION_CACHE_CONTROL
+    # "/rovers/{rover}/radiation" (stage 21): changes only when a PDS release is loaded
+    if len(parts) == 4 and parts[1] == "rovers" and parts[2] and parts[3] == "radiation":
+        return LOCATION_CACHE_CONTROL
     # "/rovers/{rover}/feed.xml" (stage 16)
     if len(parts) == 4 and parts[1] == "rovers" and parts[2] and parts[3] == "feed.xml":
         return FEED_CACHE_CONTROL

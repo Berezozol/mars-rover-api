@@ -313,3 +313,42 @@ export interface SamplesResponse {
   updated_at: string | null;
   items: Sample[];
 }
+
+/** Dose rate of one detector, micrograys per day (the mean is weighted by live time). */
+export interface DoseStats {
+  mean: number;
+  min: number;
+  max: number;
+}
+
+/** Daily summary of Curiosity's RAD instrument (`GET /rovers/curiosity/radiation`). */
+export interface RadiationSol {
+  sol: number;
+  earth_date: string;
+  dose_b_ugy_day: DoseStats;
+  dose_e_ugy_day: DoseStats;
+  /** Raw count rate of detector B, events per second of live time. */
+  count_rate_b_per_s: number;
+  /** Share of the sol covered by measurements, 0..1. */
+  coverage: number;
+  observations: {
+    used: number;
+    dropped_qc: number;
+    dropped_low_rate: number;
+    dropped_invalid: number;
+  };
+  timing_caveat: boolean | null;
+  source: { file: string; link: string };
+}
+
+export interface RadiationResponse {
+  rover: string;
+  credit: string;
+  citation: string;
+  source_url: string;
+  updated_at: string | null;
+  source_max_sol: number | null;
+  /** Date of the last archive release (UTC date). */
+  source_release: string | null;
+  items: RadiationSol[];
+}

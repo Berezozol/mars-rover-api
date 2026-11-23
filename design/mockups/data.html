@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data — Sol Index</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  .lead { max-width: 70ch; }
+  .toolbar { display: flex; gap: var(--s2); flex-wrap: wrap; align-items: center; margin: var(--s4) 0 var(--s3); }
+  .toolbar .spacer { flex: 1; }
+
+  /* accordion */
+  .acc { display: grid; gap: var(--s3); }
+  .acc-item { overflow: hidden; scroll-margin-top: 72px; }
+  .acc-item:target { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .acc-h { margin: 0; font-size: inherit; }
+  .acc-btn { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: var(--s3); width: 100%; padding: var(--s4); cursor: pointer; }
+  .acc-btn:hover { background: var(--surface-2); }
+  .acc-btn:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
+  .acc-title { flex: 1; min-width: 0; display: block; }
+  .acc-name { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; font-size: var(--fs-lg); font-weight: 700; line-height: 1.2; }
+  .acc-meta { display: block; margin-top: 2px; font-size: var(--fs-sm); color: var(--text-muted); font-weight: 400; }
+  .chev { flex: none; color: var(--text-muted); transition: transform .15s; }
+  .acc-btn[aria-expanded="true"] .chev { transform: rotate(180deg); }
+  @media (prefers-reduced-motion: reduce) { .chev { transition: none; } }
+  .acc-panel { padding: 0 var(--s4) var(--s4); border-top: 1px solid var(--border); }
+  .acc-panel > * + * { margin-top: var(--s4); }
+  .acc-panel > :first-child { margin-top: var(--s4); }
+  .rv { font-weight: 600; }
+  .soon { padding: var(--s4); border-style: dashed; box-shadow: none; }
+  .soon strong { display: block; }
+
+  /* summary card inside a panel */
+  .summary { padding: var(--s4); background: var(--surface-2); box-shadow: none; }
+  .summary .what { margin: 0 0 var(--s3); max-width: 70ch; }
+  .summary dl.stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  @media (min-width: 760px) { .summary dl.stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+  .summary .src { margin: var(--s3) 0 0; font-size: var(--fs-xs); color: var(--text-muted); }
+  .summary .src b { color: var(--text); font-weight: 600; }
+  .lag { color: var(--warn); font-weight: 600; }
+
+  /* charts */
+  .chart-box { padding: var(--s3) var(--s3) var(--s2); }
+  .chart-title { display: flex; gap: var(--s2) var(--s4); flex-wrap: wrap; align-items: baseline; margin-bottom: var(--s2); }
+  .chart-title h3 { margin: 0; font-size: var(--fs-sm); }
+  .legend { display: flex; gap: var(--s3); flex-wrap: wrap; font-size: var(--fs-xs); color: var(--text-muted); }
+  .legend i { display: inline-block; width: 22px; height: 0; border-top: 3px solid; vertical-align: middle; margin-right: 6px; }
+  .legend i.b { border-top-style: dashed; }
+  svg.chart { display: block; width: 100%; height: auto; overflow: visible; }
+  svg.chart text { fill: var(--chart-axis); font: 11px var(--font); }
+  svg.chart .grid { stroke: var(--chart-grid); stroke-width: 1; }
+  svg.chart .axis { stroke: var(--border-strong); stroke-width: 1; }
+  svg.chart .ln { fill: none; stroke-width: 2; stroke-linejoin: round; }
+  svg.chart .ln-e { stroke: var(--accent); }
+  svg.chart .ln-b { stroke: var(--text-muted); stroke-width: 1.5; stroke-dasharray: 5 3; }
+  svg.chart .ln-s { stroke: var(--accent); }
+  svg.chart .ln-w { stroke: var(--text); stroke-width: 1.5; }
+  svg.chart .gap { fill: var(--surface-2); stroke: var(--border-strong); stroke-dasharray: 3 3; }
+  svg.chart .cursor { stroke: var(--text); stroke-width: 1; }
+  svg.chart .dot-e { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
+  svg.chart .dot-b { fill: var(--text-muted); stroke: var(--surface); stroke-width: 2; }
+  .inspect { display: grid; grid-template-columns: 1fr; gap: var(--s2); margin-top: var(--s2); font-size: var(--fs-sm); }
+  .inspect input[type="range"] { width: 100%; accent-color: var(--accent); min-height: 32px; }
+  .inspect .readout { font-variant-numeric: tabular-nums; color: var(--text-muted); }
+  .inspect .readout b { color: var(--text); }
+  .chart-note { margin: var(--s2) 0 0; font-size: var(--fs-xs); color: var(--text-muted); }
+
+  .multiples { display: grid; gap: var(--s3); grid-template-columns: 1fr; }
+  @media (min-width: 560px) { .multiples { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .mini { padding: var(--s3); }
+  .mini .k { font-size: var(--fs-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+  .mini .v { font-size: var(--fs-lg); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .mini .v small { font-size: var(--fs-xs); font-weight: 500; color: var(--text-muted); }
+
+  table.last { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+  table.last caption { text-align: left; font-size: var(--fs-xs); color: var(--text-muted); padding-bottom: var(--s1); }
+  table.last th, table.last td { padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: right; }
+  table.last th:first-child, table.last td:first-child { text-align: left; }
+  table.last thead th { font-size: var(--fs-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; }
+
+  .panel-foot { display: flex; gap: var(--s3); flex-wrap: wrap; align-items: center; }
+  .panel-foot .hint { flex: 1 1 220px; }
+  a.btn[aria-disabled="true"] { pointer-events: none; }
+  .mockflag { font-size: var(--fs-xs); color: var(--warn); font-weight: 600; }
+  .state-box { padding: var(--s5) var(--s4); text-align: center; }
+  .state-box h3 { margin-bottom: var(--s2); }
+  .state-box p { color: var(--text-muted); max-width: 56ch; margin: 0 auto var(--s3); }
+  .rover-switch { display: flex; gap: var(--s3); flex-wrap: wrap; align-items: center; }
+  .rover-switch .label { font-size: var(--fs-xs); font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container">
+    <a class="brand" href="index.html" aria-label="Sol Index home">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="8" fill="var(--accent)"/><ellipse cx="13" cy="13" rx="12" ry="4.5" fill="none" stroke="var(--text-muted)" stroke-width="1.4" transform="rotate(-20 13 13)"/></svg>
+      Sol Index <small>unofficial</small>
+    </a>
+    <nav class="nav" aria-label="Main">
+      <a href="index.html">Rovers</a>
+      <a href="photos.html?rover=perseverance" title="Latest sol">Photos</a>
+      <a href="search.html">Search</a>
+      <a href="manifest.html">Timeline</a>
+      <a href="map.html">Route map</a>
+      <a href="flights.html">Flights</a>
+      <a href="data.html" aria-current="page">Data</a>
+      <a href="stats.html">Stats</a>
+      <a href="index.html#api">API</a>
+    </nav>
+    <button class="theme-toggle" type="button" aria-label="Toggle colour theme">Theme</button>
+  </div>
+</header>
+
+<!-- MOCK DATA, not connected to the API.
+  samples:   GET /api/v2/rovers/perseverance/samples (shape as in samples.html; counts and sols copied from the 30 saved rows)
+  radiation: GET /api/v2/rovers/curiosity/radiation (draft in docs/proposals/stage-21-rad.md, section 4); doses are generated, not real
+  weather:   endpoint NOT designed yet; field names, units and values are invented for the mockup -->
+
+<main>
+  <div class="container">
+
+    <div class="mock-bar" role="group" aria-label="Mockup switcher (not part of the product)">
+      <strong>Mockup</strong>
+      <button class="btn btn-sm" type="button" data-preset="data" aria-pressed="true">All data</button>
+      <button class="btn btn-sm" type="button" data-preset="mixed" aria-pressed="false">Mixed</button>
+      <button class="btn btn-sm" type="button" data-preset="loading" aria-pressed="false">All loading</button>
+      <button class="btn btn-sm" type="button" data-preset="empty" aria-pressed="false">All not loaded yet</button>
+      <button class="btn btn-sm" type="button" data-preset="error" aria-pressed="false">All error</button>
+      <span>· numbers are mock (generated), not real measurements</span>
+    </div>
+
+    <h1>Data</h1>
+    <p class="muted lead">Datasets that the rovers measure besides taking photos. Each one opens as a section; share a link such as <code>data.html#radiation</code> to open it directly.</p>
+
+    <noscript><p class="alert alert-error" role="alert">This mockup draws its sections with JavaScript.</p></noscript>
+
+    <div class="toolbar">
+      <button class="btn btn-sm" type="button" id="expand-all">Expand all</button>
+      <button class="btn btn-sm" type="button" id="collapse-all">Collapse all</button>
+      <span class="spacer"></span>
+      <span class="xsmall muted">3 datasets · more coming</span>
+    </div>
+
+    <div class="acc" id="acc">
+
+      <section class="card acc-item" id="samples" aria-label="Rock samples">
+        <h2 class="acc-h"><button class="acc-btn" type="button" id="btn-samples" aria-expanded="false" aria-controls="panel-samples">
+          <span class="acc-title"><span class="acc-name">Rock samples <span class="badge no-dot">Perseverance</span></span><span class="acc-meta" id="meta-samples"></span></span>
+          <svg class="chev" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 7l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button></h2>
+        <div class="acc-panel" id="panel-samples" role="region" aria-labelledby="btn-samples" hidden></div>
+      </section>
+
+      <section class="card acc-item" id="radiation" aria-label="Radiation">
+        <h2 class="acc-h"><button class="acc-btn" type="button" id="btn-radiation" aria-expanded="false" aria-controls="panel-radiation">
+          <span class="acc-title"><span class="acc-name">Radiation (RAD) <span class="badge no-dot">Curiosity</span></span><span class="acc-meta" id="meta-radiation"></span></span>
+          <svg class="chev" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 7l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button></h2>
+        <div class="acc-panel" id="panel-radiation" role="region" aria-labelledby="btn-radiation" hidden></div>
+      </section>
+
+      <section class="card acc-item" id="weather" aria-label="Weather">
+        <h2 class="acc-h"><button class="acc-btn" type="button" id="btn-weather" aria-expanded="false" aria-controls="panel-weather">
+          <span class="acc-title"><span class="acc-name">Weather by sol <span class="badge no-dot">Perseverance</span> <span class="badge no-dot">Curiosity</span></span><span class="acc-meta" id="meta-weather"></span></span>
+          <svg class="chev" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 7l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button></h2>
+        <div class="acc-panel" id="panel-weather" role="region" aria-labelledby="btn-weather" hidden></div>
+      </section>
+
+      <div class="card soon">
+        <strong>More datasets later</strong>
+        <span class="muted small">Room for further datasets (for example instrument spectra). A section appears here once its data is loaded and checked.</span>
+      </div>
+    </div>
+
+    <p class="xsmall mono muted api-line">API: GET /api/v2/rovers/perseverance/samples · GET /api/v2/rovers/curiosity/radiation (draft) · weather: not designed yet</p>
+
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="container">Sol Index is an independent, unofficial project, not affiliated with or endorsed by NASA or JPL. Science data comes from the public archives of the mission teams and is linked to its source; credit is shown with every dataset.</div>
+</footer>
+
+<script>
+const $ = s => document.querySelector(s);
+const nf = new Intl.NumberFormat('en-US');
+const KEYS = ['samples', 'radiation', 'weather'];
+const state = { samples: 'data', radiation: 'data', weather: 'data' };
+const PRESETS = {
+  data: { samples: 'data', radiation: 'data', weather: 'data' },
+  mixed: { samples: 'data', radiation: 'loading', weather: 'empty' },
+  loading: { samples: 'loading', radiation: 'loading', weather: 'loading' },
+  empty: { samples: 'empty', radiation: 'empty', weather: 'empty' },
+  error: { samples: 'error', radiation: 'error', weather: 'error' },
+};
+let weatherRover = 'perseverance';
+
+/* ---------- mock data ---------- */
+const SOL_DAYS = 1.0274912;
+const dateOfSol = (landing, sol) => new Date(Date.parse(landing) + sol * SOL_DAYS * 86400000).toISOString().slice(0, 10);
+const CUR_LANDING = '2012-08-06', PER_LANDING = '2021-02-18';
+const CUR_NOW = 5082, PER_NOW = 2031;           // Rover.max_sol at the mock date 2026-11-22
+// sealing sols of the 28 dated samples (copied from samples.html data)
+const SEALED = [164,194,196,262,271,298,337,371,377,490,495,509,516,575,619,631,634,639,749,832,913,923,949,1088,1215,1401,1433,1441];
+const RAD_MAX = 4843;                           // source_max_sol (mock)
+const WX_MAX = 1812;                            // last published weather sol (mock)
+
+const hash = n => { let x = (n * 2654435761) >>> 0; x ^= x >>> 15; x = Math.imul(x, 2246822519) >>> 0; x ^= x >>> 13; return (x >>> 0) / 4294967296; };
+const noise = (n, k) => hash(n * 7 + k) * 2 - 1;
+function doseE(sol) {                             // uGy/day, generated
+  let v = 190 + 30 * Math.cos(2 * Math.PI * (sol - 2500) / 4000) + 6 * Math.sin(2 * Math.PI * sol / 669) + 3 * noise(sol, 1);
+  if (sol > 1830 && sol < 1850) v -= 18 * Math.exp(-(sol - 1832) / 6);   // a dip
+  if (sol > 3600 && sol < 3640) v += 14 * Math.exp(-(sol - 3600) / 8);   // a bump
+  return v;
+}
+const doseB = sol => doseE(sol) * 1.04 + 2 + 1.5 * noise(sol, 2);
+const wx = {
+  pressure: s => 760 + 70 * Math.sin(2 * Math.PI * (s - 1700) / 669) + 6 * noise(s, 3),
+  temp: s => -48 + 20 * Math.sin(2 * Math.PI * (s - 1690) / 669) + 4 * noise(s, 4),
+  humidity: s => 17 + 9 * Math.sin(2 * Math.PI * (s - 1650) / 669) + 3 * noise(s, 5),
+  wind: s => 4.6 + 1.4 * Math.sin(2 * Math.PI * (s - 1720) / 669) + 1.1 * noise(s, 6),
+};
+
+/* ---------- chart helper (SVG drawn at the real container width) ---------- */
+function lineChart(o) {
+  const w = Math.max(240, o.w), h = o.h, L = o.left || 40, R = 10, T = 8, B = 22;
+  const X = x => L + (x - o.xmin) / (o.xmax - o.xmin) * (w - L - R);
+  const Y = y => T + (1 - (y - o.ymin) / (o.ymax - o.ymin)) * (h - T - B);
+  let s = `<svg class="chart" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img" aria-label="${o.label}">`;
+  o.yticks.forEach(t => { s += `<line class="grid" x1="${L}" x2="${w - R}" y1="${Y(t)}" y2="${Y(t)}"/><text x="${L - 6}" y="${Y(t) + 4}" text-anchor="end">${o.fy ? o.fy(t) : t}</text>`; });
+  o.xticks.forEach(t => { s += `<text x="${X(t)}" y="${h - 6}" text-anchor="${t === o.xmin ? 'start' : t === o.xmax ? 'end' : 'middle'}">${nf.format(t)}</text>`; });
+  s += `<line class="axis" x1="${L}" x2="${w - R}" y1="${Y(o.ymin)}" y2="${Y(o.ymin)}"/>`;
+  if (o.gap) s += `<rect class="gap" x="${X(o.gap[0])}" y="${T}" width="${X(o.gap[1]) - X(o.gap[0])}" height="${h - T - B}"/><text x="${X(o.gap[0]) + 6}" y="${T + 14}">${o.gap[2]}</text>`;
+  o.lines.forEach(l => { s += `<path class="ln ${l.cls}" d="${l.pts.map((p, i) => (i ? 'L' : 'M') + X(p[0]).toFixed(1) + ' ' + Y(p[1]).toFixed(1)).join('')}"/>`; });
+  if (o.cursor) s += `<g id="${o.cursor}" hidden></g>`;
+  return s + '</svg>';
+}
+const rangeSols = (a, b, step) => { const r = []; for (let s = a; s <= b; s += step) r.push(s); if (r[r.length - 1] !== b) r.push(b); return r; };
+
+/* ---------- section bodies ---------- */
+const META = {
+  samples: {
+    data: 'Perseverance · 30 sample tubes · sealed on sols 164–1441',
+    loading: 'Loading…', empty: 'Not loaded yet', error: 'Unavailable',
+  },
+  radiation: {
+    data: 'Curiosity · daily dose rate · sols 1–4843 · data lags about 8 months',
+    loading: 'Loading…', empty: 'Not loaded yet', error: 'Unavailable',
+  },
+  weather: {
+    data: 'Perseverance (MEDA) · pressure, temperature, humidity, wind · data lags about 7 months',
+    loading: 'Loading…', empty: 'Not loaded yet', error: 'Unavailable',
+  },
+};
+const ERR = { samples: ['db_unavailable', 'Database is unavailable', 503], radiation: ['db_unavailable', 'Database is unavailable', 503], weather: ['db_unavailable', 'Database is unavailable', 503] };
+const EMPTY = {
+  samples: ['Samples not loaded yet', 'Sol Index has not fetched the sample table yet (<code>items: []</code>, <code>updated_at: null</code>). Check back soon.'],
+  radiation: ['Radiation data not loaded yet', 'The first import of Curiosity RAD data has not run (<code>items: []</code>, <code>updated_at: null</code>, <code>source_max_sol: null</code>). The archive is large, so the first load takes a while.'],
+  weather: ['Weather data not loaded yet', 'No weather sols have been imported yet. The mission archives publish in batches, so recent sols are always missing.'],
+};
+const TITLES = { samples: 'Rock samples', radiation: 'Radiation', weather: 'Weather' };
+
+function summary(o) {
+  return `<div class="card summary"><p class="what">${o.what}</p>
+    <dl class="stats">${o.facts.map(f => `<div><dt>${f[0]}</dt><dd>${f[1]}</dd></div>`).join('')}</dl>
+    <p class="src"><b>Source:</b> ${o.source}<br><b>Credit:</b> ${o.credit}</p></div>`;
+}
+function foot(href, label, hint, disabled) {
+  return `<div class="panel-foot"><a class="btn btn-primary" href="${href}"${disabled ? ' aria-disabled="true" tabindex="-1" title="Full view is not designed yet"' : ''}>${label}</a><span class="hint">${hint}</span></div>`;
+}
+
+function bodySamples() {
+  const pts = [[0, 0]]; SEALED.forEach((s, i) => { pts.push([s, i]); pts.push([s, i + 1]); }); pts.push([PER_NOW, SEALED.length]);
+  return summary({
+    what: 'Sample tubes sealed by the rover for a possible return to Earth: where each came from, whether it is still on the rover or already left in the depot.',
+    facts: [['Rover', 'Perseverance'], ['Samples', '30 (28 sealed, 2 not yet)'], ['Coverage', 'sols 164–1441'], ['Page last edited', '<time datetime="2026-06-20">2026-06-20</time> <span class="lag">(rover is at sol 2031)</span>']],
+    source: 'NASA Mars Rock Samples page, checked <time datetime="2026-11-20">2026-11-20</time>',
+    credit: 'NASA / Mars 2020 Perseverance science team; dossiers: NASA PDS Geosciences Node',
+  }) + `<div class="card chart-box"><div class="chart-title"><h3>Samples sealed, cumulative</h3><span class="legend"><span>by sol, scale from 0</span></span></div>
+    <div data-chart="samples">${lineChart({ w: 600, h: 150, xmin: 0, xmax: PER_NOW, ymin: 0, ymax: 30, yticks: [0, 10, 20, 30], xticks: [0, 500, 1000, 1500, 2031], lines: [{ cls: 'ln-s', pts }], label: 'Cumulative number of sealed samples by sol: 28 by sol 1441, unchanged since' })}</div>
+    <p class="chart-note">28 samples sealed by sol 1441; none after that on the source page. <span class="mockflag">Chart built from the saved 30-row sample table.</span></p></div>`
+    + foot('samples.html', 'Open full view: all 30 samples', 'Table with filters, dossiers, photos of each tube and route-map links.');
+}
+
+function bodyRadiation() {
+  const p4 = rangeSols(4839, 4843, 1);
+  const rows = p4.slice(-3).map(s => `<tr><td>${s}</td><td>${dateOfSol(CUR_LANDING, s)}</td><td>${doseE(s).toFixed(1)}</td><td>${doseB(s).toFixed(1)}</td><td>0.${90 + (s % 7)}</td></tr>`).join('');
+  return summary({
+    what: 'Radiation measured at the surface by the RAD instrument: the absorbed dose rate per sol. Detector E is plastic (closest to human tissue), detector B is silicon.',
+    facts: [['Rover', 'Curiosity'], ['Coverage', 'sols 1–4843'], ['Last update', '<time datetime="2026-11-20">2026-11-20</time> · archive release 2026-08-03'], ['Newest sol', `4843 · <span class="lag">${CUR_NOW - RAD_MAX} sols (about 8 months) behind</span>`]],
+    source: 'NASA PDS Planetary Plasma Interactions Node, set MSL-M-RAD-3-RDR-V1.0. Published every 4–5 months; checked monthly.',
+    credit: 'MSL RAD (SwRI) / NASA PDS Planetary Plasma Interactions Node, MSL-M-RAD-3-RDR-V1.0',
+  }) + `<div class="card chart-box"><div class="chart-title"><h3>Dose rate per sol, µGy/day</h3>
+      <span class="legend"><span><i></i>E (main)</span><span><i class="b"></i>B</span><span>scale from 0</span></span></div>
+    <div data-chart="radiation"></div>
+    <div class="inspect"><label for="rad-sol" class="small muted">Inspect a sol (arrow keys move one sol)</label>
+      <input type="range" id="rad-sol" min="1" max="${RAD_MAX}" step="1" value="${RAD_MAX}" aria-describedby="rad-readout">
+      <div class="readout" id="rad-readout"></div></div>
+    <p class="chart-note">Absorbed dose rate, not equivalent dose (sieverts): the source has none. Solar events are not smoothed. <span class="mockflag">Mock numbers.</span></p></div>
+    <table class="last"><caption>Newest published sols (mock values; API: <code>dose_e_ugy_day.mean</code>, <code>dose_b_ugy_day.mean</code>, <code>coverage</code>)</caption>
+      <thead><tr><th scope="col">Sol</th><th scope="col">Date (UTC)</th><th scope="col">E, µGy/day</th><th scope="col">B, µGy/day</th><th scope="col">Coverage</th></tr></thead><tbody>${rows}</tbody></table>`
+    + foot('#radiation', 'Open full view', 'Full view (date range, daily min and max, solar-event notes, download) is not designed yet.', true);
+}
+
+function wxMini(key, title, unit, fmt) {
+  const sols = rangeSols(WX_MAX - 119, WX_MAX, 1), vals = sols.map(wx[key]);
+  const mn = Math.min(...vals), mx = Math.max(...vals);
+  return `<div class="card mini"><div class="k">${title}</div><div class="v">${fmt(vals[vals.length - 1])} <small>${unit} · sol ${WX_MAX}</small></div>
+    <div data-wx="${key}"></div></div>`;
+}
+function bodyWeather() {
+  const switcher = `<div class="rover-switch" role="radiogroup" aria-label="Rover"><span class="label" id="wx-rover-l">Rover</span>
+    <div class="segmented"><input type="radio" name="wx-rover" id="wx-per" value="perseverance"${weatherRover === 'perseverance' ? ' checked' : ''}><label for="wx-per">Perseverance (MEDA)</label>
+    <input type="radio" name="wx-rover" id="wx-cur" value="curiosity"${weatherRover === 'curiosity' ? ' checked' : ''}><label for="wx-cur">Curiosity (REMS)</label></div></div>`;
+  if (weatherRover === 'curiosity') {
+    return switcher + `<div class="card state-box"><h3>Curiosity weather: not decided yet</h3><p>The REMS source has not been surveyed. Until then only Perseverance has a weather section. <span class="mockflag">TBD with the owner.</span></p></div>`;
+  }
+  return switcher + summary({
+    what: 'Air measurements from the rover&rsquo;s weather station: daily mean pressure, air temperature, relative humidity and wind speed for each sol.',
+    facts: [['Rover', 'Perseverance (MEDA)'], ['Coverage', 'sols 1–1812'], ['Last update', '<time datetime="2026-11-20">2026-11-20</time>'], ['Newest sol', `1812 · <span class="lag">${PER_NOW - WX_MAX} sols (about 7 months) behind</span>`]],
+    source: 'NASA PDS Atmospheres Node, Mars 2020 MEDA derived data (mock; source not fixed yet)',
+    credit: 'Mars 2020 MEDA team / NASA PDS Atmospheres Node (mock)',
+  }) + `<div class="multiples">
+      ${wxMini('pressure', 'Pressure', 'Pa', v => nf.format(Math.round(v)))}
+      ${wxMini('temp', 'Air temperature', '°C', v => v.toFixed(1))}
+      ${wxMini('humidity', 'Relative humidity', '%', v => v.toFixed(1))}
+      ${wxMini('wind', 'Wind speed', 'm/s', v => v.toFixed(1))}
+    </div>
+    <p class="chart-note">Last 120 published sols, daily means. Each chart has its own scale (temperature and pressure would be misleading if forced to start at zero). <span class="mockflag">Mock numbers; fields and units are not final.</span></p>`
+    + foot('#weather', 'Open full view', 'Full view (any sol range, day and night values, all sensors) is not designed yet.', true);
+}
+
+function bodyState(key, kind) {
+  if (kind === 'loading') return `<div role="status" aria-label="Loading ${TITLES[key].toLowerCase()}"><div class="skeleton" style="height:86px"></div><div class="skeleton" style="height:180px;margin-top:12px"></div><div class="skeleton" style="height:36px;width:60%;margin-top:12px"></div></div>`;
+  if (kind === 'empty') return `<div class="card state-box"><h3>${EMPTY[key][0]}</h3><p>${EMPTY[key][1]}</p></div>`;
+  const e = ERR[key];
+  return `<div class="alert alert-error" role="alert"><div><div class="alert-title">${TITLES[key]} could not be loaded</div><div>The service is temporarily unavailable. Nothing is wrong with your request; try again in a moment.</div><pre class="raw">HTTP ${e[2]}
+{"error":{"code":"${e[0]}","message":"${e[1]}","details":null}}</pre><p style="margin:var(--s3) 0 0"><button class="btn btn-primary btn-sm" type="button" data-retry="${key}">Try again</button></p></div></div>`;
+}
+
+const BODY = { samples: bodySamples, radiation: bodyRadiation, weather: bodyWeather };
+
+/* ---------- rendering ---------- */
+function drawCharts(key) {
+  const panel = $('#panel-' + key); if (panel.hidden || state[key] !== 'data') return;
+  if (key === 'radiation') {
+    const box = panel.querySelector('[data-chart="radiation"]'), w = box.clientWidth || 320, h = w < 480 ? 200 : 230;
+    const sols = rangeSols(1, RAD_MAX, 6);
+    box.innerHTML = lineChart({
+      w, h, xmin: 0, xmax: CUR_NOW, ymin: 0, ymax: 300, yticks: [0, 100, 200, 300], xticks: w < 480 ? [0, 2500, 5000] : [0, 1000, 2000, 3000, 4000, 5000],
+      gap: [RAD_MAX, CUR_NOW, w < 480 ? '' : 'not published yet'], cursor: 'rad-cursor',
+      lines: [{ cls: 'ln-b', pts: sols.map(s => [s, doseB(s)]) }, { cls: 'ln-e', pts: sols.map(s => [s, doseE(s)]) }],
+      label: 'Daily absorbed dose rate at Curiosity, micrograys per day, by sol 1 to 4843. Detector E is around 160 to 225, detector B about 4 percent higher. Starts at zero.',
+    });
+    const input = $('#rad-sol'), out = $('#rad-readout');
+    const upd = () => {
+      const s = +input.value, g = $('#rad-cursor'), X = x => 40 + x / CUR_NOW * (w - 50), Y = y => 8 + (1 - y / 300) * (h - 30);
+      out.innerHTML = `<b>Sol ${s}</b> · ${dateOfSol(CUR_LANDING, s)} · E <b>${doseE(s).toFixed(1)}</b> · B <b>${doseB(s).toFixed(1)}</b> µGy/day`;
+      g.hidden = false;
+      g.innerHTML = `<line class="cursor" x1="${X(s)}" x2="${X(s)}" y1="8" y2="${h - 22}"/><circle class="dot-b" cx="${X(s)}" cy="${Y(doseB(s))}" r="4"/><circle class="dot-e" cx="${X(s)}" cy="${Y(doseE(s))}" r="5"/>`;
+    };
+    input.oninput = upd; upd();
+  }
+  if (key === 'samples') {
+    const box = panel.querySelector('[data-chart="samples"]'), w = box.clientWidth || 320;
+    const pts = [[0, 0]]; SEALED.forEach((s, i) => { pts.push([s, i]); pts.push([s, i + 1]); }); pts.push([PER_NOW, SEALED.length]);
+    box.innerHTML = lineChart({ w, h: 150, xmin: 0, xmax: PER_NOW, ymin: 0, ymax: 30, yticks: [0, 10, 20, 30], xticks: w < 480 ? [0, 1000, 2031] : [0, 500, 1000, 1500, 2031], lines: [{ cls: 'ln-s', pts }], label: 'Cumulative number of sealed samples by sol: 28 by sol 1441, unchanged since' });
+  }
+  if (key === 'weather' && weatherRover === 'perseverance') {
+    panel.querySelectorAll('[data-wx]').forEach(box => {
+      const k = box.dataset.wx, w = box.clientWidth || 280, sols = rangeSols(WX_MAX - 119, WX_MAX, 1), vals = sols.map(wx[k]);
+      const lo = Math.floor(Math.min(...vals) / 5) * 5, hi = Math.ceil(Math.max(...vals) / 5) * 5, mid = (lo + hi) / 2;
+      const names = { pressure: 'Pressure, pascals', temp: 'Air temperature, degrees Celsius', humidity: 'Relative humidity, percent', wind: 'Wind speed, metres per second' };
+      box.innerHTML = lineChart({ w, h: 110, left: 38, xmin: sols[0], xmax: WX_MAX, ymin: lo, ymax: hi, yticks: [lo, mid, hi], xticks: [sols[0], WX_MAX], lines: [{ cls: 'ln-w', pts: sols.map((s, i) => [s, vals[i]]) }], label: `${names[k]}, daily mean, sols ${sols[0]} to ${WX_MAX}. Range ${Math.min(...vals).toFixed(1)} to ${Math.max(...vals).toFixed(1)}.` });
+    });
+  }
+}
+
+function renderSection(key) {
+  const kind = state[key], panel = $('#panel-' + key);
+  $('#meta-' + key).textContent = META[key][kind];
+  panel.innerHTML = kind === 'data' ? BODY[key]() : bodyState(key, kind);
+  panel.querySelectorAll('[data-retry]').forEach(b => b.onclick = () => { state[key] = 'data'; renderSection(key); });
+  panel.querySelectorAll('input[name="wx-rover"]').forEach(r => r.onchange = () => { weatherRover = r.value; renderSection('weather'); $('#' + (r.value === 'curiosity' ? 'wx-cur' : 'wx-per')).focus(); });
+  drawCharts(key);
+}
+function setOpen(key, open) {
+  const b = $('#btn-' + key); b.setAttribute('aria-expanded', String(open)); $('#panel-' + key).hidden = !open;
+  if (open) drawCharts(key);
+}
+const isOpen = key => $('#btn-' + key).getAttribute('aria-expanded') === 'true';
+function setHash(key) { history.replaceState(null, '', key ? '#' + key : location.pathname + location.search); }
+
+KEYS.forEach(k => {
+  $('#btn-' + k).onclick = () => { const o = !isOpen(k); setOpen(k, o); setHash(o ? k : null); };
+});
+$('#expand-all').onclick = () => { KEYS.forEach(k => setOpen(k, true)); setHash(null); };
+$('#collapse-all').onclick = () => { KEYS.forEach(k => setOpen(k, false)); setHash(null); };
+function applyHash() {
+  const k = location.hash.slice(1);
+  if (!KEYS.includes(k)) return false;
+  setOpen(k, true); $('#' + k).scrollIntoView(); return true;
+}
+window.addEventListener('hashchange', applyHash);
+
+document.querySelectorAll('[data-preset]').forEach(b => b.onclick = () => {
+  Object.assign(state, PRESETS[b.dataset.preset]);
+  document.querySelectorAll('[data-preset]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  KEYS.forEach(renderSection);
+});
+let rt; new ResizeObserver(() => { clearTimeout(rt); rt = setTimeout(() => KEYS.forEach(drawCharts), 120); }).observe(document.body);
+
+document.querySelector('.theme-toggle').onclick = () => {
+  const r = document.documentElement, dark = r.dataset.theme ? r.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  r.dataset.theme = dark ? 'light' : 'dark';
+};
+
+KEYS.forEach(renderSection);
+if (!applyHash()) setOpen('samples', true);   // default: first section open
+</script>
+</body>
+</html>

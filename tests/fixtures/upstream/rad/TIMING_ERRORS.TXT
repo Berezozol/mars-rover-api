@@ -1,0 +1,18 @@
+***** Timing Error *****
+     Time found running backward, this can not occur!
+     Found in File: RAD_RDR_2011_354_00_00_C024_V00.TXT
+     Observation: 136
+     Time of previous observation: 2012-229 07:50:45 (28245000) UTC
+     Time of current observation: 2013-123 21:52:00 (78720000) UTC
+***** Timing Error *****
+     Time found running backward, this can not occur!
+     Found in File: RAD_RDR_2012_002_00_03_C037_V00.TXT
+     Observation: 2
+     Time of previous observation: 2012-229 07:50:45 (28245000) UTC
+     Time of current observation: 2013-123 21:52:00 (78720000) UTC
+***** Date Range Error *****
+     The Observation Date was found to be Out-of-Range!
+     Found in File: RAD_RDR_2012_228_20_41_0010_V00.TXT
+     Observation: 12
+     Time of previous observation: 2012-229 07:50:45 (28245000) UTC
+     Time of current observation: 2013-123 21:52:00 (78720000) UTC

@@ -8,7 +8,9 @@ from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
+    CHAR,
     BigInteger,
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -41,6 +43,9 @@ __all__ = [
     "IngenuityFlight",
     "LocationDataset",
     "Photo",
+    "RadDaily",
+    "RadDataset",
+    "RadFile",
     "Rover",
     "RoverSample",
     "RoverTraverseSegment",
@@ -480,3 +485,99 @@ class ApiKeyUsageDaily(Base):
     account_id: Mapped[int] = mapped_column(ForeignKey("api_accounts.id", ondelete="CASCADE"))
     requests: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
     rejected: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+
+
+class RadFile(Base):
+    """A daily MSL RAD file of the PDS volume and what became of it (stage 21)."""
+
+    __tablename__ = "rad_files"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('loaded', 'duplicate', 'empty', 'failed', 'md5_mismatch')",
+            name="status_valid",
+        ),
+        CheckConstraint("role IS NULL OR role IN ('primary', 'extra')", name="role_valid"),
+        CheckConstraint(
+            "dup_check IS NULL OR dup_check IN ('tail', 'size')", name="dup_check_valid"
+        ),
+        # The md5 of the listing is kept exactly for files that were read to the end.
+        CheckConstraint(
+            "(md5 IS NULL) = (status IN ('failed', 'md5_mismatch'))", name="md5_present"
+        ),
+        # The files of a sol, when it is processed or when a file leaves the listing.
+        Index("ix_rad_files_sol", "sol"),
+    )
+
+    # Path from the volume root, without "./".
+    path: Mapped[str] = mapped_column(Text, primary_key=True)
+    sol: Mapped[int] = mapped_column(Integer)
+    md5: Mapped[str | None] = mapped_column(CHAR(32))
+    status: Mapped[str] = mapped_column(Text)
+    role: Mapped[str | None] = mapped_column(Text)
+    duplicate_of: Mapped[str | None] = mapped_column(Text)
+    dup_check: Mapped[str | None] = mapped_column(Text)
+    size_bytes: Mapped[int | None] = mapped_column(BigInteger)
+    creation_time: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ)
+    rdr_version: Mapped[int | None] = mapped_column(SmallInteger)
+    # Blocks of the file and how many of them carry dosimetry (diagnostics).
+    blocks: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    dose_obs: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    timing_listed: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    error: Mapped[str | None] = mapped_column(Text)
+    processed_at: Mapped[datetime] = mapped_column(_TIMESTAMPTZ, server_default=func.now())
+
+
+class RadDaily(Base):
+    """The summary of one sol of the RAD dosimetry (doses in uGy/h as in the source)."""
+
+    __tablename__ = "rad_daily"
+    __table_args__ = (
+        CheckConstraint("live_s > 0", name="live_positive"),
+        CheckConstraint("n_used > 0", name="used_positive"),
+    )
+
+    sol: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    earth_date: Mapped[date] = mapped_column(Date)
+    dose_b_mean: Mapped[float] = mapped_column(Float)
+    dose_b_min: Mapped[float] = mapped_column(Float)
+    dose_b_max: Mapped[float] = mapped_column(Float)
+    dose_e_mean: Mapped[float] = mapped_column(Float)
+    dose_e_min: Mapped[float] = mapped_column(Float)
+    dose_e_max: Mapped[float] = mapped_column(Float)
+    bu_count: Mapped[int] = mapped_column(BigInteger)
+    # Live time of the used observations, seconds.
+    live_s: Mapped[float] = mapped_column(Float)
+    n_used: Mapped[int] = mapped_column(Integer)
+    n_dropped_qc: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    n_dropped_low_rate: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    n_dropped_invalid: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    # OR of the QC words of the used observations (bit 2 DAN, bit 3 Solar Event).
+    qc_bits: Mapped[int] = mapped_column(SmallInteger, server_default=text("0"))
+    timing_caveat: Mapped[bool | None] = mapped_column(Boolean)
+    # No foreign key: the file may leave rad_files before the sol is recomputed.
+    source_path: Mapped[str] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(_TIMESTAMPTZ, server_default=func.now())
+
+
+class RadDataset(Base):
+    """State of the RAD volume (one row, ``id`` = 1): checks, validators of the listings."""
+
+    __tablename__ = "rad_dataset"
+    __table_args__ = (CheckConstraint("id = 1", name="single_row"),)
+
+    id: Mapped[int] = mapped_column(SmallInteger, primary_key=True, autoincrement=False)
+    checked_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ)
+    succeeded_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ)
+    # When the listing of the files last changed.
+    changed_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ)
+    checksums_etag: Mapped[str | None] = mapped_column(Text)
+    checksums_last_modified: Mapped[str | None] = mapped_column(Text)
+    checksums_sha256: Mapped[str | None] = mapped_column(Text)
+    timing_etag: Mapped[str | None] = mapped_column(Text)
+    timing_last_modified: Mapped[str | None] = mapped_column(Text)
+    timing_sha256: Mapped[str | None] = mapped_column(Text)
+    files_listed: Mapped[int | None] = mapped_column(Integer)
+    last_error: Mapped[str | None] = mapped_column(Text)
+    imported_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ)
+    # exported_at, host and counts of the last imported export file.
+    import_meta: Mapped[dict[str, Any] | None] = mapped_column(JSONB)

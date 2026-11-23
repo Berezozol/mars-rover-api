@@ -6,9 +6,10 @@ create_app only when ADMIN_TOKEN is set.
 
 from fastapi import APIRouter
 
-from app.api.v2 import feeds, photos, rovers
+from app.api.v2 import feeds, photos, radiation, rovers
 
 router = APIRouter(tags=["v2"])
 router.include_router(rovers.router)
+router.include_router(radiation.router)
 router.include_router(feeds.router)
 router.include_router(photos.router)

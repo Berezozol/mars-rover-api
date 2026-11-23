@@ -9,6 +9,7 @@ import type {
   PhotoDetail,
   PhotoPage,
   PhotoQuery,
+  RadiationResponse,
   Rover,
   SamplesResponse,
   SearchQuery,
@@ -310,6 +311,11 @@ export const api = {
   /** All samples of a rover (Perseverance only; 30 rows, no pagination): fetched once and cached. */
   samples: (rover: string) =>
     cached(`samples:${rover}`, () => request<SamplesResponse>(`/rovers/${slug(rover)}/samples`)),
+  /** Daily RAD dose summaries (Curiosity only): the whole history in one response, fetched once and cached. */
+  radiation: (rover: string) =>
+    cached(`radiation:${rover}`, () =>
+      request<RadiationResponse>(`/rovers/${slug(rover)}/radiation`),
+    ),
   /** The whole route as GeoJSON (large for Curiosity: fetched once per rover and cached). */
   traverse: (rover: string) =>
     cached(`traverse:${rover}`, () => request<Traverse>(`/rovers/${slug(rover)}/traverse`)),

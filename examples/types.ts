@@ -11,6 +11,12 @@ export interface CamerasResponse {
   items: CameraOut[];
 }
 
+export interface DoseStats {
+  max: number;
+  mean: number;
+  min: number;
+}
+
 export interface ErrorBody {
   code: string;
   details?: Record<string, string>[] | null;
@@ -112,6 +118,13 @@ export interface NearestSolsOut {
   before: number | null;
 }
 
+export interface ObservationCounts {
+  dropped_invalid: number;
+  dropped_low_rate: number;
+  dropped_qc: number;
+  used: number;
+}
+
 export interface PhotoBatchResponse {
   items: app__api__v2__schemas__PhotoOut[];
   missing: number[];
@@ -185,6 +198,34 @@ export interface PhotoStatsResponse {
   last_date: string | null;
   sols_with_photos: number;
   total_photos: number;
+}
+
+export interface RadiationResponse {
+  citation: string;
+  credit: string;
+  items: RadiationSol[];
+  rover: string;
+  source_max_sol: number | null;
+  source_release: string | null;
+  source_url: string;
+  updated_at: string | null;
+}
+
+export interface RadiationSol {
+  count_rate_b_per_s: number;
+  coverage: number;
+  dose_b_ugy_day: DoseStats;
+  dose_e_ugy_day: DoseStats;
+  earth_date: string;
+  observations: ObservationCounts;
+  sol: number;
+  source: RadiationSource;
+  timing_caveat: boolean | null;
+}
+
+export interface RadiationSource {
+  file: string;
+  link: string;
 }
 
 export interface RoverCameraOut {

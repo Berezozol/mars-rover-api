@@ -5,12 +5,14 @@ Every request to a NASA/JPL source must go through ``UpstreamClient``.
 
 import asyncio
 import logging
+import re
 import time
-from collections.abc import Awaitable, Callable, Iterable, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Mapping
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Self
+from typing import Any, Protocol, Self
 
 import httpx
 from tenacity import AsyncRetrying, RetryCallState, retry_if_exception, stop_after_attempt
@@ -38,6 +40,12 @@ class UpstreamError(Exception):
         super().__init__(f"Upstream error for {url}: {detail}")
 
 
+class ResponseRejected(UpstreamError):
+    """The response is refused for what it is, not for a failure of the server: a host or a
+    redirect outside the allowed origin, too many redirects, a body over the size cap. Never
+    worth a retry."""
+
+
 class PageLimitExceeded(UpstreamError):
     """More pages remain after ``upstream_max_pages``; the incomplete sol is not yielded."""
 
@@ -63,6 +71,25 @@ class ConditionalBody:
     body: bytes | None
     etag: str | None
     last_modified: str | None
+
+
+@dataclass(frozen=True)
+class TailProbe:
+    """Result of ``probe_tail``: ``206`` carries the full size and the tail of the body;
+    ``200`` (``Range`` not honoured) carries the size from ``Content-Length`` (or ``None``)
+    and no tail."""
+
+    status: int
+    total_size: int | None
+    tail: bytes | None
+
+
+class ChunkSink[T](Protocol):
+    """Receives a streamed body chunk by chunk; ``result()`` is called once, at the end."""
+
+    def feed(self, chunk: bytes) -> None: ...
+
+    def result(self) -> T: ...
 
 
 class _RetryableStatusError(Exception):
@@ -94,9 +121,19 @@ class RateLimiter:
     """
 
     def __init__(
-        self, max_rps: float, *, clock: Clock = time.monotonic, sleep: Sleep = asyncio.sleep
+        self,
+        max_rps: float,
+        *,
+        clock: Clock = time.monotonic,
+        sleep: Sleep = asyncio.sleep,
+        min_interval: float | None = None,
     ):
-        self._interval = 1.0 / max_rps if max_rps > 0 else 0.0
+        # With ``min_interval`` the pause runs from the end of a response (``release``).
+        if min_interval is not None:
+            self._interval = min_interval
+        else:
+            self._interval = 1.0 / max_rps if max_rps > 0 else 0.0
+        self._from_end = min_interval is not None
         self._clock = clock
         self._sleep = sleep
         self._lock = asyncio.Lock()
@@ -111,6 +148,11 @@ class RateLimiter:
             if target > now:
                 await self._sleep(target - now)
             self._last = target
+
+    def release(self) -> None:
+        """A request ended: with ``min_interval`` the next one waits the pause from now."""
+        if self._from_end:
+            self._last = self._clock()
 
 
 def _content_length(response: httpx.Response) -> int | None:
@@ -133,26 +175,35 @@ def _check_host(url: str, target: str, allowed_origin: str | None) -> None:
     scheme, host, port = _origin(httpx.URL(target))
     _, allowed_origin, allowed_port = _origin(httpx.URL(allowed_origin))
     if scheme != "https" or host != allowed_origin or port != allowed_port:
-        raise UpstreamError(url, None, "host is not allowed")
+        raise ResponseRejected(url, None, "host is not allowed")
 
 
 async def _collect(url: str, response: httpx.Response, max_bytes: int) -> bytes:
     """The body of a streamed response, capped at ``max_bytes`` and checked for completeness."""
     expected = _content_length(response)
     if expected is not None and expected > max_bytes:
-        raise UpstreamError(url, response.status_code, "response is too large")
+        raise ResponseRejected(url, response.status_code, "response is too large")
     chunks: list[bytes] = []
     received = 0
     async for chunk in response.aiter_raw():
         received += len(chunk)
         if received > max_bytes:
-            raise UpstreamError(url, response.status_code, "response is too large")
+            raise ResponseRejected(url, response.status_code, "response is too large")
         chunks.append(chunk)
     if expected is not None and received != expected:
         raise IncompleteResponse(
             url, response.status_code, f"got {received} bytes, Content-Length {expected}"
         )
     return b"".join(chunks)
+
+
+_CONTENT_RANGE_RE = re.compile(r"bytes\s+\d+-\d+/(\d+)\s*$")
+
+
+def _content_range_total(value: str | None) -> int | None:
+    """The full size from ``Content-Range: bytes a-b/total``; ``None`` if absent or ``*``."""
+    match = _CONTENT_RANGE_RE.match(value.strip()) if value else None
+    return int(match.group(1)) if match else None
 
 
 def _is_retryable(exc: BaseException) -> bool:
@@ -174,13 +225,22 @@ class UpstreamClient:
         transport: httpx.AsyncBaseTransport | None = None,
         sleep: Sleep = asyncio.sleep,
         clock: Clock = time.monotonic,
+        max_retries: int | None = None,
+        min_interval: float | None = None,
+        timeout: float | None = None,
     ) -> None:
+        """``max_retries``, ``min_interval`` (seconds from the end of a response to the next
+        request, instead of ``UPSTREAM_MAX_RPS``) and ``timeout`` (httpx timeout, seconds)
+        override the settings for this client; by default the settings apply."""
         self._sleep = sleep
-        self._max_retries = max(settings.upstream_max_retries, 0)
+        retries = settings.upstream_max_retries if max_retries is None else max_retries
+        self._max_retries = max(retries, 0)
         self._retry_base = settings.upstream_retry_base_seconds
-        self._limiter = RateLimiter(settings.upstream_max_rps, clock=clock, sleep=sleep)
+        self._limiter = RateLimiter(
+            settings.upstream_max_rps, clock=clock, sleep=sleep, min_interval=min_interval
+        )
         self._http = httpx.AsyncClient(
-            timeout=settings.upstream_timeout_seconds,
+            timeout=settings.upstream_timeout_seconds if timeout is None else timeout,
             headers={"User-Agent": settings.upstream_user_agent},
             follow_redirects=True,
             transport=transport,
@@ -241,16 +301,126 @@ class UpstreamClient:
             retryable=_is_download_retryable,
         )
 
+    async def stream_into[T](
+        self,
+        url: str,
+        sink_factory: Callable[[], ChunkSink[T]],
+        *,
+        max_bytes: int,
+        allowed_origin: str | None = None,
+        max_retries: int | None = None,
+    ) -> T:
+        """GET ``url`` and feed the body, chunk by chunk, to a sink; nothing is written to disk.
+
+        Every attempt builds a fresh sink with ``sink_factory`` (a retry starts over) and the
+        return value is ``sink.result()`` of the successful one. The body is capped at
+        ``max_bytes`` (``UpstreamError``); a body shorter or longer than its ``Content-Length``
+        is an ``IncompleteResponse``, retried like a transport error. Host check, retries
+        (``max_retries`` overrides the client's), rate limit and User-Agent as in ``get_bytes``.
+        Errors raised by the sink itself are not retried.
+        """
+        return await self._with_retries(
+            url,
+            lambda: self._stream_sink(url, sink_factory, max_bytes, allowed_origin),
+            retryable=_is_download_retryable,
+            max_retries=max_retries,
+        )
+
+    async def probe_tail(
+        self,
+        url: str,
+        n: int,
+        *,
+        allowed_origin: str | None = None,
+        max_retries: int | None = None,
+    ) -> TailProbe:
+        """Ask for the last ``n`` bytes (``Range: bytes=-n``) without downloading the file.
+
+        ``206``: the full size from ``Content-Range`` and the tail (at most ``n`` bytes).
+        ``200``: the server ignored ``Range``; the size comes from ``Content-Length`` (or is
+        ``None``), the tail is ``None`` and the body is not read (the connection is closed).
+        Other statuses, host check, retries and rate limit as in ``stream_into``.
+        """
+        return await self._with_retries(
+            url,
+            lambda: self._probe(url, n, allowed_origin),
+            retryable=_is_download_retryable,
+            max_retries=max_retries,
+        )
+
+    @asynccontextmanager
+    async def _open(
+        self, url: str, allowed_origin: str | None, headers: Mapping[str, str]
+    ) -> AsyncIterator[httpx.Response]:
+        """A streamed GET with redirects checked against ``allowed_origin`` by hand."""
+        current = url
+        try:
+            for _ in range(MAX_REDIRECTS + 1):
+                _check_host(url, current, allowed_origin)
+                await self._limiter.acquire()
+                follow = allowed_origin is None
+                async with self._http.stream(
+                    "GET", current, headers=headers, follow_redirects=follow
+                ) as response:
+                    if not follow and response.is_redirect and "location" in response.headers:
+                        current = str(httpx.URL(current).join(response.headers["location"]))
+                        continue
+                    yield response
+                    return
+            raise ResponseRejected(url, None, "too many redirects")
+        finally:
+            self._limiter.release()
+
+    async def _stream_sink[T](
+        self,
+        url: str,
+        sink_factory: Callable[[], ChunkSink[T]],
+        max_bytes: int,
+        allowed_origin: str | None,
+    ) -> T:
+        async with self._open(url, allowed_origin, {"Accept-Encoding": "identity"}) as response:
+            self._check_status(url, response)
+            if response.status_code != 200:
+                raise UpstreamError(url, response.status_code, "unexpected status")
+            expected = _content_length(response)
+            if expected is not None and expected > max_bytes:
+                raise ResponseRejected(url, response.status_code, "response is too large")
+            sink = sink_factory()
+            received = 0
+            async for chunk in response.aiter_raw():
+                received += len(chunk)
+                if received > max_bytes:
+                    raise ResponseRejected(url, response.status_code, "response is too large")
+                sink.feed(chunk)
+            if expected is not None and received != expected:
+                raise IncompleteResponse(
+                    url, response.status_code, f"got {received} bytes, Content-Length {expected}"
+                )
+            return sink.result()
+
+    async def _probe(self, url: str, n: int, allowed_origin: str | None) -> TailProbe:
+        headers = {"Accept-Encoding": "identity", "Range": f"bytes=-{n}"}
+        async with self._open(url, allowed_origin, headers) as response:
+            self._check_status(url, response)
+            if response.status_code == 200:
+                return TailProbe(200, _content_length(response), None)
+            if response.status_code != 206:
+                raise UpstreamError(url, response.status_code, "unexpected status")
+            total = _content_range_total(response.headers.get("Content-Range"))
+            return TailProbe(206, total, await _collect(url, response, n))
+
     async def _with_retries[T](
         self,
         url: str,
         call: Callable[[], Awaitable[T]],
         *,
         retryable: Callable[[BaseException], bool] = _is_retryable,
+        max_retries: int | None = None,
     ) -> T:
+        retries = self._max_retries if max_retries is None else max(max_retries, 0)
         retrying = AsyncRetrying(
             sleep=self._sleep,
-            stop=stop_after_attempt(self._max_retries + 1),
+            stop=stop_after_attempt(retries + 1),
             wait=self._backoff,
             retry=retry_if_exception(retryable),
             before_sleep=lambda state: self._log_retry(url, state),
@@ -341,28 +511,17 @@ class UpstreamClient:
         allowed_origin: str | None,
         extra_headers: Mapping[str, str],
     ) -> ConditionalBody:
-        current = url
-        for _ in range(MAX_REDIRECTS + 1):
-            _check_host(url, current, allowed_origin)
-            await self._limiter.acquire()
-            headers = {"Accept-Encoding": "identity", **extra_headers}
-            follow = allowed_origin is None
-            async with self._http.stream(
-                "GET", current, headers=headers, follow_redirects=follow
-            ) as response:
-                if not follow and response.is_redirect and "location" in response.headers:
-                    current = str(httpx.URL(current).join(response.headers["location"]))
-                    continue
-                self._check_status(url, response)
-                etag = response.headers.get("ETag")
-                last_modified = response.headers.get("Last-Modified")
-                if response.status_code == 304:
-                    return ConditionalBody(True, None, etag, last_modified)
-                if response.status_code != 200:
-                    raise UpstreamError(url, response.status_code, "unexpected status")
-                body = await _collect(url, response, max_bytes)
-                return ConditionalBody(False, body, etag, last_modified)
-        raise UpstreamError(url, None, "too many redirects")
+        headers = {"Accept-Encoding": "identity", **extra_headers}
+        async with self._open(url, allowed_origin, headers) as response:
+            self._check_status(url, response)
+            etag = response.headers.get("ETag")
+            last_modified = response.headers.get("Last-Modified")
+            if response.status_code == 304:
+                return ConditionalBody(True, None, etag, last_modified)
+            if response.status_code != 200:
+                raise UpstreamError(url, response.status_code, "unexpected status")
+            body = await _collect(url, response, max_bytes)
+            return ConditionalBody(False, body, etag, last_modified)
 
     def _backoff(self, state: RetryCallState) -> float:
         retry_index = state.attempt_number - 1

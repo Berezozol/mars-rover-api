@@ -35,6 +35,25 @@ the rover stop it is tied to (`sol`, `site`, `drive`, `lat`, `lon`) and `distanc
 not to north, so it is not a compass bearing. Photo lists accept `fields=sol,img_src,camera` to return only those
 keys (`id` and `credit` are always included).
 
+## Radiation data (Curiosity)
+
+`GET /api/v2/rovers/curiosity/radiation` returns one summary per sol from the RAD instrument
+(NASA PDS dataset `MSL-M-RAD-3-RDR-V1.0`). Optional `sol_min` and `sol_max` (inclusive) narrow the range;
+without them you get the whole history in one response, no pagination.
+
+- `dose_b_ugy_day` and `dose_e_ugy_day` are the **absorbed dose rate** in two detectors (B: silicon, E: plastic),
+  in microgray per day, as `mean`, `min`, `max`. This is not equivalent dose: there are no sieverts in the data
+  and we do not convert.
+- The dataset lags the mission by months and is updated every 4-5 months, so the latest sols are missing.
+  Sols with no usable observation are absent.
+- Other rovers answer `404 not_found`.
+- The response always has `credit` and `citation`: keep them when you show or redistribute the data.
+  The data belongs to the RAD team (SwRI) and NASA PDS; this project is unofficial.
+
+```sh
+curl "$BASE/api/v2/rovers/curiosity/radiation?sol_min=1600&sol_max=1700"
+```
+
 ## Quick start
 
 Requirements: Python 3.13+, [uv](https://docs.astral.sh/uv/), Docker.

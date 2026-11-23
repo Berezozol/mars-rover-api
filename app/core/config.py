@@ -108,6 +108,30 @@ class Settings(BaseSettings):
     # Alert when no check of the samples page succeeded for this many days.
     samples_stale_days: int = Field(default=3, ge=1)
 
+    # MSL RAD radiation summaries from the PDS PPI volume MSL-M-RAD-3-RDR-V1.0 (stage 21).
+    # Loaded only by the CLI (`rad sync`), never by the application process.
+    rad_base_url: str = "https://pds-ppi.igpp.ucla.edu/data/MSL-M-RAD-3-RDR-V1.0/"
+    # Pause between the end of one request to the host and the start of the next.
+    rad_pause_seconds: float = Field(default=2.0, ge=1.0)
+    # Full attempts at one file (broken body, timeout, 5xx, 429), pauses of 30 s and 120 s.
+    rad_file_attempts: int = Field(default=3, ge=1)
+    # After the attempts are used up: wait this long, try once more, then stop the run.
+    rad_cooldown_seconds: float = Field(default=900.0, ge=0)
+    # No bytes for this long ends an attempt; the whole file has RAD_FILE_DEADLINE_SECONDS.
+    rad_read_timeout_seconds: float = Field(default=120.0, ge=120.0)
+    rad_file_deadline_seconds: float = Field(default=1800.0, gt=0)
+    rad_max_file_bytes: int = Field(default=256 * 1024 * 1024, ge=1024)
+    rad_max_line_bytes: int = Field(default=64 * 1024, ge=1024)
+    # Observation blocks of one file (real files: hundreds); more fails the file.
+    rad_max_blocks: int = Field(default=5000, ge=1)
+    rad_list_max_bytes: int = Field(default=16 * 1024 * 1024, ge=1024)
+    # A listing with fewer files than this share of the known ones deletes nothing.
+    rad_min_keep_ratio: float = Field(default=0.9, ge=0, le=1)
+    # An observation counting below this share of the sol's median rate is dropped.
+    rad_low_rate_ratio: float = Field(default=0.5, ge=0, le=1)
+    # Unpacked size limit of an export file read by `rad import`.
+    rad_import_max_bytes: int = Field(default=64 * 1024 * 1024, ge=1024)
+
     # Build of the Sol Index web interface (stage 10); served at / when index.html exists.
     # A relative path is resolved against the project root.
     frontend_dist_dir: Path = Path("frontend/dist")

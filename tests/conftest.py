@@ -50,6 +50,7 @@ from sqlalchemy.pool import NullPool
 
 from app.core.config import Settings, get_settings
 from app.main import create_app
+from tests._rad import events, fake_sleep, rad_env  # noqa: F401  (fixtures of the stage-21 tests)
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -272,6 +273,9 @@ _OPTIONAL_TABLES = (
     "location_datasets",
     "rover_samples",  # stage 13 (migration 0010)
     "sample_datasets",
+    "rad_files",  # stage 21 (migration 0017)
+    "rad_daily",
+    "rad_dataset",
 )
 
 

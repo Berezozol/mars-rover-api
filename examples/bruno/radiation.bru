@@ -1,0 +1,16 @@
+meta {
+  name: radiation
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/api/v2/rovers/curiosity/radiation?sol_min=1600&sol_max=1700
+  body: none
+  auth: none
+}
+
+params:query {
+  sol_min: 1600
+  sol_max: 1700
+}

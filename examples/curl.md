@@ -52,6 +52,9 @@ curl "$BASE/api/v2/rovers/perseverance/traverse"
 curl "$BASE/api/v2/rovers/ingenuity/flights"
 curl "$BASE/api/v2/rovers/perseverance/samples"
 
+# Daily radiation summaries of Curiosity (RAD); sol_min and sol_max are optional
+curl "$BASE/api/v2/rovers/curiosity/radiation?sol_min=1600&sol_max=1700"
+
 # RSS feed of new photos
 curl "$BASE/api/v2/rovers/perseverance/feed.xml"
 ```
@@ -71,6 +74,12 @@ It is `null` when the source gives no angles.
 
 `fields=` trims the response to the listed photo keys (comma-separated, lower case). It saves size only: it does not
 make searches faster or change rate limits.
+
+## Radiation data
+
+Each item is one sol: `dose_b_ugy_day` and `dose_e_ugy_day` (`mean`, `min`, `max`) are the absorbed dose rate in
+the instrument's detectors in microgray per day, not equivalent dose. The dataset lags the mission by months,
+so the latest sols are missing. The response has `credit` and `citation`: keep them when you show the data.
 
 ## Reference
 

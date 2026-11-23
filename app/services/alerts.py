@@ -295,6 +295,13 @@ def sync_message(run: SyncResult) -> str:
     return text
 
 
+def rad_sync_message(exit_code: int, error: str | None) -> str:
+    """Text for a ``rad sync`` that stopped (3) or left files unloaded (1)."""
+    state = "server unavailable, run stopped" if exit_code == 3 else "files left unloaded"
+    text = f"{PREFIX} MSL RAD sync: {state} (exit code {exit_code})"
+    return f"{text}\nerror: {_truncate(error)}" if error else text
+
+
 def _when(value: datetime | None) -> str:
     return value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ") if value is not None else "never"
 
