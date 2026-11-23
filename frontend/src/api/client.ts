@@ -16,6 +16,8 @@ import type {
   StatsQuery,
   StatsResponse,
   Traverse,
+  WeatherResponse,
+  WeatherSolDetail,
 } from "./types";
 
 export interface FieldIssue {
@@ -316,6 +318,12 @@ export const api = {
     cached(`radiation:${rover}`, () =>
       request<RadiationResponse>(`/rovers/${slug(rover)}/radiation`),
     ),
+  /** Daily weather summaries of a rover (Curiosity, Perseverance): the whole history in one response, cached. */
+  weather: (rover: string) =>
+    cached(`weather:${rover}`, () => request<WeatherResponse>(`/rovers/${slug(rover)}/weather`)),
+  /** One sol of weather with the 24 hourly values (`404 sol_not_found` when the archive has none). */
+  weatherSol: (rover: string, sol: number, signal?: AbortSignal) =>
+    request<WeatherSolDetail>(`/rovers/${slug(rover)}/weather/${sol}`, undefined, signal),
   /** The whole route as GeoJSON (large for Curiosity: fetched once per rover and cached). */
   traverse: (rover: string) =>
     cached(`traverse:${rover}`, () => request<Traverse>(`/rovers/${slug(rover)}/traverse`)),

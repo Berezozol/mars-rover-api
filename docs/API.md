@@ -34,7 +34,7 @@
   ```
   | HTTP | code | когда |
   |---|---|---|
-  | 404 | `rover_not_found`, `photo_not_found`, `flight_not_found`, `sample_not_found`, `not_found` | нет сущности или пути |
+  | 404 | `rover_not_found`, `photo_not_found`, `flight_not_found`, `sample_not_found`, `sol_not_found`, `not_found` | нет сущности или пути |
   | 422 | `validation_error` | неверные параметры; `details` — список `{"field", "message"}` |
   | 401 | `unauthorized` | admin-ручка без верного `X-Admin-Token` |
   | 409 | `sync_in_progress` | синхронизация марсохода уже идёт |
@@ -423,6 +423,71 @@
 - Набор публикуется с задержкой в несколько месяцев и пополняется раз в 4–5 месяцев: последних солов в ответе нет. Мы проверяем его раз в месяц.
 - `200` · `404 rover_not_found` · `404 not_found` — существующий марсоход без RAD (`perseverance`, `opportunity`, `spirit`, `ingenuity`) · `422 validation_error`.
 
+**WeatherSol** (этап 17; суточная сводка погоды по солу; данные NASA PDS: Curiosity — REMS, коллекция `msl_rems:data_calibrated`, продукт `RMD`; Perseverance — MEDA, `mars2020_meda:data_calibrated_env` и `data_derived_env`)
+```json
+{"sol": 100, "earth_date": "2021-06-01", "ls": 52.4,
+ "coverage": 0.61, "hours_covered": 24,
+ "air_temp_c": {"min": -82.4, "max": -18.9, "mean": -53.7},
+ "pressure_pa": {"min": 708.3, "max": 745.1, "mean": 726.0},
+ "humidity_pct": {"min": 0.0, "max": 14.6, "mean": 2.3},
+ "wind": {"speed_mean_ms": 3.4, "gust_ms": 11.8, "direction_mode_deg": 112.5},
+ "flags": [{"code": "humidity_over_100", "parameter": "humidity_pct", "count": 12}],
+ "source_version": {"CAL_ATS": "P02", "CAL_WS": "P03", "DER_PS": "P01", "DER_RHS": "P01"}}
+```
+(Perseverance; значения в примере условные.) У Curiosity вместо `wind` — `"ground_temp_c": {"min": -88.0, "max": 7.5, "mean": -40.2}` и `"uv_wm2": {"max": 19.2, "mean": 5.1}`, `source_version` — `{"RMD": "P1"}`.
+- Ключи параметров зависят от марсохода и одинаковы у всех его солов: Curiosity — `air_temp_c`, `pressure_pa`, `humidity_pct`, `ground_temp_c`, `uv_wm2`; Perseverance — `air_temp_c`, `pressure_pa`, `humidity_pct`, `wind`, `ground_temp_c` (`{min, max, mean}`, оценка — см. `estimate` ниже). **Ветра у Curiosity нет**: ключа `wind` в его ответах нет совсем. Значение `null` — датчик у марсохода есть, но за этот сол годных значений нет (ветер Perseverance есть только на солах 36–313: дальше его в архиве нет).
+- Температуры — °C до 0,1; давление — Па до 0,1; влажность — относительная, % до 0,1; УФ — суммарный поток UV-A+B+C, Вт/м² до 0,01; ветер — м/с до 0,1, направление — азимут в градусах по часовой от севера, как в источнике (MEDA не указывает, откуда или куда дует ветер; центр сектора 22,5°).
+- `min` и `max` — наименьшее и наибольшее годное значение за сол; `mean` — среднее почасовых средних по часам, где были измерения (так неравномерная по времени съёмка не перекашивает среднее). `mean` отдаётся всегда, даже у неполного сола — тогда у сола флаг `partial_coverage`.
+- `wind.speed_mean_ms` — среднее почасовых средних скорости; `wind.gust_ms` — 99-й перцентиль скорости за сол (наибольшее значение не берётся: в данных бывают одиночные выбросы датчика); `wind.direction_mode_deg` — самое частое направление (16 секторов).
+- `coverage` — доля сола, покрытая измерениями температуры воздуха (10-минутные интервалы местного времени), от 0 до 1; `hours_covered` — сколько из 24 часов местного среднего времени (LMST) содержат измерения. Приборы работают сеансами: `coverage` 0,3–0,6 при 24 часах — обычное дело.
+- `flags` — замечания к солу (пустой список — замечаний нет), элемент `{"code", "parameter", "count"}`:
+  | `code` | Когда | Что с данными |
+  |---|---|---|
+  | `partial_coverage` | измерения меньше чем в 18 часах из 24; `parameter` и `count` — `null` | всё отдаётся, `mean` может быть смещён к дню или ночи |
+  | `humidity_over_100` | есть значения влажности выше 100 % (до 200 %); `count` — их число | значения отданы как есть и входят в `min`/`max`/`mean` |
+  | `out_of_range` | в исходных данных есть значения параметра вне физически возможных границ (сбой датчика); `count` — их число | эти значения не учтены |
+  Список кодов может пополняться: незнакомый код клиент должен пропускать.
+- `earth_date` — дата UTC начала сола по метке файла источника; `ls` — солнечная долгота (сезон, 0–360°) на начало сола или `null`, если источник её не даёт.
+- `source_version` — версии продуктов источника, из которых посчитан сол (архив перевыпускает продукты; при новой версии сол пересчитывается).
+
+### `GET /api/v2/rovers/{rover}/weather` (этап 17)
+Только `curiosity` и `perseverance`. Параметры (необязательные): `sol_min`, `sol_max` — диапазон включительно, границы общие; `sol_min > sol_max` или параметр повторён → `422`. Без параметров — вся история. Без пагинации (Curiosity ≈ 4700 солов, ≈ 600 КБ со сжатием gzip). Почасовых значений в списке нет — они в `/weather/{sol}`. Неизвестные параметры игнорируются.
+```json
+{"rover": "perseverance",
+ "credit": "Rodriguez-Manfredi, J. A.; de la Torre Juarez, M. (MEDA, Mars 2020) / NASA PDS Atmospheres Node, urn:nasa:pds:mars2020_meda",
+ "source_url": "https://atmos.nmsu.edu/PDS/data/PDS4/Mars2020/mars2020_meda/",
+ "updated_at": "2026-11-24T02:10:00Z", "source_max_sol": 1859,
+ "parameters": {"air_temp_c": {"unit": "°C", "quality": "measured"},
+                "pressure_pa": {"unit": "Pa", "quality": "measured"},
+                "humidity_pct": {"unit": "%", "quality": "preliminary"},
+                "wind": {"unit": "m/s", "quality": "measured"},
+                "ground_temp_c": {"unit": "°C", "quality": "estimate"}},
+ "items": [WeatherSol, ...]}
+```
+- Сортировка `sol ASC`. Пропуски в солах — дни, за которые в архиве нет данных (у источника есть дыры: например, у Curiosity нет солов 2–8).
+- `credit` есть всегда — при использовании данных указывайте его (команды REMS и MEDA; проект неофициальный).
+- `parameters` — какие ключи параметров есть у этого марсохода, их единица и `quality`: `measured` — измерение; `preliminary` — влажность у обоих марсоходов: команды приборов считают её калибровку предварительной; `estimate` — наш расчёт по косвенным данным: температура грунта Perseverance — яркостная температура из восходящего ИК-потока MEDA TIRS при излучательной способности 1 (погрешность около ±3 К; сол 1 и неполные сутки не считаются; сверка с публикацией команды MEDA — `docs/reports/stage-17-meda-ground.md`). Шапка не зависит от `sol_min`/`sol_max`.
+- `updated_at` — когда сводки марсохода последний раз изменились у нас; `source_max_sol` — наибольший сол в наших сводках. Оба `null` и `items: []`, пока данных нет.
+- Архив пополняется с задержкой 6–8 месяцев, пакетами: последних солов в ответе нет (сравните `source_max_sol` с `max_sol` из `/rovers/{rover}`).
+- `200` · `404 rover_not_found` · `404 not_found` — существующий марсоход без погоды (`opportunity`, `spirit`, `ingenuity`) · `422 validation_error`.
+
+### `GET /api/v2/rovers/{rover}/weather/{sol}` (этап 17)
+`sol` — целое от 0 до 2 147 483 647, иначе `422`. Сол без данных → `404 sol_not_found`. Ответ — WeatherSol и дополнительно:
+```json
+{"rover": "perseverance", "sol": 100, "...": "поля WeatherSol",
+ "hours": [{"hour": 0, "coverage": 0.5, "air_temp_c": -71.2, "pressure_pa": 735.4,
+            "humidity_pct": 5.8, "wind_speed_ms": 2.1, "wind_direction_deg": 157.5},
+           {"hour": 1, "coverage": 0.0, "air_temp_c": null, "pressure_pa": null,
+            "humidity_pct": null, "wind_speed_ms": null, "wind_direction_deg": null}],
+ "source": {"files": [{"product": "CAL_ATS", "version": "P02",
+                       "file": "data_calibrated_env/sol_0090_0179/sol_0100/WE__0100___________CAL_ATS_________________P02.CSV",
+                       "link": "https://atmos.nmsu.edu/PDS/data/PDS4/Mars2020/mars2020_meda/data_calibrated_env/sol_0090_0179/sol_0100/WE__0100___________CAL_ATS_________________P02.CSV"}]}}
+```
+- `hours` — всегда 24 элемента, `hour` 0…23 — час местного среднего солнечного времени (LMST). Значения — средние за час, в тех же единицах и с тем же округлением, что у сола; час без измерений — `null`; `coverage` часа — доля его 10-минутных интервалов с измерениями температуры воздуха.
+- Ключи часов следуют ключам марсохода: Curiosity — `air_temp_c`, `pressure_pa`, `humidity_pct`, `ground_temp_c`, `uv_wm2`; Perseverance — `air_temp_c`, `pressure_pa`, `humidity_pct`, `wind_speed_ms`, `wind_direction_deg` (самое частое направление часа), `ground_temp_c`; вне солов 36–313 ветер `null`.
+- `source.files` — файлы архива, из которых посчитан сол (путь от корня набора и ссылка в архиве NASA PDS).
+- `200` · `404 rover_not_found` · `404 not_found` (как у списка) · `404 sol_not_found` · `422 validation_error`.
+
 ### `GET /api/v2/rovers/{rover}/feed.xml` (этап 16)
 RSS 2.0-лента новых снимков марсохода — для RSS-читалок. Только марсоходы с регулярной синхронизацией: `curiosity`, `perseverance`.
 Параметры (все необязательные):
@@ -519,10 +584,9 @@ RSS 2.0-лента новых снимков марсохода — для RSS-�
 
 - `HEAD` поддерживается на всех `GET`-ручках v1 и v2: те же заголовки, без тела.
 - Успешные `GET` (`200`) отдают `ETag`; повторный запрос с совпадающим `If-None-Match` получает `304` без тела.
-- `Cache-Control`: списки, марсоходы, камеры, манифест, `/photos/stats` и `/photos/batch` (этап 18C) — `public, max-age=300`; карточка снимка (`/photos/{id}`) — `public, max-age=3600`; редирект на изображение — `public, max-age=86400`; `/rovers/{rover}/location`, `/rovers/{rover}/traverse`, `/rovers/{rover}/samples`, `/samples/{number}` и `/rovers/{rover}/radiation` (этап 21) — `public, max-age=3600` (данные меняются не чаще раза в сутки); `/rovers/{rover}/feed.xml` — `public, max-age=900`, `Last-Modified` — время последней записи ленты (нет записей — без заголовка), повтор с `If-Modified-Since` не раньше него → `304` (если в запросе есть `If-None-Match`, решает он); ошибки и admin-ручки — `no-store`.
+- `Cache-Control`: списки, марсоходы, камеры, манифест, `/photos/stats` и `/photos/batch` (этап 18C) — `public, max-age=300`; карточка снимка (`/photos/{id}`) — `public, max-age=3600`; редирект на изображение — `public, max-age=86400`; `/rovers/{rover}/location`, `/rovers/{rover}/traverse`, `/rovers/{rover}/samples`, `/samples/{number}`, `/rovers/{rover}/radiation` (этап 21), `/rovers/{rover}/weather` и `/rovers/{rover}/weather/{sol}` (этап 17) — `public, max-age=3600` (данные меняются не чаще раза в сутки); `/rovers/{rover}/feed.xml` — `public, max-age=900`, `Last-Modified` — время последней записи ленты (нет записей — без заголовка), повтор с `If-Modified-Since` не раньше него → `304` (если в запросе есть `If-None-Match`, решает он); ошибки и admin-ручки — `no-store`.
 - CORS — любые источники, только `GET`; заголовок `ETag` виден клиенту.
 - Сжатие: при `Accept-Encoding: gzip` ответы от 1 КБ сжимаются; во всех ответах API — `Vary: Accept-Encoding`. `ETag` слабый и считается по несжатому телу, поэтому один и тот же для сжатого и несжатого ответа; `304` работает при любом кодировании.
 
 ## Черновики (уточнить перед своим этапом)
 
-- **Погода** отложена: живых источников нет (`DATA-SOURCES.md`).

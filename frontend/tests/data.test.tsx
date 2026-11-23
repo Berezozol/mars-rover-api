@@ -12,6 +12,7 @@ import {
   radSol,
   radiationResponse,
 } from "./fixtures/radiation";
+import { weatherRoutes } from "./weather-helpers";
 
 const RAD = "/api/v2/rovers/curiosity/radiation";
 
@@ -27,6 +28,7 @@ const thirty: Sample[] = Array.from({ length: 30 }, (_, i) => ({
 
 function routes(over: Record<string, unknown> = {}) {
   return mockApi({
+    ...weatherRoutes(),
     "/api/v2/rovers": { items: [perseverance, curiosity] },
     "/api/v2/rovers/curiosity": curiosity,
     "/api/v2/rovers/perseverance/samples": samplesResponse(thirty),
@@ -61,17 +63,17 @@ describe("Data: header entry (AC-40)", () => {
 });
 
 describe("Data: accordion (AC-41)", () => {
-  it("AC-41 without a hash the first section (Rock samples) is open, Radiation is closed, no Weather", async () => {
+  it("AC-41 without a hash the first section (Rock samples) is open, Radiation and Weather are closed", async () => {
     const m = routes();
     open("/data");
     expect(await screen.findByRole("heading", { level: 1, name: "Data" })).toBeTruthy();
     expect(header(/Rock samples/).getAttribute("aria-expanded")).toBe("true");
     expect(header(/Radiation/).getAttribute("aria-expanded")).toBe("false");
-    expect(screen.queryByRole("button", { name: /Weather/ })).toBeNull();
-    expect(screen.queryByText(/Weather by sol/)).toBeNull();
+    expect(header(/Weather by sol/).getAttribute("aria-expanded")).toBe("false");
     // a closed section asks nothing
     await screen.findByRole("region", { name: /Rock samples/ });
     expect(m.calls.filter((c) => c.pathname === RAD)).toHaveLength(0);
+    expect(m.calls.filter((c) => c.pathname.endsWith("/weather"))).toHaveLength(0);
   });
 
   it("AC-41 #radiation opens and scrolls to the radiation section", async () => {

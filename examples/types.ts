@@ -125,6 +125,11 @@ export interface ObservationCounts {
   used: number;
 }
 
+export interface ParameterInfo {
+  quality: "estimate" | "measured" | "preliminary";
+  unit: string;
+}
+
 export interface PhotoBatchResponse {
   items: app__api__v2__schemas__PhotoOut[];
   missing: number[];
@@ -279,6 +284,12 @@ export interface SourceOut {
   link: string | null;
 }
 
+export interface Stat3 {
+  max: number;
+  mean: number;
+  min: number;
+}
+
 export interface TraverseFeatureOut {
   geometry: LineStringOut;
   properties: TraverseProperties;
@@ -297,6 +308,11 @@ export interface TraverseResponse {
   source_max_sol: number | null;
   type?: "FeatureCollection";
   updated_at: string | null;
+}
+
+export interface UvStats {
+  max: number;
+  mean: number;
 }
 
 export interface ValidationError {
@@ -322,6 +338,86 @@ export interface WaypointOut {
   sol: number;
   tilt: number | null;
   yaw: number | null;
+}
+
+export interface WeatherFlag {
+  code: string;
+  count: number | null;
+  parameter: string | null;
+}
+
+export interface WeatherHour {
+  air_temp_c: number | null;
+  coverage: number;
+  ground_temp_c?: number | null;
+  hour: number;
+  humidity_pct: number | null;
+  pressure_pa: number | null;
+  uv_wm2?: number | null;
+  wind_direction_deg?: number | null;
+  wind_speed_ms?: number | null;
+}
+
+export interface WeatherResponse {
+  credit: string;
+  items: WeatherSol[];
+  parameters: Record<string, ParameterInfo>;
+  rover: string;
+  source_max_sol: number | null;
+  source_url: string;
+  updated_at: string | null;
+}
+
+export interface WeatherSol {
+  air_temp_c: Stat3 | null;
+  coverage: number;
+  earth_date: string;
+  flags: WeatherFlag[];
+  ground_temp_c?: Stat3 | null;
+  hours_covered: number;
+  humidity_pct: Stat3 | null;
+  ls: number | null;
+  pressure_pa: Stat3 | null;
+  sol: number;
+  source_version: Record<string, string>;
+  uv_wm2?: UvStats | null;
+  wind?: WindStats | null;
+}
+
+export interface WeatherSolDetail {
+  air_temp_c: Stat3 | null;
+  coverage: number;
+  earth_date: string;
+  flags: WeatherFlag[];
+  ground_temp_c?: Stat3 | null;
+  hours: WeatherHour[];
+  hours_covered: number;
+  humidity_pct: Stat3 | null;
+  ls: number | null;
+  pressure_pa: Stat3 | null;
+  rover: string;
+  sol: number;
+  source: WeatherSource;
+  source_version: Record<string, string>;
+  uv_wm2?: UvStats | null;
+  wind?: WindStats | null;
+}
+
+export interface WeatherSource {
+  files: WeatherSourceFile[];
+}
+
+export interface WeatherSourceFile {
+  file: string;
+  link: string;
+  product: string;
+  version: string;
+}
+
+export interface WindStats {
+  direction_mode_deg: number | null;
+  gust_ms: number;
+  speed_mean_ms: number;
 }
 
 export interface app__api__legacy__schemas__LatestPhotosResponse {

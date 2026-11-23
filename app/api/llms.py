@@ -3,6 +3,7 @@
 Follows the llmstxt.org layout. The base URL comes from the request origin with the same
 rules as ``/developers`` (a bad ``Host`` is replaced, see ``app.api.origin``). Not rate limited.
 """
+# ruff: noqa: E501
 
 import hashlib
 
@@ -94,6 +95,21 @@ NASA PDS dataset MSL-M-RAD-3-RDR-V1.0; optional `sol_min`/`sol_max`, inclusive; 
 instrument's detectors, in microgray per day: not equivalent dose, no sieverts. The dataset lags \
 the mission by months, so the latest sols are missing. Other rovers: `404 not_found`. Keep the \
 `credit` and `citation` fields when you show or redistribute the data
+- [Weather]({origin}/api/v2/rovers/perseverance/weather?sol_min=100&sol_max=110): \
+`GET /api/v2/rovers/{{rover}}/weather` (`curiosity` REMS and `perseverance` MEDA only, NASA PDS; \
+daily summaries per sol; optional `sol_min`/`sol_max`, inclusive; no pagination), \
+`GET /api/v2/rovers/{{rover}}/weather/{{sol}}` (the same plus 24 hourly values in `hours`, LMST, and \
+`source.files`; unknown sol: `404 sol_not_found`). Units: °C, Pa, % relative humidity, W/m2 (UV), m/s. \
+Wind direction: azimuth in degrees clockwise from north as the source gives it; from/to is not stated. \
+`min`/`max` are the lowest and highest valid values; `mean` is the mean of the hourly means and is always \
+given. `flags` (`code`, `parameter`, `count`): `partial_coverage` (readings in fewer than 18 of 24 hours), \
+`humidity_over_100` (kept as is), `out_of_range` (ignored); skip unknown codes. Humidity is \
+`preliminary` (see `parameters`). Curiosity has no wind: the `wind` key is absent. Perseverance has wind \
+only on sols 36-313 (`null` elsewhere) and no UV; its ground temperature is an estimate \
+(`quality: "estimate"`: brightness temperature from the MEDA TIRS upward infrared flux, emissivity 1, \
+about ±3 K; sol 1 and incomplete sols are `null`), while Curiosity's is measured. `null` = the sensor \
+exists, the sol has no valid value. The archive lags by 6-8 months, so the latest sols are missing. Other \
+rovers: `404 not_found`. Keep the `credit` field when you show or redistribute the data
 
 ## Docs
 
@@ -108,6 +124,10 @@ field: keep it when you show or redistribute an image.
 
 Radiation data: MSL RAD (SwRI) / NASA PDS. Keep the `credit` and `citation` fields of the \
 radiation response.
+
+Weather data: Perseverance, MEDA team (Rodriguez-Manfredi, J. A.; de la Torre Juarez, M.) / NASA PDS \
+Atmospheres Node; Curiosity, REMS team (Centro de Astrobiologia) / NASA PDS Atmospheres Node. Keep the \
+`credit` field of the weather response.
 """
 
 

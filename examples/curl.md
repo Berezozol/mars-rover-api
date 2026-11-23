@@ -55,6 +55,12 @@ curl "$BASE/api/v2/rovers/perseverance/samples"
 # Daily radiation summaries of Curiosity (RAD); sol_min and sol_max are optional
 curl "$BASE/api/v2/rovers/curiosity/radiation?sol_min=1600&sol_max=1700"
 
+# Daily weather summaries (curiosity or perseverance); sol_min and sol_max are optional
+curl "$BASE/api/v2/rovers/perseverance/weather?sol_min=100&sol_max=110"
+
+# One sol with 24 hourly values and the source files
+curl "$BASE/api/v2/rovers/curiosity/weather/1000"
+
 # RSS feed of new photos
 curl "$BASE/api/v2/rovers/perseverance/feed.xml"
 ```
@@ -80,6 +86,27 @@ make searches faster or change rate limits.
 Each item is one sol: `dose_b_ugy_day` and `dose_e_ugy_day` (`mean`, `min`, `max`) are the absorbed dose rate in
 the instrument's detectors in microgray per day, not equivalent dose. The dataset lags the mission by months,
 so the latest sols are missing. The response has `credit` and `citation`: keep them when you show the data.
+
+## Weather data
+
+Each item of the list is one sol. `air_temp_c`, `pressure_pa`, `humidity_pct` (and `ground_temp_c`, `uv_wm2` for
+Curiosity) have `min`, `max`, `mean`; units are °C, Pa, %, W/m2. `mean` is the mean of the hourly means
+(LMST hours), not of all readings. Perseverance has `wind` (`speed_mean_ms`, `gust_ms`, `direction_mode_deg`) only
+on sols 36-313, and `null` elsewhere; Curiosity has no `wind` key. Perseverance has no UV, and its `ground_temp_c`
+is an estimate (`quality: "estimate"`, about ±3 K, `null` on sol 1 and on incomplete sols). Wind direction is an azimuth clockwise from
+north as the source gives it. Humidity is `preliminary` (see `parameters` in the response).
+
+`flags` can hold `partial_coverage` (readings in fewer than 18 hours), `humidity_over_100` and `out_of_range`.
+Ignore codes you do not know. The archive lags by 6-8 months, so the latest sols are missing.
+The response has `credit`: keep it when you show the data.
+
+```sh
+# Mean air temperature of each sol, with jq
+curl -s "$BASE/api/v2/rovers/perseverance/weather?sol_min=100&sol_max=110" \
+  | jq '.items[] | {sol, mean: .air_temp_c.mean, flags: [.flags[].code]}'
+```
+
+More: [weather.py](weather.py) (Python, standard library) and [weather.mjs](weather.mjs) (JavaScript, `fetch`).
 
 ## Reference
 

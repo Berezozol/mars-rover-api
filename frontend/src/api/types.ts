@@ -352,3 +352,87 @@ export interface RadiationResponse {
   source_release: string | null;
   items: RadiationSol[];
 }
+
+// ---- Weather by sol (stage 17): `GET /rovers/{rover}/weather` and `/weather/{sol}` ----
+
+/** Smallest, largest and mean value of one parameter over a sol. */
+export interface WeatherStat {
+  min?: number | null;
+  max?: number | null;
+  mean?: number | null;
+}
+
+/** UV has only `max` and `mean`. */
+export interface WeatherUv {
+  max: number | null;
+  mean: number | null;
+}
+
+export interface WeatherWind {
+  speed_mean_ms: number | null;
+  gust_ms: number | null;
+  direction_mode_deg: number | null;
+}
+
+export interface WeatherFlag {
+  /** `partial_coverage`, `humidity_over_100`, `out_of_range`; the list grows, so unknown codes occur. */
+  code: string;
+  /** The parameter key the flag is about, or null (`partial_coverage`). */
+  parameter: string | null;
+  count: number | null;
+}
+
+/**
+ * One sol. Parameter keys depend on the rover and are the same for all its sols: a key that is
+ * absent means the rover has no such sensor, `null` means the sensor exists but the sol has no data.
+ */
+export interface WeatherSol {
+  sol: number;
+  earth_date: string;
+  ls: number | null;
+  coverage: number;
+  hours_covered: number;
+  air_temp_c?: WeatherStat | null;
+  pressure_pa?: WeatherStat | null;
+  humidity_pct?: WeatherStat | null;
+  ground_temp_c?: WeatherStat | null;
+  uv_wm2?: WeatherUv | null;
+  wind?: WeatherWind | null;
+  flags: WeatherFlag[];
+  source_version?: Record<string, string>;
+}
+
+/** What a parameter is: its unit and how far to trust it (`measured`, `preliminary`, `estimate`). */
+export interface WeatherParameter {
+  unit: string;
+  quality: string;
+}
+
+export interface WeatherResponse {
+  rover: string;
+  credit: string;
+  source_url: string;
+  updated_at: string | null;
+  source_max_sol: number | null;
+  parameters: Record<string, WeatherParameter>;
+  items: WeatherSol[];
+}
+
+/** Hourly means by local mean solar time; a missing hour is `null`. Keys follow the rover's parameters. */
+export interface WeatherHour {
+  hour: number;
+  coverage: number;
+  air_temp_c?: number | null;
+  pressure_pa?: number | null;
+  humidity_pct?: number | null;
+  ground_temp_c?: number | null;
+  uv_wm2?: number | null;
+  wind_speed_ms?: number | null;
+  wind_direction_deg?: number | null;
+}
+
+export interface WeatherSolDetail extends WeatherSol {
+  rover: string;
+  hours: WeatherHour[];
+  source: { files: { product: string; version: string; file: string; link: string }[] };
+}

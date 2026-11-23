@@ -41,6 +41,19 @@
 - ``rad import --input PATH [--force]``: replace the RAD tables with an export file. Exit codes:
   0 imported or already identical, 1 the file has far fewer sols than the database (``--force``
   imports it anyway), 2 invalid file or input, or the lock is taken.
+- ``weather parse --rover R [--from-sol N] [--to-sol M] [--force] [--prune]``: turn the weather
+  files of WEATHER_RAW_DIR (REMS for Curiosity, MEDA for Perseverance) into per-sol summaries;
+  only sols whose files are new or changed (size, time, version) are read, ``--force`` reads
+  them all, ``--prune`` forgets sols whose files are gone (refused when too many are). Exit
+  codes: 0 done, 1 a file failed or ``--prune`` was refused, 2 invalid input, no WEATHER_RAW_DIR
+  or another ``weather parse`` / ``weather import`` holds the lock, 130 interrupted (rerun).
+- ``weather status [--rover R]``: stored sols, files by status, last parse and error, and the
+  sols whose files vanished from the disk.
+- ``weather export --output PATH [--rover R]``: write the weather tables to a gzip JSON Lines
+  file. Exit codes: 0 written, 2 the file cannot be written.
+- ``weather import --input PATH [--force]``: replace the weather data of the rovers in an export
+  file. Exit codes: 0 imported or already identical, 1 the file has far fewer sols than the
+  database (``--force`` imports it anyway), 2 invalid file or input, or the lock is taken.
 - ``openapi [--output PATH]``: write the OpenAPI schema (admin routes excluded) as JSON, to
   stdout by default. Exit codes: 0 written, 2 the file cannot be written.
 - ``openapi-ts [--output PATH]``: the same schemas as TypeScript declarations; same exit codes.
@@ -64,6 +77,7 @@ from app.core.errors import NoSourceForRover, SyncInProgress
 from app.core.logging import configure_logging
 from app.db.session import create_engine, create_session_factory
 from app.repositories import rad as rad_repo
+from app.repositories import weather as weather_repo
 from app.services import reconcile
 from app.services.alerts import TelegramNotifier, rad_sync_message
 from app.services.backfill import (
@@ -86,6 +100,22 @@ from app.services.rad_transfer import (
 from app.services.sample_sync import SampleSyncResult, SampleSyncService
 from app.services.sync import SyncResult, SyncService, compact_ranges
 from app.services.v2 import ROVER_SLUGS
+from app.services.weather_sync import (
+    WeatherParser,
+    WeatherRunResult,
+    collect_status,
+    describe_error,
+)
+from app.services.weather_transfer import (
+    ROVERS as WEATHER_ROVERS,
+)
+from app.services.weather_transfer import (
+    WeatherBusy,
+    WeatherImportError,
+    WeatherImportRefused,
+    export_weather,
+    import_weather,
+)
 from app.sources.base import SourceAdapter
 from app.sources.http import UpstreamClient, UpstreamError
 from app.sources.locations import LOCATION_MISSIONS
@@ -159,6 +189,31 @@ def _add_rad_parser(commands: Any) -> None:
     )
 
 
+def _add_weather_parser(commands: Any) -> None:
+    weather = commands.add_parser(
+        "weather", help="weather per sol (REMS, MEDA): parse, status, export, import"
+    )
+    actions = weather.add_subparsers(dest="weather_command")
+    parse = actions.add_parser("parse", help="parse the files of WEATHER_RAW_DIR into summaries")
+    parse.add_argument("--rover", required=True, type=str.lower, help="curiosity or perseverance")
+    parse.add_argument("--from-sol", type=int, default=None, help="lowest sol (default: all)")
+    parse.add_argument("--to-sol", type=int, default=None, help="highest sol (default: all)")
+    parse.add_argument("--force", action="store_true", help="read every sol again")
+    parse.add_argument(
+        "--prune", action="store_true", help="forget sols whose files are no longer on disk"
+    )
+    status = actions.add_parser("status", help="show the state of the weather data")
+    status.add_argument("--rover", type=str.lower, default=None, help="one rover (default: both)")
+    export = actions.add_parser("export", help="write the weather tables to a gzip JSON Lines file")
+    export.add_argument("--output", required=True, type=Path, help="file to write")
+    export.add_argument("--rover", type=str.lower, default=None, help="one rover (default: both)")
+    imported = actions.add_parser("import", help="replace the weather data with an export file")
+    imported.add_argument("--input", required=True, type=Path, help="file to read")
+    imported.add_argument(
+        "--force", action="store_true", help="import even a file with far fewer sols"
+    )
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m app.cli",
@@ -222,6 +277,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     _add_rad_parser(commands)
+    _add_weather_parser(commands)
 
     openapi = commands.add_parser(
         "openapi", help="write the OpenAPI schema of the application as JSON (no database needed)"
@@ -292,6 +348,8 @@ def main(argv: list[str] | None = None) -> int:
         return _main_samples(args)
     if args.command == "rad":
         return _main_rad(args)
+    if args.command == "weather":
+        return _main_weather(args)
     if args.command == "openapi":
         return _main_openapi(args)
     if args.command == "openapi-ts":
@@ -420,6 +478,45 @@ def _main_rad_sync(args: argparse.Namespace, settings: Settings) -> int:
         print("error: --from-sol must not be greater than --to-sol", file=sys.stderr)
         return EXIT_USAGE
     return asyncio.run(run_rad_sync_command(args.from_sol, args.to_sol, settings))
+
+
+def _main_weather(args: argparse.Namespace) -> int:
+    settings = get_settings()
+    configure_logging(settings.log_level)
+    command = args.weather_command
+    rover = getattr(args, "rover", None)
+    if rover is not None and rover not in WEATHER_ROVERS:
+        print(f"error: unknown rover {rover!r}: use curiosity or perseverance", file=sys.stderr)
+        return EXIT_USAGE
+    try:
+        if command == "parse":
+            return _main_weather_parse(args, settings)
+        if command == "status":
+            return asyncio.run(run_weather_status_command(rover, settings))
+        if command == "export":
+            return asyncio.run(run_weather_export_command(args.output, rover, settings))
+        if command == "import":
+            return asyncio.run(run_weather_import_command(args.input, args.force, settings))
+    except KeyboardInterrupt:
+        print("interrupted: rerun the same command to continue", file=sys.stderr)
+        return EXIT_INTERRUPTED
+    print("error: choose one of: parse, status, export, import", file=sys.stderr)
+    return EXIT_USAGE
+
+
+def _main_weather_parse(args: argparse.Namespace, settings: Settings) -> int:
+    for value in (args.from_sol, args.to_sol):
+        if value is not None and value < 0:
+            print("error: sols start at 0", file=sys.stderr)
+            return EXIT_USAGE
+    if None not in (args.from_sol, args.to_sol) and args.from_sol > args.to_sol:
+        print("error: --from-sol must not be greater than --to-sol", file=sys.stderr)
+        return EXIT_USAGE
+    return asyncio.run(
+        run_weather_parse_command(
+            args.rover, args.from_sol, args.to_sol, args.force, args.prune, settings
+        )
+    )
 
 
 def _main_openapi(args: argparse.Namespace, *, typescript: bool = False) -> int:
@@ -677,6 +774,133 @@ async def run_rad_import_command(path: Path, force: bool, settings: Settings) ->
     finally:
         await engine.dispose()
     print(f"{result.status}: {result.files} files, {result.daily} sols")
+    return EXIT_SUCCESS
+
+
+async def run_weather_parse_command(
+    rover: str,
+    from_sol: int | None,
+    to_sol: int | None,
+    force: bool,
+    prune: bool,
+    settings: Settings,
+) -> int:
+    """Run ``weather parse`` and return the exit code (see the module docstring)."""
+    engine = create_engine(
+        settings.database_url, connect_timeout=settings.db_connect_timeout_seconds
+    )
+    try:
+        result = await WeatherParser(engine, settings).run(
+            rover, from_sol, to_sol, force=force, prune=prune
+        )
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+    except Exception as exc:
+        logger.exception("weather parse crashed")
+        await _report_weather_crash(engine, rover, exc)
+        return EXIT_PARTIAL
+    finally:
+        await engine.dispose()
+    print(_weather_summary(result))
+    if result.locked:
+        print("error: another weather parse or import is running", file=sys.stderr)
+    elif result.error and result.exit_code == EXIT_USAGE:
+        print(f"error: {result.error}", file=sys.stderr)
+    return result.exit_code
+
+
+async def _report_weather_crash(engine: AsyncEngine, rover: str, exc: Exception) -> None:
+    """A crashed ``weather parse``: the reason in ``weather_dataset.last_error``; never raises."""
+    error = describe_error(exc)
+    try:
+        async with create_session_factory(engine)() as session:
+            await weather_repo.save_dataset(
+                session, rover, parsed_at=datetime.now(UTC), last_error=error
+            )
+            await session.commit()
+    except Exception:
+        logger.exception("Could not record the weather crash")
+
+
+def _weather_summary(result: WeatherRunResult) -> str:
+    if result.locked or (result.exit_code == EXIT_USAGE and not result.sols_planned):
+        return "weather parse: not started"
+    line = (
+        f"weather parse {result.rover}: sols planned={result.sols_planned} "
+        f"parsed={result.sols_parsed} changed={result.sols_changed} "
+        f"failed={len(result.sols_failed)} unchanged={result.sols_unchanged} "
+        f"deferred={result.sols_deferred} without data={result.sols_without_data}; "
+        f"files parsed={result.files_parsed} failed={result.files_failed}; "
+        f"sols without files={len(result.sols_missing)} pruned={result.sols_pruned}"
+    )
+    if result.sols_failed:
+        line += f"\n  failed sols: {', '.join(map(str, result.sols_failed[:20]))}"
+    for note in result.notes:
+        line += f"\n  note: {note}"
+    if result.error:
+        line += f"\n  error: {result.error}"
+    return line
+
+
+async def run_weather_status_command(rover: str | None, settings: Settings) -> int:
+    engine = create_engine(
+        settings.database_url, connect_timeout=settings.db_connect_timeout_seconds
+    )
+    try:
+        states = await collect_status(engine, settings, [rover] if rover else list(WEATHER_ROVERS))
+    finally:
+        await engine.dispose()
+    for item in states:
+        state = item.state
+        by_status = ", ".join(f"{k}={v}" for k, v in sorted(state.files_by_status.items()))
+        print(f"{item.rover}: sols {state.sols} (from {state.min_sol} to {state.max_sol})")
+        print(f"  files: {by_status or 'none'}; updated {state.updated_at}")
+        dataset = state.dataset
+        if dataset is not None:
+            print(
+                f"  parsed {dataset.parsed_at}, changed {dataset.changed_at}, "
+                f"imported {dataset.imported_at}"
+            )
+            if dataset.last_error:
+                print(f"  last error: {dataset.last_error}")
+        if item.vanished_sols:
+            print(f"  files vanished: {len(item.vanished_sols)} sols")
+    return EXIT_SUCCESS
+
+
+async def run_weather_export_command(path: Path, rover: str | None, settings: Settings) -> int:
+    engine = create_engine(
+        settings.database_url, connect_timeout=settings.db_connect_timeout_seconds
+    )
+    try:
+        async with create_session_factory(engine)() as session:
+            result = await export_weather(session, path, [rover] if rover else list(WEATHER_ROVERS))
+    except OSError as exc:
+        print(f"error: {path}: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+    finally:
+        await engine.dispose()
+    print(f"exported {result.daily} sols, {result.hourly} hours to {path}")
+    return EXIT_SUCCESS
+
+
+async def run_weather_import_command(path: Path, force: bool, settings: Settings) -> int:
+    engine = create_engine(
+        settings.database_url, connect_timeout=settings.db_connect_timeout_seconds
+    )
+    try:
+        async with create_session_factory(engine)() as session:
+            result = await import_weather(session, path, force, settings=settings)
+    except (WeatherBusy, WeatherImportError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+    except WeatherImportRefused as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_PARTIAL
+    finally:
+        await engine.dispose()
+    print(f"{result.status}: {result.daily} sols, {result.hourly} hours")
     return EXIT_SUCCESS
 
 

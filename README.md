@@ -54,6 +54,39 @@ without them you get the whole history in one response, no pagination.
 curl "$BASE/api/v2/rovers/curiosity/radiation?sol_min=1600&sol_max=1700"
 ```
 
+## Weather by sol (Curiosity and Perseverance)
+
+`GET /api/v2/rovers/{rover}/weather` returns one daily summary per sol; `GET /api/v2/rovers/{rover}/weather/{sol}`
+adds 24 hourly values and the source files of that sol. Only `curiosity` and `perseverance` have weather;
+other rovers answer `404 not_found`. Optional `sol_min` and `sol_max` (inclusive) narrow the list; no pagination.
+
+- Sources: Curiosity, REMS (NASA PDS `urn:nasa:pds:msl_rems`); Perseverance, MEDA (`urn:nasa:pds:mars2020_meda`).
+- Units: air and ground temperature in °C, pressure in Pa, relative humidity in %, UV in W/m2, wind speed in m/s.
+  Wind direction is an azimuth in degrees clockwise from north, as the source gives it; we do not say
+  whether it is "from" or "to".
+- `min` and `max` are the lowest and highest valid values of the sol. `mean` is the mean of the hourly means
+  (local mean solar time, LMST), so a burst of readings in one hour does not skew it.
+- `flags` list notes on a sol: `partial_coverage` (readings in fewer than 18 of 24 hours; `mean` is still given
+  and may lean to day or night), `humidity_over_100` (values above 100 % are kept as they are),
+  `out_of_range` (physically impossible values, ignored). Skip codes you do not know.
+- Humidity is marked `preliminary` in `parameters`: the instrument teams treat its calibration as preliminary.
+- Curiosity has no wind: the `wind` key is absent. Perseverance has wind only on sols 36-313 (`wind: null`
+  elsewhere) and no UV. Ground temperature of Curiosity is measured; Perseverance's is an estimate
+  (`quality: "estimate"` in `parameters`): brightness temperature from the MEDA TIRS upward infrared flux with
+  emissivity 1, about ±3 K. Sol 1 and incomplete sols are not computed (`null`). `null` means the sensor exists but
+  the sol has no valid value.
+- The archive lags the mission by 6-8 months and is updated in batches, so the latest sols are missing
+  (compare `source_max_sol` with `max_sol` from `/api/v2/rovers/{rover}`).
+- The response always has `credit`: keep it when you show or redistribute the data. Perseverance:
+  "Rodriguez-Manfredi, J. A.; de la Torre Juarez, M. (MEDA, Mars 2020) / NASA PDS Atmospheres Node,
+  urn:nasa:pds:mars2020_meda". Curiosity: "REMS team (Centro de Astrobiologia) / NASA PDS Atmospheres Node,
+  urn:nasa:pds:msl_rems". This project is unofficial.
+
+```sh
+curl "$BASE/api/v2/rovers/perseverance/weather?sol_min=100&sol_max=110"
+curl "$BASE/api/v2/rovers/curiosity/weather/1000"
+```
+
 ## Quick start
 
 Requirements: Python 3.13+, [uv](https://docs.astral.sh/uv/), Docker.

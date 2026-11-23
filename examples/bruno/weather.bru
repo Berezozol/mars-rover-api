@@ -1,0 +1,16 @@
+meta {
+  name: weather
+  type: http
+  seq: 8
+}
+
+get {
+  url: {{baseUrl}}/api/v2/rovers/perseverance/weather?sol_min=100&sol_max=110
+  body: none
+  auth: none
+}
+
+params:query {
+  sol_min: 100
+  sol_max: 110
+}

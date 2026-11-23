@@ -2,16 +2,18 @@ import type { ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { RadiationSection } from "../components/DataRadiation";
 import { SamplesSection } from "../components/DataSamples";
+import { WeatherSection } from "../components/DataWeather";
 import { useTitle } from "../lib/hooks";
 import { useHash } from "../router";
 
-type Key = "samples" | "radiation";
-const KEYS: Key[] = ["samples", "radiation"];
+type Key = "samples" | "radiation" | "weather";
+const KEYS: Key[] = ["samples", "radiation", "weather"];
 const isKey = (s: string): s is Key => (KEYS as string[]).includes(s);
 
 const META: Record<Key, string> = {
   samples: "Perseverance · sealed sample tubes",
   radiation: "Curiosity · daily dose rate",
+  weather: "Perseverance and Curiosity · daily air measurements",
 };
 
 function hashKey(hash: string): Key | null {
@@ -25,7 +27,11 @@ export function Data() {
   // Without a section in the address the first section is open.
   const [open, setOpen] = useState<Record<Key, boolean>>(() => {
     const k = hashKey(window.location.hash);
-    return { samples: k === null || k === "samples", radiation: k === "radiation" };
+    return {
+      samples: k === null || k === "samples",
+      radiation: k === "radiation",
+      weather: k === "weather",
+    };
   });
   // A section's content is built when it is first opened (the radiation answer is large).
   const [seen, setSeen] = useState<Record<Key, boolean>>(open);
@@ -55,7 +61,7 @@ export function Data() {
     window.history.replaceState(null, "", window.location.pathname);
   };
 
-  const section = (k: Key, name: string, badge: string, body: ComponentChildren) => (
+  const section = (k: Key, name: string, badge: string | string[], body: ComponentChildren) => (
     <section class="card acc-item" id={k}>
       <h2 class="acc-h">
         <button
@@ -68,7 +74,12 @@ export function Data() {
         >
           <span class="acc-title">
             <span class="acc-name">
-              {name} <span class="badge no-dot">{badge}</span>
+              {name}{" "}
+              {[badge].flat().map((b) => (
+                <span key={b} class="badge no-dot">
+                  {b}
+                </span>
+              ))}
             </span>
             <span class="acc-meta">{meta[k]}</span>
           </span>
@@ -112,7 +123,7 @@ export function Data() {
           Collapse all
         </button>
         <span class="spacer" />
-        <span class="xsmall muted">2 datasets · more coming</span>
+        <span class="xsmall muted">3 datasets · more coming</span>
       </div>
 
       <div class="acc">
@@ -130,6 +141,14 @@ export function Data() {
           "Curiosity",
           <RadiationSection
             onMeta={(t) => setMeta((m) => (m.radiation === t ? m : { ...m, radiation: t }))}
+          />,
+        )}
+        {section(
+          "weather",
+          "Weather by sol",
+          ["Perseverance", "Curiosity"],
+          <WeatherSection
+            onMeta={(t) => setMeta((m) => (m.weather === t ? m : { ...m, weather: t }))}
           />,
         )}
       </div>

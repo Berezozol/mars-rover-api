@@ -1,12 +1,17 @@
 """Shared fixtures.
 
-Parallel run (pytest-xdist): `uv run pytest -q -p no:cacheprovider -n 12`. Every worker gets
-its own database `<TEST_DATABASE_URL name>_<worker>` (e.g. mars_test_gw0), cloned with
-CREATE DATABASE ... TEMPLATE from `<name>_template`, which is migrated once per run under a
-Postgres advisory lock (no races between workers). Stale databases of earlier runs are
-dropped and recreated. Without xdist the plain TEST_DATABASE_URL database is used. All
-temporary directories come from `tmp_path` / `tmp_path_factory` (unique per worker). Do not
-run the suite twice at the same time against one Postgres. Timings: tests/README.md.
+Parallel run (pytest-xdist): `uv run pytest -q -p no:cacheprovider -n 12`. Every run gets
+its own id (`MARS_TEST_RUN_ID`, set by the controller in `pytest_configure`, inherited by
+the workers) and every worker its own database `<TEST_DATABASE_URL name>_<run id>_<worker>`
+(e.g. mars_test_65a1b2c3d4_gw0), cloned with CREATE DATABASE ... TEMPLATE from
+`<name>_<run id>_template`, which is migrated once per run under a Postgres advisory lock
+(no races between workers). Two concurrent `-n` runs therefore never touch each other's
+databases. The controller drops the run's template at the end; databases of crashed runs
+(run id older than 6 hours, plus legacy `<name>_gwN` / `<name>_template` without any
+connection) are dropped when the next run builds its template. Without xdist the plain
+TEST_DATABASE_URL database is used (do not run two plain runs at the same time). All
+temporary directories come from `tmp_path` / `tmp_path_factory` (unique per worker).
+Timings: tests/README.md.
 
 - `settings` points the app at the test database (TEST_DATABASE_URL), never the dev one,
   with the per-IP rate limit switched off (RATE_LIMIT_ENABLED=false) and no /health/sync
@@ -32,6 +37,9 @@ run the suite twice at the same time against one Postgres. Timings: tests/README
 import asyncio
 import itertools
 import os
+import re
+import secrets
+import time
 from collections.abc import AsyncIterator, Callable, Iterator
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -51,10 +59,25 @@ from sqlalchemy.pool import NullPool
 from app.core.config import Settings, get_settings
 from app.main import create_app
 from tests._rad import events, fake_sleep, rad_env  # noqa: F401  (fixtures of the stage-21 tests)
+from tests._weather import weather_env  # noqa: F401  (fixture of the stage-17 tests)
 
 ROOT = Path(__file__).resolve().parent.parent
 
 ROUNDTRIP_MARKER = "migrations_roundtrip"
+
+
+RUN_ID_ENV = "MARS_TEST_RUN_ID"
+# A run id is `<unix seconds, 8 hex digits><4 random hex digits>`; databases of a run older than
+# this are considered left over by a crashed run.
+_STALE_AFTER_SECONDS = 6 * 3600
+
+
+def _new_run_id() -> str:
+    return f"{int(time.time()):08x}{secrets.token_hex(2)}"
+
+
+def _is_worker(config: pytest.Config) -> bool:
+    return hasattr(config, "workerinput")
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -62,6 +85,27 @@ def pytest_configure(config: pytest.Config) -> None:
         "markers",
         f"{ROUNDTRIP_MARKER}: drops and recreates the schema; runs last (own DB per xdist worker)",
     )
+    # The controller picks the run id before any worker is spawned; workers inherit the
+    # environment, so `setdefault` keeps one id per run (and for a plain run it is unused).
+    if not _is_worker(config):
+        os.environ[RUN_ID_ENV] = _new_run_id()
+    else:
+        os.environ.setdefault(RUN_ID_ENV, _new_run_id())
+
+
+def pytest_unconfigure(config: pytest.Config) -> None:
+    """Controller only: drop this run's template (and any worker database left behind)."""
+    if _is_worker(config) or getattr(config.option, "dist", "no") == "no":
+        return
+    run_id = os.environ.get(RUN_ID_ENV)
+    if not run_id:
+        return
+    try:
+        base = get_settings()
+        name = make_url(base.test_database_url).database or "mars_test"
+        asyncio.run(_drop_run_databases(base.test_database_url, name, run_id))
+    except Exception:  # noqa: BLE001  (cleanup must never fail the run; stale ones are swept later)
+        pass
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
@@ -97,6 +141,56 @@ def _alembic_config_for(url: str) -> AlembicConfig:
     return cfg
 
 
+def _run_database_pattern(name: str) -> re.Pattern[str]:
+    return re.compile(rf"^{re.escape(name)}_([0-9a-f]{{8}})[0-9a-f]{{4}}_(?:gw[0-9]+|template)$")
+
+
+def _legacy_database_pattern(name: str) -> re.Pattern[str]:
+    return re.compile(rf"^{re.escape(name)}_(?:gw[0-9]+|template)$")
+
+
+async def _sweep_stale_databases(conn: Any, name: str, now: float | None = None) -> None:
+    """Drop databases of crashed runs: old run ids, and legacy names nobody is connected to."""
+    now = time.time() if now is None else now
+    rows = await conn.execute(
+        text(
+            "SELECT d.datname, (SELECT count(*) FROM pg_stat_activity a "
+            "WHERE a.datname = d.datname) AS sessions FROM pg_database d "
+            "WHERE left(d.datname, length(:prefix)) = :prefix"
+        ),
+        {"prefix": f"{name}_"},
+    )
+    run_pattern, legacy_pattern = _run_database_pattern(name), _legacy_database_pattern(name)
+    for datname, sessions in rows.all():
+        match = run_pattern.match(datname)
+        if match:
+            stale = now - int(match.group(1), 16) > _STALE_AFTER_SECONDS
+        else:
+            stale = bool(legacy_pattern.match(datname)) and sessions == 0
+        if stale:
+            await conn.execute(
+                text(f"DROP DATABASE IF EXISTS {_quote_ident(datname)} WITH (FORCE)")
+            )
+
+
+async def _drop_run_databases(base_url: str, name: str, run_id: str) -> None:
+    admin_url = make_url(base_url).set(database="postgres")
+    engine = create_async_engine(admin_url, isolation_level="AUTOCOMMIT", poolclass=NullPool)
+    prefix = f"{name}_{run_id}_"
+    try:
+        async with engine.connect() as conn:
+            rows = await conn.execute(
+                text("SELECT datname FROM pg_database WHERE left(datname, length(:p)) = :p"),
+                {"p": prefix},
+            )
+            for (datname,) in rows.all():
+                await conn.execute(
+                    text(f"DROP DATABASE IF EXISTS {_quote_ident(datname)} WITH (FORCE)")
+                )
+    finally:
+        await engine.dispose()
+
+
 async def _provision_worker_database(
     base_url: str, template: str, worker_db: str, marker: Path
 ) -> None:
@@ -114,6 +208,7 @@ async def _provision_worker_database(
             await conn.execute(text("SELECT pg_advisory_lock(:k)"), {"k": _PROVISION_LOCK_KEY})
             try:
                 if not marker.exists():  # noqa: ASYNC240 (tiny local file)
+                    await _sweep_stale_databases(conn, make_url(base_url).database or "")
                     await conn.execute(
                         text(f"DROP DATABASE IF EXISTS {_quote_ident(template)} WITH (FORCE)")
                     )
@@ -154,7 +249,7 @@ async def _drop_database(base_url: str, name: str) -> None:
 def test_database_url(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
     """URL of this process's test database.
 
-    Plain run: TEST_DATABASE_URL itself. Under xdist: a private `<name>_<worker>` clone.
+    Plain run: TEST_DATABASE_URL itself. Under xdist: a private `<name>_<run id>_<worker>` clone.
     """
     base = get_settings()
     _guard_test_database(base)
@@ -164,10 +259,13 @@ def test_database_url(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]
         return
     base_url = make_url(base.test_database_url)
     name = base_url.database or "mars_test"
-    worker_db = f"{name}_{worker}"
+    run_id = os.environ[RUN_ID_ENV]
+    worker_db = f"{name}_{run_id}_{worker}"
     marker = tmp_path_factory.getbasetemp().parent / _TEMPLATE_READY_MARKER
     asyncio.run(
-        _provision_worker_database(base.test_database_url, f"{name}_template", worker_db, marker)
+        _provision_worker_database(
+            base.test_database_url, f"{name}_{run_id}_template", worker_db, marker
+        )
     )
     try:
         yield base_url.set(database=worker_db).render_as_string(hide_password=False)
@@ -276,6 +374,9 @@ _OPTIONAL_TABLES = (
     "rad_files",  # stage 21 (migration 0017)
     "rad_daily",
     "rad_dataset",
+    "weather_daily",  # stage 17 (migration 0018); hourly rows go with it (CASCADE below)
+    "weather_files",
+    "weather_dataset",
 )
 
 
@@ -285,7 +386,7 @@ async def _clean_database(factory: async_sessionmaker[AsyncSession]) -> None:
             if await session.scalar(
                 text("SELECT to_regclass(:t) IS NOT NULL"), {"t": f"public.{table}"}
             ):
-                await session.execute(text(f"TRUNCATE {table}"))
+                await session.execute(text(f"TRUNCATE {table} CASCADE"))
         for statement in _CLEAN_STATEMENTS:
             await session.execute(text(statement))
         await session.commit()

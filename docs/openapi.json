@@ -1886,6 +1886,183 @@
         }
       }
     },
+    "/api/v2/rovers/{rover}/weather": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "summary": "Daily weather summaries of Curiosity (REMS) and Perseverance (MEDA)",
+        "operationId": "get_weather_api_v2_rovers__rover__weather_get",
+        "parameters": [
+          {
+            "name": "rover",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rover"
+            }
+          },
+          {
+            "name": "sol_min",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2147483647,
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "First sol, inclusive.",
+              "title": "Sol Min"
+            },
+            "description": "First sol, inclusive."
+          },
+          {
+            "name": "sol_max",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 2147483647,
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Last sol, inclusive.",
+              "title": "Sol Max"
+            },
+            "description": "Last sol, inclusive."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeatherResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "rover_not_found / not_found (rover without weather) / sol_not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "db_unavailable / service_busy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/rovers/{rover}/weather/{sol}": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "summary": "Weather of one sol with its 24 hours",
+        "operationId": "get_weather_sol_api_v2_rovers__rover__weather__sol__get",
+        "parameters": [
+          {
+            "name": "rover",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rover"
+            }
+          },
+          {
+            "name": "sol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 0,
+              "description": "Sol number.",
+              "title": "Sol"
+            },
+            "description": "Sol number."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeatherSolDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "rover_not_found / not_found (rover without weather) / sol_not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "db_unavailable / service_busy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v2/rovers/{rover}/feed.xml": {
       "get": {
         "tags": [
@@ -3595,6 +3772,29 @@
         ],
         "title": "ObservationCounts"
       },
+      "ParameterInfo": {
+        "properties": {
+          "unit": {
+            "type": "string",
+            "title": "Unit"
+          },
+          "quality": {
+            "type": "string",
+            "enum": [
+              "measured",
+              "preliminary",
+              "estimate"
+            ],
+            "title": "Quality"
+          }
+        },
+        "type": "object",
+        "required": [
+          "unit",
+          "quality"
+        ],
+        "title": "ParameterInfo"
+      },
       "PhotoBatchResponse": {
         "properties": {
           "items": {
@@ -4562,6 +4762,29 @@
         ],
         "title": "SourceOut"
       },
+      "Stat3": {
+        "properties": {
+          "min": {
+            "type": "number",
+            "title": "Min"
+          },
+          "max": {
+            "type": "number",
+            "title": "Max"
+          },
+          "mean": {
+            "type": "number",
+            "title": "Mean"
+          }
+        },
+        "type": "object",
+        "required": [
+          "min",
+          "max",
+          "mean"
+        ],
+        "title": "Stat3"
+      },
       "TraverseFeatureOut": {
         "properties": {
           "type": {
@@ -4672,6 +4895,24 @@
         ],
         "title": "TraverseResponse",
         "description": "GeoJSON FeatureCollection (RFC 7946) with extra top-level members."
+      },
+      "UvStats": {
+        "properties": {
+          "max": {
+            "type": "number",
+            "title": "Max"
+          },
+          "mean": {
+            "type": "number",
+            "title": "Mean"
+          }
+        },
+        "type": "object",
+        "required": [
+          "max",
+          "mean"
+        ],
+        "title": "UvStats"
       },
       "ValidationError": {
         "properties": {
@@ -4853,6 +5094,546 @@
           "dist_total_m"
         ],
         "title": "WaypointOut"
+      },
+      "WeatherFlag": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "parameter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parameter"
+          },
+          "count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "parameter",
+          "count"
+        ],
+        "title": "WeatherFlag"
+      },
+      "WeatherHour": {
+        "properties": {
+          "hour": {
+            "type": "integer",
+            "title": "Hour"
+          },
+          "coverage": {
+            "type": "number",
+            "title": "Coverage"
+          },
+          "air_temp_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Air Temp C"
+          },
+          "pressure_pa": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pressure Pa"
+          },
+          "humidity_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Humidity Pct"
+          },
+          "wind_speed_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wind Speed Ms",
+            "description": "Perseverance only."
+          },
+          "wind_direction_deg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wind Direction Deg",
+            "description": "Perseverance only. Azimuth in degrees clockwise from north as the source gives it (not stated whether from or to); centre of a 22.5 degree sector."
+          },
+          "ground_temp_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ground Temp C",
+            "description": "Curiosity (see WeatherSol)."
+          },
+          "uv_wm2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uv Wm2",
+            "description": "Curiosity only."
+          }
+        },
+        "type": "object",
+        "required": [
+          "hour",
+          "coverage",
+          "air_temp_c",
+          "pressure_pa",
+          "humidity_pct"
+        ],
+        "title": "WeatherHour"
+      },
+      "WeatherResponse": {
+        "properties": {
+          "rover": {
+            "type": "string",
+            "title": "Rover"
+          },
+          "credit": {
+            "type": "string",
+            "title": "Credit"
+          },
+          "source_url": {
+            "type": "string",
+            "title": "Source Url"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "source_max_sol": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Max Sol"
+          },
+          "parameters": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ParameterInfo"
+            },
+            "type": "object",
+            "title": "Parameters"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WeatherSol"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rover",
+          "credit",
+          "source_url",
+          "updated_at",
+          "source_max_sol",
+          "parameters",
+          "items"
+        ],
+        "title": "WeatherResponse"
+      },
+      "WeatherSol": {
+        "properties": {
+          "sol": {
+            "type": "integer",
+            "title": "Sol"
+          },
+          "earth_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Earth Date"
+          },
+          "ls": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ls"
+          },
+          "coverage": {
+            "type": "number",
+            "title": "Coverage"
+          },
+          "hours_covered": {
+            "type": "integer",
+            "title": "Hours Covered"
+          },
+          "air_temp_c": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Stat3"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pressure_pa": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Stat3"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "humidity_pct": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Stat3"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "wind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WindStats"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Perseverance only (absent for Curiosity); null outside sols 36-313."
+          },
+          "ground_temp_c": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Stat3"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Curiosity (REMS, measured); Perseverance (estimate from the MEDA TIRS brightness temperature, emissivity 1; absent when switched off)."
+          },
+          "uv_wm2": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UvStats"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Curiosity only (the key is absent for Perseverance)."
+          },
+          "flags": {
+            "items": {
+              "$ref": "#/components/schemas/WeatherFlag"
+            },
+            "type": "array",
+            "title": "Flags"
+          },
+          "source_version": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Source Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sol",
+          "earth_date",
+          "ls",
+          "coverage",
+          "hours_covered",
+          "air_temp_c",
+          "pressure_pa",
+          "humidity_pct",
+          "flags",
+          "source_version"
+        ],
+        "title": "WeatherSol"
+      },
+      "WeatherSolDetail": {
+        "properties": {
+          "sol": {
+            "type": "integer",
+            "title": "Sol"
+          },
+          "earth_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Earth Date"
+          },
+          "ls": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ls"
+          },
+          "coverage": {
+            "type": "number",
+            "title": "Coverage"
+          },
+          "hours_covered": {
+            "type": "integer",
+            "title": "Hours Covered"
+          },
+          "air_temp_c": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Stat3"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pressure_pa": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Stat3"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "humidity_pct": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Stat3"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "wind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WindStats"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Perseverance only (absent for Curiosity); null outside sols 36-313."
+          },
+          "ground_temp_c": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Stat3"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Curiosity (REMS, measured); Perseverance (estimate from the MEDA TIRS brightness temperature, emissivity 1; absent when switched off)."
+          },
+          "uv_wm2": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UvStats"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Curiosity only (the key is absent for Perseverance)."
+          },
+          "flags": {
+            "items": {
+              "$ref": "#/components/schemas/WeatherFlag"
+            },
+            "type": "array",
+            "title": "Flags"
+          },
+          "source_version": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Source Version"
+          },
+          "rover": {
+            "type": "string",
+            "title": "Rover"
+          },
+          "hours": {
+            "items": {
+              "$ref": "#/components/schemas/WeatherHour"
+            },
+            "type": "array",
+            "title": "Hours"
+          },
+          "source": {
+            "$ref": "#/components/schemas/WeatherSource"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sol",
+          "earth_date",
+          "ls",
+          "coverage",
+          "hours_covered",
+          "air_temp_c",
+          "pressure_pa",
+          "humidity_pct",
+          "flags",
+          "source_version",
+          "rover",
+          "hours",
+          "source"
+        ],
+        "title": "WeatherSolDetail"
+      },
+      "WeatherSource": {
+        "properties": {
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/WeatherSourceFile"
+            },
+            "type": "array",
+            "title": "Files"
+          }
+        },
+        "type": "object",
+        "required": [
+          "files"
+        ],
+        "title": "WeatherSource"
+      },
+      "WeatherSourceFile": {
+        "properties": {
+          "product": {
+            "type": "string",
+            "title": "Product"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "file": {
+            "type": "string",
+            "title": "File"
+          },
+          "link": {
+            "type": "string",
+            "title": "Link"
+          }
+        },
+        "type": "object",
+        "required": [
+          "product",
+          "version",
+          "file",
+          "link"
+        ],
+        "title": "WeatherSourceFile"
+      },
+      "WindStats": {
+        "properties": {
+          "speed_mean_ms": {
+            "type": "number",
+            "title": "Speed Mean Ms"
+          },
+          "gust_ms": {
+            "type": "number",
+            "title": "Gust Ms"
+          },
+          "direction_mode_deg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direction Mode Deg",
+            "description": "Most frequent direction: azimuth in degrees clockwise from north as the source gives it (MEDA does not say whether it is where the wind blows from or to); centre of a 22.5 degree sector."
+          }
+        },
+        "type": "object",
+        "required": [
+          "speed_mean_ms",
+          "gust_ms",
+          "direction_mode_deg"
+        ],
+        "title": "WindStats"
       },
       "app__api__legacy__schemas__LatestPhotosResponse": {
         "properties": {

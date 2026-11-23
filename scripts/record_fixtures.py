@@ -8,7 +8,7 @@ the observed feed behaviour (filtering, pagination, field values).
 Usage::
 
     uv run python scripts/record_fixtures.py [--raw-dir DIR]
-        [--part all|base|m2020-range|mer|mmgis|rad]
+        [--part all|base|m2020-range|mer|mmgis|rad|weather]
 
 ``--part mer`` makes no requests: it copies the real MER index samples prepared by
 data-engineer (``data/mer-samples/<volume>/``) into ``tests/fixtures/upstream/mer/``.
@@ -24,6 +24,10 @@ come from the ``source_link`` column of the dev database), stores every one unde
 ``--part rad`` (stage 21) makes no requests: it trims the local MSL RAD samples
 (``data/rad_sample/``) into ``tests/fixtures/upstream/rad/`` (PHA sections cut, a few
 observations kept, ``CHECKSUMS.TXT`` rebuilt with md5 of the trimmed files).
+
+``--part weather`` (stage 17) makes no requests: it thins the local raw PDS weather files
+(``data/weather_raw/``) into ``tests/fixtures/upstream/weather/`` (same layout, labels copied
+whole, MEDA one row per 30 s, REMS one row per 60 s, a few synthetic glitch rows appended).
 
 ``--raw-dir`` optionally stores full untrimmed responses and the summary
 outside the repository for analysis. Untrimmed responses are never written
@@ -638,12 +642,145 @@ def build_rad_fixtures(source_dir: Path = RAD_SOURCE_DIR, out_dir: Path = RAD_DI
     (out_dir / "TIMING_ERRORS.TXT").write_bytes(timing.encode("ascii"))
 
 
+WEATHER_SOURCE_DIR = ROOT / "data" / "weather_raw"
+WEATHER_DIR = FIXTURES_DIR / "weather"
+_MEDA_PRODUCTS = {
+    "data_calibrated_env": ("CAL_ATS", "CAL_WS"),
+    "data_derived_env": ("DER_PS", "DER_RHS", "DER_TIRS"),
+}
+# (sol, folder range, product versions per collection); sol 400 has no CAL_WS.
+_MEDA_SOLS = {
+    100: "sol_0090_0179",
+    400: "sol_0300_0419",
+    1230: "sol_1140_1259",
+    1852: "sol_1740_1859",
+}
+_REMS_SOLS = {9: "SOL_00001_00089", 30: "SOL_00001_00089"}
+_LMST_RE = re.compile(rb"\d{5}M(\d\d):(\d\d):(\d\d)")
+
+
+def _lmst_second(line: bytes) -> int | None:
+    match = _LMST_RE.search(line)
+    if not match:
+        return None
+    h, m, s = (int(x) for x in match.groups())
+    return h * 3600 + m * 60 + s
+
+
+def _thin_lines(data: bytes, step: int, force: Any = None) -> bytes:
+    """Keep the header and the first data row of every `step`-second LMST bucket.
+
+    Original line endings are kept byte for byte; rows for which `force(line)` is true are
+    always kept.
+    """
+    lines = data.splitlines(keepends=True)
+    out: list[bytes] = []
+    seen: set[int] = set()
+    start = 0
+    if lines and b"SCLK" in lines[0]:  # CSV header
+        out.append(lines[0])
+        start = 1
+    for line in lines[start:]:
+        second = _lmst_second(line)
+        if second is None:
+            continue
+        bucket = second // step
+        if bucket not in seen or (force is not None and force(line)):
+            seen.add(bucket)
+            out.append(line)
+    return b"".join(out)
+
+
+def _csv_force_humidity(line: bytes) -> bool:
+    cells = line.split(b",")
+    try:
+        return len(cells) > 3 and float(cells[3]) > 100
+    except ValueError:
+        return False
+
+
+def _rems_force_glitch(line: bytes) -> bool:
+    cells = line.split(b",")
+    try:
+        return len(cells) == 40 and 0 < float(cells[7]) < 120
+    except ValueError:
+        return False
+
+
+def build_weather_fixtures(
+    source_dir: Path = WEATHER_SOURCE_DIR, out_dir: Path = WEATHER_DIR
+) -> None:
+    """Thin the local raw weather files offline (no requests); see weather/README.md."""
+    if not source_dir.is_dir():
+        raise SystemExit(f"{source_dir} not found: weather fixtures are built from local raw data")
+    for sol, folder in _MEDA_SOLS.items():
+        for collection, products in _MEDA_PRODUCTS.items():
+            src_dir = source_dir / "meda" / collection / folder / f"sol_{sol:04d}"
+            dst_dir = out_dir / "meda" / collection / folder / f"sol_{sol:04d}"
+            if not src_dir.is_dir():
+                continue
+            for csv_path in sorted(src_dir.glob("*.CSV")):
+                if not any(f"_{p}_" in csv_path.name for p in products):
+                    continue
+                if "DER_TIRS" in csv_path.name and sol != 100:
+                    continue  # the ground estimate fixture is the one of sol 100
+                dst_dir.mkdir(parents=True, exist_ok=True)
+                force = _csv_force_humidity if "DER_RHS" in csv_path.name else None
+                step = 60 if "DER_TIRS" in csv_path.name else 30
+                data = _thin_lines(csv_path.read_bytes(), step, force)
+                (dst_dir / csv_path.name).write_bytes(data)
+                label = csv_path.with_suffix(".xml")
+                (dst_dir / label.name).write_bytes(label.read_bytes())
+    for sol, folder in _REMS_SOLS.items():
+        src_dir = source_dir / "rems" / "DATA" / folder / f"SOL{sol:05d}"
+        dst_dir = out_dir / "rems" / "DATA" / folder / f"SOL{sol:05d}"
+        dst_dir.mkdir(parents=True, exist_ok=True)
+        for tab in sorted(src_dir.glob("*RMD*.TAB")):
+            (dst_dir / tab.name).write_bytes(_thin_lines(tab.read_bytes(), 60, _rems_force_glitch))
+            for suffix in (".LBL", ".xml"):
+                label = tab.with_suffix(suffix)
+                (dst_dir / label.name).write_bytes(label.read_bytes())
+    _append_weather_glitches(out_dir)
+
+
+def _append_weather_glitches(out_dir: Path) -> None:
+    """Append the SYNTHETIC glitch rows of sol 100 (listed in weather/README.md)."""
+    base = out_dir / "meda"
+    ats = next(base.glob("data_calibrated_env/*/sol_0100/*CAL_ATS*P01.CSV"))
+    ps = next(base.glob("data_derived_env/*/sol_0100/*DER_PS*.CSV"))
+    rhs = next(base.glob("data_derived_env/*/sol_0100/*DER_RHS*.CSV"))
+    tirs = next(base.glob("data_derived_env/*/sol_0100/*DER_TIRS*.CSV"))
+    rows = {
+        # columns: SCLK, LMST, LTST, DOWN_LW, DOWN_LW_UNC, UP_LW, UP_LW_UNC, RSM_HEAD, WHEEL,
+        # SUN, ROVER_LOW_TILT, SHADOW, HGA_OFF, SKYCAM_OFF, ROVER_STILL
+        tirs: [
+            "700000010,00100M12:00:10.000,0100 12:00:09,30.0,2.0,1.0,0.7,0,1,1,1,1,,,1",
+            "700000011,00100M12:00:11.000,0100 12:00:10,30.0,2.0,300.0,0.7,0,1,1,0,1,,,1",
+            "700000012,00100M12:00:12.000,0100 12:00:11,30.0,2.0,300.0,0.7,0,0,1,1,1,,,1",
+        ],
+        ats: ["700000000,00100M12:00:01.000,0100 12:00:00,200.0,999.9,200.5,201.0,202.0"],
+        ps: ["700000001,00100M12:00:02.000,0100 12:00:01,50.0,,1"],
+        rhs: [
+            "700000002,00100M12:00:03.000,0100 12:00:02,2680332.0,,200.0,0.2,17.1,",
+            "700000003,00100M12:00:04.000,0100 12:00:03,104.5,,200.0,0.2,17.1,",
+            "700000004,00100M12:00:05.000,0100 12:00:04,999999999,,200.0,0.2,17.1,",
+            "700000005,00100M12:00:06.000,0100 12:00:05,,,200.0,0.2,17.1,",
+        ],
+    }
+    for path, extra in rows.items():
+        data = path.read_bytes()
+        eol = b"\r\n" if b"\r\n" in data else b"\n"
+        if not data.endswith(b"\n"):
+            data += eol
+        path.write_bytes(data + eol.join(r.encode() for r in extra) + eol)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--raw-dir", type=Path, default=None, help="dir for untrimmed dumps")
     parser.add_argument(
         "--part",
-        choices=["all", "base", "m2020-range", "mer", "mer-img", "mmgis", "rad"],
+        choices=["all", "base", "m2020-range", "mer", "mer-img", "mmgis", "rad", "weather"],
         default="all",
         help="which group of requests to record (default: all); "
         "'mer' copies data/mer-samples into tests/fixtures/upstream/mer offline; "
@@ -662,6 +799,9 @@ def main() -> None:
         return
     if args.part == "rad":
         build_rad_fixtures()
+        return
+    if args.part == "weather":
+        build_weather_fixtures()
         return
     settings = Settings()
 

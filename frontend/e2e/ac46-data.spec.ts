@@ -62,7 +62,10 @@ test("header 'Data' leads to the Data page and #radiation opens the section", as
     "aria-expanded",
     "true",
   );
-  await expect(page.getByRole("button", { name: /Weather/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Weather by sol/ })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
 
   await page.getByRole("button", { name: /Radiation/ }).click();
   await expect(page).toHaveURL(/\/data#radiation$/);

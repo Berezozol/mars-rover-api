@@ -9,6 +9,7 @@ from typing import Any
 
 from sqlalchemy import (
     CHAR,
+    REAL,
     BigInteger,
     Boolean,
     CheckConstraint,
@@ -16,6 +17,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
     Identity,
     Index,
     Integer,
@@ -54,6 +56,10 @@ __all__ = [
     "SolSourceCount",
     "SolSummary",
     "SyncRun",
+    "WeatherDaily",
+    "WeatherDataset",
+    "WeatherFile",
+    "WeatherHourly",
 ]
 
 _TIMESTAMPTZ = DateTime(timezone=True)
@@ -580,4 +586,144 @@ class RadDataset(Base):
     last_error: Mapped[str | None] = mapped_column(Text)
     imported_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ)
     # exported_at, host and counts of the last imported export file.
+    import_meta: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+
+
+class WeatherFile(Base):
+    """A raw weather file of the local archive copy and what became of it (stage 17)."""
+
+    __tablename__ = "weather_files"
+    __table_args__ = (
+        CheckConstraint("status IN ('parsed', 'superseded', 'failed')", name="status_valid"),
+        # The files of a sol, when it is planned or when a file disappears.
+        Index("ix_weather_files_rover_sol", "rover_id", "sol"),
+    )
+
+    rover_id: Mapped[str] = mapped_column(ForeignKey("rovers.id"), primary_key=True)
+    # From the root of the mission directory, "/" separated.
+    path: Mapped[str] = mapped_column(Text, primary_key=True)
+    sol: Mapped[int] = mapped_column(Integer)
+    product: Mapped[str] = mapped_column(Text)
+    version: Mapped[str] = mapped_column(Text)
+    size_bytes: Mapped[int] = mapped_column(BigInteger)
+    mtime_ns: Mapped[int] = mapped_column(BigInteger)
+    status: Mapped[str] = mapped_column(Text)
+    rows_total: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    rows_used: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    foreign_sol_rows: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    label_start_time: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ)
+    # Diagnostics only: the Ls of the answers is calculated, not read from here.
+    label_ls: Mapped[float | None] = mapped_column(Float)
+    error: Mapped[str | None] = mapped_column(Text)
+    # The parser revision that read the file (a newer revision reads every file again).
+    parser_revision: Mapped[int] = mapped_column(SmallInteger, server_default=text("0"))
+    parsed_at: Mapped[datetime] = mapped_column(_TIMESTAMPTZ, server_default=func.now())
+
+
+def _triple(name: str, unit: str) -> CheckConstraint:
+    """min, max and mean of a parameter are all set or all null."""
+    low, high, mean = (f"{name}_{kind}_{unit}" for kind in ("min", "max", "mean"))
+    return CheckConstraint(
+        f"({low} IS NULL) = ({high} IS NULL) AND ({high} IS NULL) = ({mean} IS NULL)",
+        name=f"{name}_triple",
+    )
+
+
+class WeatherDaily(Base):
+    """The weather summary of one sol: temperatures in K, pressure in Pa, humidity in %,
+    UV in W/m2, wind in m/s (the API converts on read)."""
+
+    __tablename__ = "weather_daily"
+    __table_args__ = (
+        CheckConstraint("coverage >= 0 AND coverage <= 1", name="coverage_range"),
+        CheckConstraint("hours_covered >= 0 AND hours_covered <= 24", name="hours_covered_range"),
+        CheckConstraint("sol >= 0", name="sol_not_negative"),
+        _triple("air", "k"),
+        _triple("pressure", "pa"),
+        _triple("humidity", "pct"),
+        _triple("ground", "k"),
+        CheckConstraint("(uv_max_wm2 IS NULL) = (uv_mean_wm2 IS NULL)", name="uv_pair"),
+    )
+
+    rover_id: Mapped[str] = mapped_column(ForeignKey("rovers.id"), primary_key=True)
+    sol: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    earth_date: Mapped[date] = mapped_column(Date)
+    ls: Mapped[float | None] = mapped_column(Float)
+    coverage: Mapped[float] = mapped_column(REAL)
+    hours_covered: Mapped[int] = mapped_column(SmallInteger)
+    air_min_k: Mapped[float | None] = mapped_column(Float)
+    air_max_k: Mapped[float | None] = mapped_column(Float)
+    air_mean_k: Mapped[float | None] = mapped_column(Float)
+    pressure_min_pa: Mapped[float | None] = mapped_column(Float)
+    pressure_max_pa: Mapped[float | None] = mapped_column(Float)
+    pressure_mean_pa: Mapped[float | None] = mapped_column(Float)
+    humidity_min_pct: Mapped[float | None] = mapped_column(Float)
+    humidity_max_pct: Mapped[float | None] = mapped_column(Float)
+    humidity_mean_pct: Mapped[float | None] = mapped_column(Float)
+    # Curiosity; Perseverance only with the estimate of part 17G.
+    ground_min_k: Mapped[float | None] = mapped_column(Float)
+    ground_max_k: Mapped[float | None] = mapped_column(Float)
+    ground_mean_k: Mapped[float | None] = mapped_column(Float)
+    uv_max_wm2: Mapped[float | None] = mapped_column(Float)
+    uv_mean_wm2: Mapped[float | None] = mapped_column(Float)
+    wind_mean_ms: Mapped[float | None] = mapped_column(Float)
+    wind_gust_ms: Mapped[float | None] = mapped_column(Float)
+    wind_dir_mode_deg: Mapped[float | None] = mapped_column(Float)
+    # Length of the mean wind vector, 0..1 (diagnostics).
+    wind_dir_r: Mapped[float | None] = mapped_column(Float)
+    n_air: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    n_pressure: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    n_humidity: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    n_ground: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    n_uv: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    n_wind: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    flags: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    source_version: Mapped[dict[str, str]] = mapped_column(JSONB)
+    parser_revision: Mapped[int] = mapped_column(SmallInteger)
+    updated_at: Mapped[datetime] = mapped_column(_TIMESTAMPTZ, server_default=func.now())
+
+
+class WeatherHourly(Base):
+    """One hour (local mean solar time) of a sol; the 24 rows of a sol are always all there."""
+
+    __tablename__ = "weather_hourly"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["rover_id", "sol"],
+            ["weather_daily.rover_id", "weather_daily.sol"],
+            ondelete="CASCADE",
+            name="fk_weather_hourly_rover_id_weather_daily",
+        ),
+        CheckConstraint("hour >= 0 AND hour <= 23", name="hour_range"),
+        CheckConstraint("coverage >= 0 AND coverage <= 1", name="coverage_range"),
+    )
+
+    rover_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    sol: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    hour: Mapped[int] = mapped_column(SmallInteger, primary_key=True, autoincrement=False)
+    coverage: Mapped[float] = mapped_column(REAL, server_default=text("0"))
+    air_k: Mapped[float | None] = mapped_column(Float)
+    pressure_pa: Mapped[float | None] = mapped_column(Float)
+    humidity_pct: Mapped[float | None] = mapped_column(Float)
+    ground_k: Mapped[float | None] = mapped_column(Float)
+    uv_wm2: Mapped[float | None] = mapped_column(Float)
+    wind_ms: Mapped[float | None] = mapped_column(Float)
+    wind_dir_deg: Mapped[float | None] = mapped_column(Float)
+
+
+class WeatherDataset(Base):
+    """State of the weather data of one rover: when it was parsed and last changed."""
+
+    __tablename__ = "weather_dataset"
+
+    rover_id: Mapped[str] = mapped_column(ForeignKey("rovers.id"), primary_key=True)
+    parsed_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ)
+    changed_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ)
+    # The last change of any summary or hour: the fingerprint of cached responses.
+    updated_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ)
+    source_max_sol: Mapped[int | None] = mapped_column(Integer)
+    files_parsed: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    files_failed: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    last_error: Mapped[str | None] = mapped_column(Text)
+    imported_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ)
     import_meta: Mapped[dict[str, Any] | None] = mapped_column(JSONB)

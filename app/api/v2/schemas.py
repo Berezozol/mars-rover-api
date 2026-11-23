@@ -42,6 +42,7 @@ from app.services.v2 import (
     RoverInfo,
     SolPosition,
 )
+from app.services.weather import WeatherData, WeatherDetail
 from app.sources.photo_meta import MastAngles
 
 
@@ -283,6 +284,112 @@ class RadiationResponse(BaseModel):
     source_max_sol: int | None
     source_release: date | None
     items: list[RadiationSol]
+
+
+class Stat3(BaseModel):
+    min: float
+    max: float
+    mean: float
+
+
+class UvStats(BaseModel):
+    max: float
+    mean: float
+
+
+class WindStats(BaseModel):
+    speed_mean_ms: float
+    gust_ms: float
+    direction_mode_deg: float | None = Field(
+        description=(
+            "Most frequent direction: azimuth in degrees clockwise from north as the source "
+            "gives it (MEDA does not say whether it is where the wind blows from or to); "
+            "centre of a 22.5 degree sector."
+        )
+    )
+
+
+class WeatherFlag(BaseModel):
+    code: str
+    parameter: str | None
+    count: int | None
+
+
+class ParameterInfo(BaseModel):
+    unit: str
+    quality: Literal["measured", "preliminary", "estimate"]
+
+
+class WeatherSol(BaseModel):
+    sol: int
+    earth_date: date
+    ls: float | None
+    coverage: float
+    hours_covered: int
+    air_temp_c: Stat3 | None
+    pressure_pa: Stat3 | None
+    humidity_pct: Stat3 | None
+    wind: WindStats | None = Field(
+        default=None,
+        description="Perseverance only (absent for Curiosity); null outside sols 36-313.",
+    )
+    ground_temp_c: Stat3 | None = Field(
+        default=None,
+        description=(
+            "Curiosity (REMS, measured); Perseverance (estimate from the MEDA TIRS brightness "
+            "temperature, emissivity 1; absent when switched off)."
+        ),
+    )
+    uv_wm2: UvStats | None = Field(
+        default=None, description="Curiosity only (the key is absent for Perseverance)."
+    )
+    flags: list[WeatherFlag]
+    source_version: dict[str, str]
+
+
+class WeatherHour(BaseModel):
+    hour: int
+    coverage: float
+    air_temp_c: float | None
+    pressure_pa: float | None
+    humidity_pct: float | None
+    wind_speed_ms: float | None = Field(default=None, description="Perseverance only.")
+    wind_direction_deg: float | None = Field(
+        default=None,
+        description=(
+            "Perseverance only. Azimuth in degrees clockwise from north as the source gives it "
+            "(not stated whether from or to); centre of a 22.5 degree sector."
+        ),
+    )
+    ground_temp_c: float | None = Field(default=None, description="Curiosity (see WeatherSol).")
+    uv_wm2: float | None = Field(default=None, description="Curiosity only.")
+
+
+class WeatherSourceFile(BaseModel):
+    product: str
+    version: str
+    file: str
+    link: str
+
+
+class WeatherSource(BaseModel):
+    files: list[WeatherSourceFile]
+
+
+class WeatherSolDetail(WeatherSol):
+    rover: str
+    hours: list[WeatherHour]
+    source: WeatherSource
+
+
+class WeatherResponse(BaseModel):
+    rover: str
+    credit: str
+    source_url: str
+    updated_at: UtcDateTime | None
+    source_max_sol: int | None
+    parameters: dict[str, ParameterInfo]
+    items: list[WeatherSol]
 
 
 class WaypointOut(BaseModel):
@@ -661,6 +768,28 @@ def radiation_body(data: RadiationData, source_url: str) -> Json:
         "source_max_sol": data.source_max_sol,
         "source_release": data.source_release,
         "items": [radiation_dict(row, source_url) for row in data.items],
+    }
+
+
+def weather_body(data: WeatherData) -> Json:
+    """The list answer; the items are made (and the keys chosen per rover) by the service."""
+    return {
+        "rover": data.rover,
+        "credit": data.credit,
+        "source_url": data.source_url,
+        "updated_at": _utc_z_or_none(data.updated_at),
+        "source_max_sol": data.source_max_sol,
+        "parameters": data.parameters,
+        "items": data.items,
+    }
+
+
+def weather_detail_body(detail: WeatherDetail) -> Json:
+    return {
+        "rover": detail.rover,
+        **detail.item,
+        "hours": detail.hours,
+        "source": {"files": detail.files},
     }
 
 

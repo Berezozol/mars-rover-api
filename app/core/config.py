@@ -132,6 +132,30 @@ class Settings(BaseSettings):
     # Unpacked size limit of an export file read by `rad import`.
     rad_import_max_bytes: int = Field(default=64 * 1024 * 1024, ge=1024)
 
+    # Weather per sol (stage 17): summaries of the REMS (Curiosity) and MEDA (Perseverance)
+    # files that were downloaded to WEATHER_RAW_DIR by scripts/weather_download.py. Read only by
+    # the CLI (`weather parse`); the application process never reads the raw files and never
+    # calls the archive (the two base URLs only make the links of the answers).
+    # A relative path is resolved against the project root.
+    weather_raw_dir: Path = Path("data/weather_raw")
+    # Processes of `weather parse`; 0 = max(1, cpu_count - 2).
+    weather_parse_workers: int = Field(default=0, ge=0)
+    # A sol with fewer hours of air temperature than this gets the flag partial_coverage.
+    weather_full_hours: int = Field(default=18, ge=1, le=24)
+    # Relative humidity above this is an instrument fault (out_of_range); 100..this is kept.
+    weather_humidity_max: float = Field(default=200.0, gt=100)
+    # `weather parse --prune` and `weather import` that would drop more than 1 - this share of
+    # the stored sols are refused.
+    weather_min_keep_ratio: float = Field(default=0.9, ge=0, le=1)
+    # Unpacked size limit of an export file read by `weather import`.
+    weather_import_max_bytes: int = Field(default=256 * 1024 * 1024, ge=1024)
+    # Perseverance ground temperature estimate (part 17G, from MEDA DER_TIRS); a kill switch.
+    weather_m20_ground_enabled: bool = True
+    weather_meda_base_url: str = "https://atmos.nmsu.edu/PDS/data/PDS4/Mars2020/mars2020_meda/"
+    weather_rems_base_url: str = "https://atmos.nmsu.edu/PDS/data/mslrem_1001/"
+    # Files modified more recently than this are still being written by the downloader.
+    weather_min_file_age_seconds: float = Field(default=60.0, ge=0)
+
     # Build of the Sol Index web interface (stage 10); served at / when index.html exists.
     # A relative path is resolved against the project root.
     frontend_dist_dir: Path = Path("frontend/dist")

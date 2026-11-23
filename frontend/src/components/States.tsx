@@ -15,12 +15,14 @@ interface ErrorProps {
   actions?: ComponentChildren;
   /** Text for what failed; replaces the default title for 422. */
   title?: string;
+  /** Use `title` for every status, not only 422. */
+  alwaysTitle?: boolean;
 }
 
 /** Error / 503 state. For 422 lists the offending fields; raw response is under a disclosure. */
-export function ErrorAlert({ error, onRetry, actions, title }: ErrorProps) {
+export function ErrorAlert({ error, onRetry, actions, title, alwaysTitle }: ErrorProps) {
   const v = describeError(error);
-  const heading = v.status === 422 && title ? title : v.title;
+  const heading = (alwaysTitle || v.status === 422) && title ? title : v.title;
   return (
     <div class={`alert ${v.unavailable ? "alert-info" : "alert-error"}`} role="alert">
       {ICON_ERR}

@@ -5,3 +5,4 @@
 tests/fixtures/upstream/mer/** -text
 # Real PDS RAD samples: keep LF and bytes as recorded (md5 lines are checked).
 tests/fixtures/upstream/rad/** -text
+tests/fixtures/upstream/weather/** -text

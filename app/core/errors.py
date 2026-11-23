@@ -305,6 +305,15 @@ class SampleNotFound(NotFoundError):
         super().__init__("Sample not found")
 
 
+class SolNotFound(NotFoundError):
+    """v2: no weather summary for this sol."""
+
+    code = "sol_not_found"
+
+    def __init__(self) -> None:
+        super().__init__("Sol not found")
+
+
 class RoverNotFound(NotFoundError):
     """v2: unknown or malformed rover slug."""
 

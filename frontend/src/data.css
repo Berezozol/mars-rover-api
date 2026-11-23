@@ -103,7 +103,7 @@
 .summary dl.stats {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
-@media (min-width: 760px) {
+@media (min-width: 1100px) {
   .summary dl.stats {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
@@ -295,4 +295,313 @@ table.last tbody td:first-child {
 }
 .panel-foot .hint {
   flex: 1 1 220px;
+}
+
+/* Weather by sol (stage 17) */
+.rover-switch {
+  display: flex;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  align-items: center;
+}
+.rover-switch .label {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.segmented .seg {
+  display: contents;
+}
+.wx-controls {
+  display: flex;
+  gap: var(--s4);
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+.wx-controls .field {
+  min-width: 0;
+}
+.wx-chartwrap {
+  position: relative;
+  min-height: 120px;
+}
+.wx-tip {
+  position: absolute;
+  top: 8px;
+  z-index: 2;
+  max-width: min(320px, 90%);
+  padding: var(--s2) var(--s3);
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+  pointer-events: none;
+}
+.wx-tip .tip-f {
+  font-weight: 700;
+  color: var(--warn);
+}
+svg.chart .wx-band {
+  fill: var(--accent);
+  fill-opacity: 0.3;
+  stroke: none;
+}
+svg.chart .wx-band-p {
+  fill: var(--text-muted);
+  fill-opacity: 0.4;
+  stroke: none;
+}
+svg.chart .wx-mean {
+  stroke: var(--accent);
+}
+svg.chart .wx-mean-d {
+  stroke: var(--text-muted);
+  stroke-dasharray: 3 3;
+}
+svg.chart .wx-gust {
+  stroke: var(--text);
+  stroke-width: 1.2;
+  stroke-dasharray: 4 3;
+}
+svg.chart .wx-pdot {
+  fill: var(--surface);
+  stroke: var(--text-muted);
+  stroke-width: 1.5;
+}
+svg.chart .wx-ref {
+  stroke: var(--warn);
+  stroke-width: 1.2;
+  stroke-dasharray: 4 3;
+}
+svg.chart text.wx-reft {
+  fill: var(--warn);
+  font-weight: 600;
+}
+svg.chart .wx-mk-h,
+.legend .wx-mk-h {
+  fill: var(--warn);
+  stroke: var(--surface);
+  stroke-width: 1;
+}
+svg.chart .wx-mk-o,
+.legend .wx-mk-o {
+  fill: none;
+  stroke: var(--err);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+svg.chart.wxc {
+  cursor: crosshair;
+}
+.legend svg {
+  vertical-align: -2px;
+}
+.legend i.sw {
+  height: 10px;
+  width: 18px;
+  border: 0;
+  background: var(--accent);
+  opacity: 0.35;
+  vertical-align: -1px;
+}
+.legend i.sw-part {
+  background: var(--text-muted);
+  opacity: 0.5;
+}
+.flag {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  border: 1px solid;
+  white-space: nowrap;
+}
+.flag-partial_coverage,
+.flag-unknown {
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+  border-style: dashed;
+}
+.flag-humidity_over_100 {
+  color: var(--warn);
+  background: var(--warn-soft);
+  border-color: var(--warn);
+}
+.flag-out_of_range {
+  color: var(--err);
+  background: var(--err-soft);
+  border-color: var(--err);
+}
+.flag-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--s2);
+  font-size: var(--fs-sm);
+}
+.flag-list li {
+  display: flex;
+  gap: var(--s2);
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.flag-list li span:last-child {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.wx-nav {
+  display: flex;
+  gap: var(--s2);
+  flex-wrap: wrap;
+  align-items: center;
+}
+.wx-inspect-body {
+  margin-top: var(--s3);
+}
+.wx-inspect-body > * + * {
+  margin-top: var(--s3);
+}
+.hours-strip {
+  display: flex;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  align-items: center;
+}
+.hc-row {
+  display: inline-grid;
+  grid-template-columns: repeat(24, 9px);
+  gap: 2px;
+  max-width: 100%;
+}
+.hc {
+  height: 14px;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: calc(0.25 + var(--c) * 0.75);
+}
+.hc.hc-0 {
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+  opacity: 1;
+  box-sizing: border-box;
+}
+.wx-minis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--s3);
+}
+.mini {
+  padding: var(--s3);
+  min-width: 0;
+  box-shadow: none;
+}
+.mini .k {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.mini .k .badge {
+  text-transform: none;
+  letter-spacing: 0;
+  margin-left: 4px;
+}
+.mini .v {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.mini .v small {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+.mini-empty {
+  display: grid;
+  place-items: center;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+table.wx-table small {
+  color: var(--text-muted);
+}
+table.wx-table td.flags-cell {
+  text-align: right;
+}
+table.wx-table td.flags-cell .flag + .flag {
+  margin-left: 4px;
+}
+@media (max-width: 679px) {
+  table.wx-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  table.wx-table,
+  table.wx-table tbody,
+  table.wx-table tr,
+  table.wx-table th,
+  table.wx-table td {
+    display: block;
+  }
+  table.wx-table tr {
+    padding: var(--s2) 0;
+    border-bottom: 1px solid var(--border-strong);
+  }
+  table.wx-table th,
+  table.wx-table td {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--s3);
+    border: 0;
+    padding: 3px 4px;
+    text-align: right;
+  }
+  table.wx-table th:first-child,
+  table.wx-table td:first-child {
+    text-align: right;
+  }
+  table.wx-table th::before,
+  table.wx-table td::before {
+    content: attr(data-label);
+    color: var(--text-muted);
+    font-size: var(--fs-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    text-align: left;
+    flex: none;
+  }
+  table.wx-table th[scope="row"] {
+    font-size: var(--fs-md);
+  }
+  table.wx-table td.flags-cell {
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 420px) {
+  .hc-row {
+    grid-template-columns: repeat(24, minmax(0, 1fr));
+    width: 100%;
+  }
+  .hc {
+    height: 12px;
+  }
+}
+
+.summary dl.stats > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 479px) {
+  .summary dl.stats {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

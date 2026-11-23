@@ -4,6 +4,9 @@
 - [bruno/](bruno/): a [Bruno](https://www.usebruno.com/) collection (open the folder, pick the
   `local` environment or set `baseUrl` to your host).
 
+- [weather.py](weather.py) and [weather.mjs](weather.mjs): daily and hourly weather of Curiosity or
+  Perseverance (standard library only; Node 18+ for the `.mjs`). Arguments: base URL, rover, `sol_min`, `sol_max`.
+
 ## Check your old-API requests: `compat_check.py`
 
 [compat_check.py](compat_check.py) sends typical requests of the archived Mars Rover Photos API

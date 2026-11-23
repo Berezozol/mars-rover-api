@@ -24,11 +24,13 @@ import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import unquote, urljoin, urlparse
 
 import httpx
 
 BASE = "https://atmos.nmsu.edu"
+ALLOWED_HOST = "atmos.nmsu.edu"
+SAFE_NAME_RE = re.compile(r"[A-Za-z0-9_.-]+")
 USER_AGENT = "weather-archive-mirror/1.0 (research mirror, polite crawler)"
 MIN_INTERVAL = 1.0
 COOLDOWN = 15 * 60.0  # pause after a request exhausted its retries
@@ -49,18 +51,18 @@ MEDA_ROOT = f"{BASE}/PDS/data/PDS4/Mars2020/mars2020_meda/"
 REMS_ROOT = f"{BASE}/PDS/data/mslrem_1001/"
 SOURCES = [
     # derived_env: all sensor CSV + xml labels and collection files.
-    Source("meda", MEDA_ROOT, "data_derived_env/", re.compile(r"\.(csv|xml)$", re.I), 2),
+    Source("meda", MEDA_ROOT, "data_derived_env/", re.compile(r".*\.(csv|xml)", re.I), 2),
     # ATS (air temperature) lives in data_calibrated_env (CAL_ATS); WS (wind) as CAL_WS.
     Source(
         "meda",
         MEDA_ROOT,
         "data_calibrated_env/",
-        re.compile(r"(CAL_(ATS|WS)_.*\.(csv|xml)$|^collection_)", re.I),
+        re.compile(r"(.*CAL_(ATS|WS)_.*\.(csv|xml)|collection_.*)", re.I),
         2,
     ),
     # REMS: only RMD (environmental record) products with labels, plus collection files.
     Source(
-        "rems", REMS_ROOT, "DATA/", re.compile(r"(RMD.*\.(tab|lbl|xml)$|^collection_)", re.I), 2
+        "rems", REMS_ROOT, "DATA/", re.compile(r"(.*RMD.*\.(tab|lbl|xml)|collection_.*)", re.I), 2
     ),
 ]
 
@@ -74,6 +76,29 @@ def parse_size(text: str) -> int | None:
     if not m:
         return None
     return int(float(m.group(1)) * {"": 1, "K": 1024, "M": 1024**2, "G": 1024**3}[m.group(2)])
+
+
+def safe_name(name: str) -> bool:
+    """True for a plain file or directory name (no separators, '%', or dot-only names)."""
+    return bool(SAFE_NAME_RE.fullmatch(name)) and ".." not in name and name.strip(".") != ""
+
+
+def inside_root(dest: Path) -> bool:
+    """True if dest resolves to a location under OUT_ROOT."""
+    return dest.resolve().is_relative_to(OUT_ROOT.resolve())
+
+
+class RedirectRefused(Exception):
+    """A response redirected to (or came from) a host other than ALLOWED_HOST."""
+
+
+def _check_host(response: httpx.Response) -> None:
+    hosts = [response.url.host]
+    if response.has_redirect_location:
+        hosts.append(urlparse(urljoin(str(response.url), response.headers["Location"])).hostname)
+    for host in hosts:
+        if host != ALLOWED_HOST:
+            raise RedirectRefused(f"{response.url} -> {host}")
 
 
 class StopRun(Exception):
@@ -102,6 +127,7 @@ class Client:
             headers={"User-Agent": USER_AGENT},
             timeout=httpx.Timeout(60.0, connect=20.0),
             follow_redirects=True,
+            event_hooks={"response": [_check_host]},
         )
         self.last = 0.0
         self.requests = 0
@@ -159,6 +185,9 @@ class Client:
                     return []
                 if resp.status_code < 400:
                     break
+            except RedirectRefused as exc:
+                print(f"  refused redirect {exc}", flush=True)
+                return []
             except httpx.TransportError as exc:
                 print(f"  listing error {exc!r}", flush=True)
             if attempt == MAX_ATTEMPTS:
@@ -169,7 +198,11 @@ class Client:
             href = html.unescape(href)
             if href.startswith("/") or href.startswith("http"):
                 continue  # parent directory link
-            out.append((unquote(href.rstrip("/")), parse_size(size), href.endswith("/")))
+            name = unquote(href.rstrip("/"))
+            if not safe_name(name):
+                print(f"  skipping unsafe name {name!r} in {url}", flush=True)
+                continue
+            out.append((name, parse_size(size), href.endswith("/")))
         return out
 
     def download(self, url: str, dest: Path) -> tuple[int, str]:
@@ -189,7 +222,7 @@ class Client:
 
     @staticmethod
     def _is_server_trouble(status: str) -> bool:
-        if status in ("ok", "404"):
+        if status in ("ok", "404", "redirect_refused"):
             return False
         if status.isdigit():
             return status == "429" or int(status) >= 500
@@ -221,6 +254,10 @@ class Client:
                             return got, "ok"
                     else:
                         status = str(resp.status_code)
+            except RedirectRefused as exc:
+                print(f"  refused redirect {exc}", flush=True)
+                part.unlink(missing_ok=True)
+                return 0, "redirect_refused"
             except httpx.TransportError as exc:
                 status = type(exc).__name__
             if attempt == MAX_ATTEMPTS:
@@ -278,7 +315,7 @@ def run(args: argparse.Namespace) -> int:
                 for e in entries
                 if e[2] and (not args.only_range or args.only_range.lower() in e[0].lower())
             ]
-            top_files = [e for e in entries if not e[2] and src.file_re.search(e[0])]
+            top_files = [e for e in entries if not e[2] and src.file_re.fullmatch(e[0])]
             work: list[tuple[str, int | None]] = [(top + n, s) for n, s, _ in top_files]
             print(f"{src.mission}/{src.subdir}: {len(ranges)} range dirs", flush=True)
 
@@ -291,6 +328,9 @@ def run(args: argparse.Namespace) -> int:
                 nonlocal bytes_done, bytes_listed, limit_hit
                 rel = urlparse(url).path[len(urlparse(src.root).path) :]
                 dest = OUT_ROOT / src.mission / rel
+                if not inside_root(dest):
+                    print(f"  skipping path outside {OUT_ROOT}: {dest}", flush=True)
+                    return True
                 files_seen += 1
                 bytes_listed += size or 0
                 if args.dry_run:
@@ -322,7 +362,7 @@ def run(args: argparse.Namespace) -> int:
                     break
                 sols = client.listing(f"{top}{rname}/")
                 sol_dirs = [e for e in sols if e[2]]
-                direct = [e for e in sols if not e[2] and src.file_re.search(e[0])]
+                direct = [e for e in sols if not e[2] and src.file_re.fullmatch(e[0])]
                 for n, s, _ in direct:
                     if not handle(f"{top}{rname}/{n}", s):
                         break
@@ -331,7 +371,7 @@ def run(args: argparse.Namespace) -> int:
                         break
                     frac_now[0] = (ri + si / max(len(sol_dirs), 1)) / len(ranges)
                     for n, s, is_dir in client.listing(f"{top}{rname}/{sname}/"):
-                        if is_dir or not src.file_re.search(n):
+                        if is_dir or not src.file_re.fullmatch(n):
                             continue
                         if not handle(f"{top}{rname}/{sname}/{n}", s):
                             break

@@ -27,6 +27,8 @@ http GET "$BASE/api/v2/rovers/perseverance/traverse"
 http GET "$BASE/api/v2/rovers/ingenuity/flights"
 http GET "$BASE/api/v2/rovers/perseverance/samples"
 http GET "$BASE/api/v2/rovers/curiosity/radiation" sol_min==1600 sol_max==1700
+http GET "$BASE/api/v2/rovers/perseverance/weather" sol_min==100 sol_max==110
+http GET "$BASE/api/v2/rovers/curiosity/weather/1000"
 http GET "$BASE/api/v2/rovers/perseverance/feed.xml"
 ```
 
