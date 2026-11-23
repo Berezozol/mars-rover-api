@@ -108,7 +108,8 @@ Internet --HTTPS--> Caddy (host network, Let's Encrypt) --HTTP--> 127.0.0.1:8000
 Server: Contabo Cloud VPS 6 (6 vCPU, 12 GB RAM, 200 GB SSD), Ubuntu 24.04, IPv4
 `<VPS_IP>`, IPv6 `<VPS_IPV6>` (the real addresses are in the owner's notes, not in the repository). Contabo panel firewall `mars-web`: TCP 22,
 80, 443 (UDP 443 is not open, so HTTP/3 is off in the Caddyfile). Domain `solindex.net` (DNS at
-Contabo): A/AAAA for the apex and `*`, CAA `letsencrypt.org`.
+Contabo): explicit A/AAAA for the apex, `api` and `www` (no wildcard since 2026-11-23), CAA
+`letsencrypt.org`; mail for the domain is forwarded by ImprovMX (MX and SPF records only).
 
 | Host | Serves |
 |---|---|
@@ -443,8 +444,8 @@ else the sync fetches again.
   and runs as root-equivalent (docker group). TODO: branch protection, signed commits.
 - `deploy` has `sudo` without a password and is in the `docker` group (root-equivalent): the
   SSH key of the owner is the single point of trust. Keep it in the ssh-agent, protected.
-- DNS has a wildcard `*` to the server: any subdomain reaches Caddy (which answers only the
-  three configured names). Take this into account for every future subdomain.
+- DNS has no wildcard (removed 2026-11-23): only the apex, `api` and `www` resolve. A future
+  subdomain needs its own A/AAAA record and a Caddy site block.
 - HSTS is one year (`max-age=31536000`, raised on 2026-11-22). TODO: `includeSubDomains`/`preload`
   only when all subdomains are on HTTPS.
 - Caddy and the containers run with the default Docker isolation (no user namespaces, no

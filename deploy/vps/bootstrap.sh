@@ -12,7 +12,7 @@
 #   - put the public SSH key of the owner into /root/.ssh/authorized_keys (the provider's
 #     "add SSH key" does that); it is copied to the deploy user;
 #   - in the provider panel firewall allow TCP 22, 80, 443 (and UDP 443 if HTTP/3 is wanted);
-#   - DNS: A/AAAA for the domain and a wildcard, CAA letsencrypt.org.
+#   - DNS: A/AAAA for the domain, api and www (no wildcard), CAA letsencrypt.org.
 # Not part of this script (by decision): Tailscale. SSH stays open on 22, key only.
 #
 # Usage: sudo bash deploy/vps/bootstrap.sh

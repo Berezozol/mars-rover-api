@@ -3,9 +3,9 @@
 # Check:  docker compose exec caddy caddy validate --config /etc/caddy/Caddyfile
 # Reload: docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile
 #
-# DNS (Contabo): A/AAAA for solindex.net and a wildcard * to this server, CAA letsencrypt.org.
-# Caddy answers (and issues certificates) only for the names below; other names under the
-# wildcard get a TLS handshake error.
+# DNS (Contabo, since 2026-11-23): explicit A/AAAA for solindex.net, api and www to this
+# server (no wildcard), CAA letsencrypt.org. Caddy answers (and issues certificates) only for
+# the names below; a new subdomain needs its own DNS record and a site block here.
 {
 	# The admin API stays on its default localhost:2019 (host network, not reachable from
 	# outside; ufw/Contabo block it): `caddy reload` in update.sh needs it.
