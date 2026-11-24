@@ -16,6 +16,7 @@
     "e2e:report": "playwright show-report"
   },
   "dependencies": {
+    "@google/model-viewer": "4.4.0",
     "preact": "10.29.8"
   },
   "devDependencies": {

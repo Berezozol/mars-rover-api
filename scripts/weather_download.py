@@ -9,6 +9,9 @@ Layout: data/weather_raw/<mission>/<path relative to the dataset root>.
 Resumable (finished files are skipped; downloads go to .part, then renamed).
 Polite: one sequential request at a time, at most one request per --interval seconds
 (default and minimum 1.0). --stop-at HH:MM (local time) ends the run cleanly at that time.
+Parallel workers: --from-range NAME skips range dirs sorted before NAME, --shard i/N (1-based)
+keeps every N-th remaining range dir, so N processes get disjoint work. Each process names its
+partial files <file>.<pid>.part and only removes its own. Every worker keeps its own --interval.
 If the server keeps failing (connection resets), the run pauses 15 minutes, tries once more
 and otherwise stops with exit code 3.
 """
@@ -18,6 +21,7 @@ from __future__ import annotations
 import argparse
 import csv
 import html
+import os
 import re
 import sys
 import time
@@ -229,7 +233,7 @@ class Client:
         return True  # transport error class name, "short"
 
     def _download(self, url: str, dest: Path) -> tuple[int, str]:
-        part = dest.with_name(dest.name + ".part")
+        part = dest.with_name(f"{dest.name}.{os.getpid()}.part")
         dest.parent.mkdir(parents=True, exist_ok=True)
         status = "error"
         for attempt in range(1, MAX_ATTEMPTS + 1):
@@ -310,12 +314,21 @@ def run(args: argparse.Namespace) -> int:
             top = src.root + src.subdir
             # Collection-level files + range directories.
             entries = client.listing(top)
-            ranges = [
+            ranges = sorted(
                 e
                 for e in entries
-                if e[2] and (not args.only_range or args.only_range.lower() in e[0].lower())
-            ]
-            top_files = [e for e in entries if not e[2] and src.file_re.fullmatch(e[0])]
+                if e[2]
+                and (not args.only_range or args.only_range.lower() in e[0].lower())
+                and (not args.from_range or e[0].lower() >= args.from_range.lower())
+            )
+            shard_i, shard_n = args.shard
+            ranges = ranges[shard_i - 1 :: shard_n]
+            # Collection-level files are fetched by the first shard only.
+            top_files = (
+                [e for e in entries if not e[2] and src.file_re.fullmatch(e[0])]
+                if shard_i == 1
+                else []
+            )
             work: list[tuple[str, int | None]] = [(top + n, s) for n, s, _ in top_files]
             print(f"{src.mission}/{src.subdir}: {len(ranges)} range dirs", flush=True)
 
@@ -384,7 +397,7 @@ def run(args: argparse.Namespace) -> int:
         print("\nInterrupted; partial files removed on next run, finished files kept.", flush=True)
     finally:
         log_fh.close()
-        for p in OUT_ROOT.rglob("*.part"):
+        for p in OUT_ROOT.rglob(f"*.{os.getpid()}.part"):
             p.unlink(missing_ok=True)
 
     label = "DRY RUN" if args.dry_run else "DONE"
@@ -409,6 +422,15 @@ def main() -> int:
     )
     ap.add_argument("--only-range", default="", help="substring filter for first-level range dirs")
     ap.add_argument(
+        "--from-range", default="", help="skip range dirs whose name sorts before this value"
+    )
+    ap.add_argument(
+        "--shard",
+        default="1/1",
+        metavar="i/N",
+        help="worker i of N (1-based): take every N-th range dir of the sorted list",
+    )
+    ap.add_argument(
         "--interval",
         type=float,
         default=MIN_INTERVAL,
@@ -425,6 +447,10 @@ def main() -> int:
         ap.error(f"--interval must be >= {MIN_INTERVAL}")
     if args.stop_at and not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", args.stop_at):
         ap.error("--stop-at must be HH:MM (24h)")
+    m = re.fullmatch(r"(\d+)/(\d+)", args.shard)
+    if not m or not 1 <= int(m.group(1)) <= int(m.group(2)):
+        ap.error("--shard must be i/N with 1 <= i <= N")
+    args.shard = (int(m.group(1)), int(m.group(2)))
     return run(args)
 
 

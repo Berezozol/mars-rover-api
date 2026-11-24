@@ -173,6 +173,79 @@ pre.raw {
 .rover-art.art-3 {
   background: radial-gradient(140% 120% at 50% 0%, #c9c9c9 0 35%, #8d8d8d 60%, #2b2b2b 100%);
 }
+.rover-photo {
+  margin: 0;
+  flex: none;
+}
+.rover-photo img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: var(--surface-2, #ddd);
+}
+.rover-photo figcaption {
+  padding: var(--s2) var(--s4);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+.rover3d {
+  padding: var(--s3) var(--s4);
+  margin-bottom: var(--s4);
+}
+.rover3d-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2) var(--s3);
+}
+.rover3d-toggle .chev {
+  margin-right: 6px;
+}
+#r3d-body {
+  margin-top: var(--s3);
+}
+#r3d-body[hidden] {
+  display: none;
+}
+.rover3d-stage {
+  position: relative;
+  height: clamp(300px, 55vh, 560px);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--surface-2, #ddd);
+}
+.rover3d-stage > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: brightness(0.75);
+}
+.rover3d-stage > button {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+.rover3d-viewer {
+  display: block;
+  width: 100%;
+  height: 100%;
+  --poster-color: transparent;
+  background: var(--surface-2, #ddd);
+}
+.rover3d progress {
+  width: 8rem;
+  vertical-align: middle;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rover3d-viewer {
+    scroll-behavior: auto;
+  }
+}
 .rover-body {
   padding: var(--s4);
   display: flex;
@@ -184,6 +257,7 @@ pre.raw {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
+  flex-wrap: wrap;
   gap: var(--s2);
 }
 .rover-head h2 {

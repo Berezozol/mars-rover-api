@@ -1,6 +1,14 @@
 # Continuous mode for the long downloads (REMS weather raw files + RAD history), by the owner's
-# request: runs until both finish or until the file data/nightly/STOP exists.
+# request: runs until every job finishes or until the file data/nightly/STOP exists.
 # Restarts Docker Desktop / a downloader that died with an error; a downloader that exits 0 is done.
+# The REMS download runs as $shards parallel workers (scripts/weather_download.py --shard i/N);
+# when all of them are done, the weather files are parsed into the database.
+param(
+    [int]$shards = 4,
+    [double]$interval = 4,
+    [string]$fromRange = 'SOL_03069',
+    [switch]$skipRad
+)
 $ErrorActionPreference = 'Continue'
 $repo = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 Set-Location $repo
@@ -25,18 +33,24 @@ function Ensure-Docker {
     docker compose up -d --wait db *> $null
 }
 
-$done = @{ weather = $false; rad = $false }
-$procs = @{ weather = $null; rad = $null }
-$args_ = @{
-    weather = @('run', '--frozen', '--no-sync', 'python', '-u', 'scripts/weather_download.py', '--mission', 'rems', '--interval', '3')
-    rad     = @('run', '--frozen', '--no-sync', 'python', '-m', 'app.cli', 'rad', 'sync')
+$jobs = [ordered]@{}
+foreach ($i in 1..$shards) {
+    $jobs["weather$i"] = @{
+        args    = @('run', '--frozen', '--no-sync', 'python', '-u', 'scripts/weather_download.py',
+                    '--mission', 'rems', '--interval', "$interval", '--from-range', $fromRange, '--shard', "$i/$shards")
+        pattern = "weather_download\.py.*--shard $i/$shards"
+    }
 }
-$patterns = @{ weather = 'weather_download\.py'; rad = 'app\.cli rad sync' }
-Write-Note 'start'
+if (-not $skipRad) {
+    $jobs['rad'] = @{ args = @('run', '--frozen', '--no-sync', 'python', '-m', 'app.cli', 'rad', 'sync'); pattern = 'app\.cli rad sync' }
+}
+$done = @{}; $procs = @{}
+foreach ($name in $jobs.Keys) { $done[$name] = $false; $procs[$name] = $null }
+Write-Note "start ($($jobs.Keys -join ', '))"
 
-while (-not (Test-Path $stop) -and -not ($done.weather -and $done.rad)) {
+while (-not (Test-Path $stop) -and ($done.Values -contains $false)) {
     Ensure-Docker
-    foreach ($name in @('weather', 'rad')) {
+    foreach ($name in @($jobs.Keys)) {
         if ($done[$name]) { continue }
         $p = $procs[$name]
         if ($p -and $p.HasExited) {
@@ -44,9 +58,9 @@ while (-not (Test-Path $stop) -and -not ($done.weather -and $done.rad)) {
             if ($p.ExitCode -eq 0) { $done[$name] = $true; continue }
             $procs[$name] = $null
         }
-        if (-not $procs[$name] -and -not (Find-Proc $patterns[$name])) {
+        if (-not $procs[$name] -and -not (Find-Proc $jobs[$name].pattern)) {
             $stamp = Get-Date -Format 'yyyy-MM-dd_HHmm'
-            $procs[$name] = Start-Process $uv -WindowStyle Hidden -PassThru -ArgumentList $args_[$name] `
+            $procs[$name] = Start-Process $uv -WindowStyle Hidden -PassThru -ArgumentList $jobs[$name].args `
                 -RedirectStandardOutput (Join-Path $logDir "$stamp-$name.log") -RedirectStandardError (Join-Path $logDir "$stamp-$name.err")
             # Touch the handle now: without it Start-Process leaves ExitCode empty after exit,
             # and a finished download would be restarted forever.
@@ -58,13 +72,14 @@ while (-not (Test-Path $stop) -and -not ($done.weather -and $done.rad)) {
 }
 
 if (Test-Path $stop) {
-    foreach ($name in @('weather', 'rad')) {
-        $p = Find-Proc $patterns[$name]
+    foreach ($name in @($jobs.Keys)) {
+        $p = Find-Proc $jobs[$name].pattern
         if ($p) { taskkill /PID $p.ProcessId /T /F *> $null; Write-Note "$name stopped (STOP file)" }
     }
     Remove-Item $stop
 }
-if ($done.weather) {
+$weatherDone = -not (@($jobs.Keys | Where-Object { $_ -like 'weather*' -and -not $done[$_] }).Count)
+if ($weatherDone) {
     & $uv run --frozen --no-sync python -m app.cli weather parse --rover curiosity *>> (Join-Path $logDir 'continuous-weather-parse.log')
     Write-Note "weather parse exit $LASTEXITCODE"
 }

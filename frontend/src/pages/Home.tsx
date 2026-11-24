@@ -2,8 +2,10 @@ import { useState } from "preact/hooks";
 import { api } from "../api/client";
 import type { Rover } from "../api/types";
 import { ErrorAlert } from "../components/States";
+import { RoverPhoto } from "../components/RoverPhoto";
 import { PhotoTile } from "../components/PhotoTile";
 import { fmt, statusLabel, visibleRovers } from "../lib/format";
+import { ROVER_PHOTOS } from "../lib/roverMedia";
 import { useAsync, useRovers, useTitle } from "../lib/hooks";
 import { Link, navigate, qs } from "../router";
 
@@ -21,7 +23,11 @@ function RoverCard({ rover, index }: { rover: Rover; index: number }) {
   const flightCount = flights.status === "ok" && flights.data ? flights.data.length : null;
   return (
     <li class="card rover">
-      <div class={`rover-art art-${index % 4}`} aria-hidden="true" />
+      {ROVER_PHOTOS[rover.id] ? (
+        <RoverPhoto roverId={rover.id} />
+      ) : (
+        <div class={`rover-art art-${index % 4}`} aria-hidden="true" />
+      )}
       <article class="rover-body" aria-labelledby={`r-${rover.id}`}>
         <div class="rover-head">
           <h2 id={`r-${rover.id}`}>

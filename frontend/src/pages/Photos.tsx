@@ -6,6 +6,7 @@ import { FILTER_SAMPLE_TYPES } from "../api/types";
 import { Pager } from "../components/Pager";
 import { PhotoTile } from "../components/PhotoTile";
 import { RoverTabs } from "../components/RoverTabs";
+import { Rover3D } from "../components/Rover3D";
 import { Subscribe } from "../components/Subscribe";
 import { EmptyState, ErrorAlert, GridSkeleton, PageSkeleton } from "../components/States";
 import { fmt, short, statusLabel } from "../lib/format";
@@ -86,6 +87,7 @@ export function Photos({ roverId }: { roverId: string }) {
     <>
       <RoverTabs rovers={rovers.data} current={rover.id} to={(id) => `/rovers/${id}`} />
       <PageHead rover={rover} />
+      <Rover3D roverId={rover.id} />
       {rover.max_sol === null ? (
         <EmptyState title="No photos yet">This rover has no imported photos.</EmptyState>
       ) : (
