@@ -12,7 +12,8 @@ import {
   radSol,
   radiationResponse,
 } from "./fixtures/radiation";
-import { weatherRoutes } from "./weather-helpers";
+import { WX, weatherRoutes } from "./weather-helpers";
+import { weatherList } from "./fixtures/weather";
 
 const RAD = "/api/v2/rovers/curiosity/radiation";
 
@@ -42,16 +43,105 @@ function open(path = "/data") {
   return render(<App />);
 }
 
-const header = (name: RegExp) => screen.getByRole("button", { name });
+const mainEl = () => screen.getByRole("main");
 
-describe("Data: header entry (AC-40)", () => {
-  it("AC-40 the main navigation has 'Data' (to /data) and no 'Samples'", async () => {
+async function mainNav() {
+  return screen.findByRole("navigation", { name: "Main" });
+}
+
+/** The header "Data" dropdown button. */
+async function dataButton() {
+  const nav = await mainNav();
+  return await waitFor(() => within(nav).getByRole("button", { name: /^Data/ }));
+}
+
+/** A dataset entry of the opened menu: a link, or a menuitem when the menu uses the menu pattern. */
+function menuEntry(nav: HTMLElement, name: string | RegExp) {
+  return within(nav).queryByRole("link", { name }) ?? within(nav).queryByRole("menuitem", { name });
+}
+
+const ENTRIES: [string, string][] = [
+  ["Rock samples", "/data/samples"],
+  ["Radiation", "/data/radiation"],
+  ["Weather", "/data/weather"],
+  ["All datasets", "/data"],
+];
+
+describe("Data: header dropdown menu (AC-40)", () => {
+  const home = () =>
     routes({ "/api/v2/rovers/perseverance/photos/latest": { sol: 2031, ...page([], 0) } });
+
+  it("AC-40 'Data' is a button with aria-expanded=false and aria-controls; no 'Samples' item in the nav", async () => {
+    home();
     open("/");
-    const nav = await screen.findByRole("navigation", { name: "Main" });
-    await waitFor(() => expect(within(nav).getByRole("link", { name: "Data" })).toBeTruthy());
-    expect(within(nav).getByRole("link", { name: "Data" }).getAttribute("href")).toBe("/data");
-    expect(within(nav).queryByRole("link", { name: "Samples" })).toBeNull();
+    const btn = await dataButton();
+    expect(btn.getAttribute("aria-expanded")).toBe("false");
+    expect(btn.getAttribute("aria-controls")).toBeTruthy();
+    expect(within(await mainNav()).queryByRole("link", { name: "Samples" })).toBeNull();
+  });
+
+  it("AC-40 clicking the button opens the menu with the datasets and 'All datasets'", async () => {
+    home();
+    open("/");
+    const btn = await dataButton();
+    fireEvent.click(btn);
+    await waitFor(() => expect(btn.getAttribute("aria-expanded")).toBe("true"));
+    const nav = await mainNav();
+    for (const [name, href] of ENTRIES) {
+      const el = menuEntry(nav, name);
+      expect(el, name).toBeTruthy();
+      expect(el!.getAttribute("href"), name).toBe(href);
+    }
+    const controlled = document.getElementById(btn.getAttribute("aria-controls")!);
+    expect(controlled, "aria-controls points to an existing element").toBeTruthy();
+  });
+
+  it("AC-40 Escape closes the menu and returns focus to the button", async () => {
+    home();
+    open("/");
+    const btn = await dataButton();
+    fireEvent.click(btn);
+    await waitFor(() => expect(btn.getAttribute("aria-expanded")).toBe("true"));
+    fireEvent.keyDown(document.activeElement ?? btn, { key: "Escape" });
+    await waitFor(() => expect(btn.getAttribute("aria-expanded")).toBe("false"));
+    expect(document.activeElement).toBe(btn);
+    expect(menuEntry(await mainNav(), "Radiation")).toBeNull();
+  });
+
+  it("AC-40 a click outside closes the menu", async () => {
+    home();
+    open("/");
+    const btn = await dataButton();
+    fireEvent.click(btn);
+    await waitFor(() => expect(btn.getAttribute("aria-expanded")).toBe("true"));
+    fireEvent.mouseDown(document.body);
+    fireEvent.click(document.body);
+    await waitFor(() => expect(btn.getAttribute("aria-expanded")).toBe("false"));
+  });
+
+  it("AC-40 the active dataset has aria-current; the others do not", async () => {
+    routes();
+    open("/data/radiation");
+    const btn = await dataButton();
+    fireEvent.click(btn);
+    const nav = await mainNav();
+    await waitFor(() => expect(menuEntry(nav, "Radiation")).toBeTruthy());
+    const cur = (n: string) => menuEntry(nav, n)!.getAttribute("aria-current");
+    expect(cur("Radiation")).toBeTruthy();
+    expect(cur("Rock samples")).toBeNull();
+    expect(cur("Weather")).toBeNull();
+  });
+
+  it("AC-40 choosing a dataset navigates to its page", async () => {
+    routes();
+    open("/data");
+    const btn = await dataButton();
+    fireEvent.click(btn);
+    const nav = await mainNav();
+    await waitFor(() => expect(menuEntry(nav, "Weather")).toBeTruthy());
+    fireEvent.click(menuEntry(nav, "Weather")!);
+    await waitFor(() => expect(window.location.pathname).toBe("/data/weather"));
+    expect(await screen.findByRole("heading", { level: 1, name: /Weather/ })).toBeTruthy();
   });
 
   it("AC-40 the Samples page of Perseverance still works at its old path", async () => {
@@ -62,61 +152,148 @@ describe("Data: header entry (AC-40)", () => {
   });
 });
 
-describe("Data: accordion (AC-41)", () => {
-  it("AC-41 without a hash the first section (Rock samples) is open, Radiation and Weather are closed", async () => {
+describe("Data: routes, titles and overview (AC-41)", () => {
+  const PAGES: [string, RegExp][] = [
+    ["/data/samples", /Rock samples/],
+    ["/data/radiation", /Radiation/],
+    ["/data/weather", /Weather/],
+  ];
+
+  for (const [path, name] of PAGES) {
+    it(`AC-41 ${path} is a full page with an h1 and the title "<Name> — Sol Index"`, async () => {
+      routes();
+      open(path);
+      expect(await screen.findByRole("heading", { level: 1, name })).toBeTruthy();
+      await waitFor(() => expect(document.title).toMatch(/ — Sol Index$/));
+      expect(document.title).toMatch(name);
+      expect(document.title).not.toMatch(/^Data — /);
+    });
+  }
+
+  it("AC-41 /data is an overview with three cards linking to the dataset pages and no accordion", async () => {
     const m = routes();
     open("/data");
     expect(await screen.findByRole("heading", { level: 1, name: "Data" })).toBeTruthy();
-    expect(header(/Rock samples/).getAttribute("aria-expanded")).toBe("true");
-    expect(header(/Radiation/).getAttribute("aria-expanded")).toBe("false");
-    expect(header(/Weather by sol/).getAttribute("aria-expanded")).toBe("false");
-    // a closed section asks nothing
-    await screen.findByRole("region", { name: /Rock samples/ });
+    const main = mainEl();
+    for (const [, href] of ENTRIES.slice(0, 3)) {
+      expect(
+        within(main)
+          .getAllByRole("link")
+          .some((a) => a.getAttribute("href") === href),
+        href,
+      ).toBe(true);
+    }
+    expect(within(main).queryByRole("button", { name: /Expand all|Collapse all/ })).toBeNull();
+    expect(within(main).queryAllByRole("button", { expanded: false })).toHaveLength(0);
+    // the overview does not load the datasets
     expect(m.calls.filter((c) => c.pathname === RAD)).toHaveLength(0);
-    expect(m.calls.filter((c) => c.pathname.endsWith("/weather"))).toHaveLength(0);
   });
 
-  it("AC-41 #radiation opens and scrolls to the radiation section", async () => {
+  for (const key of ["radiation", "samples", "weather"]) {
+    it(`AC-41 old /data#${key} ends up on /data/${key} without a new history entry`, async () => {
+      routes();
+      const before = window.history.length;
+      open(`/data#${key}`);
+      await waitFor(() => expect(window.location.pathname).toBe(`/data/${key}`));
+      expect(window.location.hash).toBe("");
+      expect(window.history.length).toBe(before);
+      expect(await screen.findByRole("heading", { level: 1 })).toBeTruthy();
+    });
+  }
+
+  it("AC-41 /data with an unknown hash stays the overview", async () => {
     routes();
-    open("/data#radiation");
-    await waitFor(() => expect(header(/Radiation/).getAttribute("aria-expanded")).toBe("true"));
-    expect(await screen.findByRole("region", { name: /Radiation/ })).toBeTruthy();
-    await waitFor(() => expect(Element.prototype.scrollIntoView).toHaveBeenCalled());
+    open("/data#nonsense");
+    expect(await screen.findByRole("heading", { level: 1, name: "Data" })).toBeTruthy();
+    expect(window.location.pathname).toBe("/data");
+  });
+});
+
+describe("Data: dataset page content (AC-46)", () => {
+  const CASES: [string, string, RegExp][] = [
+    ["/data/radiation", "/api/v2/rovers/curiosity/radiation", /Radiation/],
+    ["/data/samples", "/api/v2/rovers/perseverance/samples", /Rock samples/],
+    ["/data/weather", "/api/v2/rovers/perseverance/weather", /Weather/],
+  ];
+
+  for (const [path, endpoint, name] of CASES) {
+    it(`AC-46 ${path}: facts as term/description pairs, 'About the data' with the API endpoint`, async () => {
+      routes();
+      open(path);
+      await screen.findByRole("heading", { level: 1, name });
+      await screen.findByRole("heading", { name: /About the data/i });
+      const main = mainEl();
+      const terms = main.querySelectorAll("dl dt");
+      expect(terms.length).toBeGreaterThanOrEqual(2);
+      for (const dt of terms) {
+        expect(dt.nextElementSibling?.tagName, dt.textContent ?? "").toBe("DD");
+      }
+      expect(main.textContent).toContain(endpoint);
+    });
+  }
+
+  it("AC-46 radiation facts: rover, coverage, newest sol, last update and the lag", async () => {
+    routes();
+    open("/data/radiation");
+    await screen.findByRole("slider", { name: /Inspect a sol/ });
+    const dl = mainEl().querySelector("dl")!;
+    const text = dl.textContent ?? "";
+    expect(text).toMatch(/Curiosity/);
+    expect(text).toMatch(/sols? 10\s*[–-]\s*13/);
+    expect(text).toMatch(/2026-12-01/);
+    expect(text).toMatch(/5053 sols/);
   });
 
-  it("AC-41 clicking a header toggles aria-expanded and writes the hash", async () => {
+  it("AC-46 the credit, the citation and the archive link are visible on the radiation page", async () => {
     routes();
-    open("/data");
-    await screen.findByRole("heading", { level: 1, name: "Data" });
-    const rad = header(/Radiation/);
-    expect(rad.getAttribute("aria-controls")).toBeTruthy();
-    fireEvent.click(rad);
-    await waitFor(() => expect(header(/Radiation/).getAttribute("aria-expanded")).toBe("true"));
-    expect(window.location.hash).toBe("#radiation");
-    fireEvent.click(header(/Radiation/));
-    await waitFor(() => expect(header(/Radiation/).getAttribute("aria-expanded")).toBe("false"));
-    fireEvent.click(header(/Rock samples/));
-    await waitFor(() => expect(header(/Rock samples/).getAttribute("aria-expanded")).toBe("false"));
+    open("/data/radiation");
+    await screen.findByRole("slider", { name: /Inspect a sol/ });
+    expect(mainEl().textContent).toContain(RAD_CREDIT);
+    expect(mainEl().textContent).toContain(RAD_CITATION);
+    expect(
+      within(mainEl())
+        .getAllByRole("link")
+        .some((a) => a.getAttribute("href") === RAD_SOURCE_URL),
+    ).toBe(true);
   });
 
-  it("AC-41 Expand all / Collapse all", async () => {
+  it("AC-46 the credit stays visible when a dataset has no data", async () => {
+    routes({ [RAD]: radiationResponse([]) });
+    open("/data/radiation");
+    await screen.findByText("Radiation data not loaded yet");
+    expect(mainEl().textContent).toContain(RAD_CREDIT);
+  });
+
+  it("AC-46 weather with no data shows an empty state, not a broken chart", async () => {
+    routes({
+      [WX("perseverance")]: weatherList("perseverance", []),
+    });
+    open("/data/weather");
+    expect(await screen.findByText("Weather data not loaded yet")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(mainEl().textContent).not.toMatch(/NaN|undefined/);
+  });
+
+  it("AC-46 no NASA/JPL logos and no endorsement wording on the Data pages", async () => {
     routes();
-    open("/data");
-    await screen.findByRole("heading", { level: 1, name: "Data" });
-    fireEvent.click(screen.getByRole("button", { name: /Expand all/ }));
-    await waitFor(() => expect(header(/Radiation/).getAttribute("aria-expanded")).toBe("true"));
-    expect(header(/Rock samples/).getAttribute("aria-expanded")).toBe("true");
-    fireEvent.click(screen.getByRole("button", { name: /Collapse all/ }));
-    await waitFor(() => expect(header(/Radiation/).getAttribute("aria-expanded")).toBe("false"));
-    expect(header(/Rock samples/).getAttribute("aria-expanded")).toBe("false");
+    for (const path of ["/data", "/data/radiation", "/data/samples", "/data/weather"]) {
+      const view = open(path);
+      await screen.findByRole("heading", { level: 1 });
+      const main = mainEl();
+      expect(
+        main.querySelector('img[src*="nasa" i], img[alt*="NASA" i], img[alt*="JPL" i]'),
+      ).toBeNull();
+      expect(main.textContent).not.toMatch(/approved by NASA|endorsed by NASA(?!\s*or)/i);
+      view.unmount();
+    }
   });
 });
 
 describe("Data: Radiation section (AC-42)", () => {
   async function openRadiation(over: Record<string, unknown> = {}) {
     const m = routes(over);
-    open("/data#radiation");
-    const panel = await screen.findByRole("region", { name: /Radiation/ });
+    open("/data/radiation");
+    const panel = await screen.findByRole("main");
     return { m, panel };
   }
 
@@ -235,10 +412,10 @@ describe("Data: Radiation section (AC-42)", () => {
 describe("Data: Inspect a sol slider (AC-43)", () => {
   async function slider() {
     routes();
-    open("/data#radiation");
+    open("/data/radiation");
     return (await screen.findByRole("slider", { name: /Inspect a sol/ })) as HTMLInputElement;
   }
-  const readout = () => screen.getByRole("region", { name: /Radiation/ });
+  const readout = () => screen.getByRole("main");
 
   it("AC-43 starts at the newest sol and shows sol, date, E, B and rate", async () => {
     const s = await slider();
@@ -290,17 +467,17 @@ describe("Data: Inspect a sol slider (AC-43)", () => {
 describe("Data: states (AC-44)", () => {
   it("AC-44 shows a loading state while the request is in flight", async () => {
     routes({ [RAD]: () => new Promise(() => {}) });
-    open("/data#radiation");
-    const panel = await screen.findByRole("region", { name: /Radiation/ });
+    open("/data/radiation");
+    const panel = await screen.findByRole("main");
     expect(await within(panel).findByRole("status")).toBeTruthy();
     expect(within(panel).queryByRole("slider")).toBeNull();
   });
 
   it("AC-44 items: [] says 'Radiation data not loaded yet' and draws no chart", async () => {
     routes({ [RAD]: radiationResponse([]) });
-    open("/data#radiation");
+    open("/data/radiation");
     expect(await screen.findByText("Radiation data not loaded yet")).toBeTruthy();
-    const panel = screen.getByRole("region", { name: /Radiation/ });
+    const panel = screen.getByRole("main");
     expect(within(panel).queryByRole("slider")).toBeNull();
     expect(within(panel).queryByRole("table")).toBeNull();
     // credit stays visible even when there is nothing to draw (CLAUDE.md)
@@ -315,23 +492,26 @@ describe("Data: states (AC-44)", () => {
           ? apiError(503, "db_unavailable", "Database is unavailable")
           : radiationResponse(),
     });
-    open("/data#radiation");
+    open("/data/radiation");
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toMatch(/temporarily unavailable|could not be loaded/i);
-    // the samples section is independent
-    fireEvent.click(header(/Rock samples/));
-    const samples = await screen.findByRole("region", { name: /Rock samples/ });
-    await waitFor(() => expect(within(samples).getAllByRole("img").length).toBeGreaterThan(0));
-    expect(within(samples).queryByRole("alert")).toBeNull();
     fireEvent.click(within(alert).getByRole("button", { name: "Try again" }));
     expect(await screen.findByRole("slider", { name: /Inspect a sol/ })).toBeTruthy();
+  });
+
+  it("AC-44 a failing radiation request does not break the samples page", async () => {
+    routes({ [RAD]: apiError(503, "db_unavailable", "Database is unavailable") });
+    open("/data/samples");
+    const main = await screen.findByRole("main");
+    await waitFor(() => expect(within(main).getAllByRole("img").length).toBeGreaterThan(0));
+    expect(within(main).queryByRole("alert")).toBeNull();
   });
 
   it("AC-44 a 429 shows the message and 'Try again'", async () => {
     routes({
       [RAD]: apiError(429, "rate_limited", "Too many requests", null, { "Retry-After": "60" }),
     });
-    open("/data#radiation");
+    open("/data/radiation");
     const alert = await screen.findByRole("alert");
     expect(within(alert).getByRole("button", { name: "Try again" })).toBeTruthy();
   });
@@ -344,7 +524,7 @@ describe("Data: states (AC-44)", () => {
       dose_b_ugy_day: { mean: 167.9, min: null, max: null },
     });
     routes({ [RAD]: radiationResponse([radItems[0], odd]) });
-    open("/data#radiation");
+    open("/data/radiation");
     expect(await screen.findByRole("slider", { name: /Inspect a sol/ })).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
   });
@@ -353,8 +533,8 @@ describe("Data: states (AC-44)", () => {
 describe("Data: Rock samples section (AC-45)", () => {
   it("AC-45 /data#samples: summary, cumulative step chart up to 30 and a link to the samples page", async () => {
     routes();
-    open("/data#samples");
-    const panel = await screen.findByRole("region", { name: /Rock samples/ });
+    open("/data/samples");
+    const panel = await screen.findByRole("main");
     await waitFor(() => expect(within(panel).getAllByRole("img").length).toBeGreaterThan(0));
     const t = panel.textContent ?? "";
     expect(t).toMatch(/30/);
@@ -373,7 +553,7 @@ describe("Data: Rock samples section (AC-45)", () => {
 
   it("AC-45 an empty sample list says it is not loaded yet", async () => {
     routes({ "/api/v2/rovers/perseverance/samples": samplesResponse([]) });
-    open("/data#samples");
+    open("/data/samples");
     expect(await screen.findByText(/Samples not loaded yet|No samples loaded yet/)).toBeTruthy();
   });
 });

@@ -232,7 +232,7 @@ export function WeatherChart(p: Props) {
           <>
             <rect class="gap" x={gx} y={T} width={Math.max(w - R - gx, 0)} height={h - T - B} />
             {w - R - gx > 90 && (
-              <text class="zone-label" x={gx + 6} y={T + 14}>
+              <text class="zone-label" x={w - R - 6} y={T + 14} text-anchor="end">
                 not published yet
               </text>
             )}

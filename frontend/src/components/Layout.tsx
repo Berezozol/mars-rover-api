@@ -11,6 +11,95 @@ interface Props {
   children: ComponentChildren;
 }
 
+const DATA_ITEMS: { href: string; label: string; rover: string; set: string }[] = [
+  { href: "/data/samples", label: "Rock samples", rover: "Perseverance", set: "samples" },
+  { href: "/data/radiation", label: "Radiation", rover: "Curiosity", set: "radiation" },
+  { href: "/data/weather", label: "Weather", rover: "Perseverance, Curiosity", set: "weather" },
+];
+
+/** "Data" disclosure menu: a button that shows a list of links; Esc and outside click close it. */
+function DataMenu({ route }: { route: RouteMatch }) {
+  const [open, setOpen] = useState(false);
+  const wrap = useRef<HTMLDivElement>(null);
+  const btn = useRef<HTMLButtonElement>(null);
+  const active = route.name === "dataSet" ? route.set : null;
+  const here = route.name === "data" || route.name === "dataSet" || route.name === "samples";
+
+  // Navigating closes the menu.
+  useEffect(() => setOpen(false), [route]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: Event) => {
+      if (!wrap.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOpen(false);
+        btn.current?.focus();
+      }
+    };
+    const onFocus = (e: FocusEvent) => {
+      if (!wrap.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("focusin", onFocus);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("focusin", onFocus);
+    };
+  }, [open]);
+
+  return (
+    <div class="nav-menu" ref={wrap}>
+      <button
+        type="button"
+        class="nav-menu-btn"
+        ref={btn}
+        aria-expanded={open}
+        aria-controls="data-menu"
+        aria-current={here ? "page" : undefined}
+        onClick={() => setOpen((o) => !o)}
+      >
+        Data
+        <svg width="12" height="12" viewBox="0 0 20 20" aria-hidden="true">
+          <path
+            d="M4 7l6 6 6-6"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </button>
+      <ul class="nav-menu-list" id="data-menu" hidden={!open}>
+        {DATA_ITEMS.map((i) => (
+          <li key={i.href}>
+            <Link
+              href={i.href}
+              aria-current={active === i.set ? "page" : undefined}
+              aria-describedby={`dm-${i.set}`}
+            >
+              {i.label}
+              <small id={`dm-${i.set}`} aria-hidden="true">
+                {i.rover}
+              </small>
+            </Link>
+          </li>
+        ))}
+        <li class="nav-menu-all">
+          <Link href="/data" aria-current={route.name === "data" ? "page" : undefined}>
+            All datasets
+          </Link>
+        </li>
+      </ul>
+    </div>
+  );
+}
+
 export function Layout({ route, pathname, children }: Props) {
   const mainRef = useRef<HTMLElement>(null);
   const headerRef = useRef<HTMLElement>(null);
@@ -106,13 +195,7 @@ export function Layout({ route, pathname, children }: Props) {
                 Flights
               </Link>
             )}
-            <Link
-              href="/data"
-              aria-current={route.name === "data" || route.name === "samples" ? "page" : undefined}
-              title="Rock samples and radiation"
-            >
-              Data
-            </Link>
+            <DataMenu route={route} />
             <Link
               href="/stats"
               aria-current={cur("stats")}

@@ -1,6 +1,6 @@
 import { Component, type ComponentChildren } from "preact";
 import { Layout } from "./components/Layout";
-import { Data } from "./pages/Data";
+import { Data, DataSetPage } from "./pages/Data";
 import { Flights } from "./pages/Flights";
 import { Home } from "./pages/Home";
 import { Keys } from "./pages/Keys";
@@ -82,6 +82,9 @@ export function App() {
       break;
     case "data":
       page = <Data />;
+      break;
+    case "dataSet":
+      page = <DataSetPage key={route.set} set={route.set} />;
       break;
     case "search":
       page = <Search />;

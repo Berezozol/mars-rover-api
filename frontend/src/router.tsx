@@ -95,6 +95,9 @@ export function Link({ href, onClick, ...rest }: LinkProps) {
   return <a {...rest} href={href} onClick={handle} />;
 }
 
+export type DataSet = "samples" | "radiation" | "weather";
+export const DATA_SETS: DataSet[] = ["samples", "radiation", "weather"];
+
 export type RouteMatch =
   | { name: "home" }
   | { name: "photos"; rover: string }
@@ -104,6 +107,7 @@ export type RouteMatch =
   | { name: "samples"; rover: string }
   | { name: "photo"; id: string }
   | { name: "data" }
+  | { name: "dataSet"; set: DataSet }
   | { name: "search" }
   | { name: "stats" }
   | { name: "status" }
@@ -132,6 +136,9 @@ export function matchRoute(pathname: string): RouteMatch {
   }
   if (a === "photos" && b && parts.length === 2) return { name: "photo", id: b };
   if (a === "data" && parts.length === 1) return { name: "data" };
+  if (a === "data" && parts.length === 2 && (DATA_SETS as string[]).includes(b!)) {
+    return { name: "dataSet", set: b as DataSet };
+  }
   if (a === "search" && parts.length === 1) return { name: "search" };
   if (a === "stats" && parts.length === 1) return { name: "stats" };
   if (a === "status" && parts.length === 1) return { name: "status" };

@@ -1,4 +1,4 @@
-/* Data page (stage 21): accordion, summary card, line charts, inspect slider. */
+/* Data page (stage 21): line charts, inspect slider. */
 .lead {
   max-width: 70ch;
 }
@@ -13,111 +13,6 @@
   flex: 1;
 }
 
-.acc {
-  display: grid;
-  gap: var(--s3);
-}
-.acc-item {
-  overflow: hidden;
-  scroll-margin-top: calc(var(--header-h, 56px) + 16px);
-}
-.acc-h {
-  margin: 0;
-  font-size: inherit;
-}
-.acc-btn {
-  all: unset;
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  gap: var(--s3);
-  width: 100%;
-  padding: var(--s4);
-  cursor: pointer;
-}
-.acc-btn:hover {
-  background: var(--surface-2);
-}
-.acc-btn:focus-visible {
-  outline: 3px solid var(--focus);
-  outline-offset: -3px;
-}
-.acc-title {
-  flex: 1;
-  min-width: 0;
-  display: block;
-}
-.acc-name {
-  display: flex;
-  gap: var(--s2);
-  align-items: center;
-  flex-wrap: wrap;
-  font-size: var(--fs-lg);
-  font-weight: 700;
-  line-height: 1.2;
-}
-.acc-meta {
-  display: block;
-  margin-top: 2px;
-  font-size: var(--fs-sm);
-  color: var(--text-muted);
-  font-weight: 400;
-}
-.chev {
-  flex: none;
-  color: var(--text-muted);
-  transition: transform 0.15s;
-}
-.acc-btn[aria-expanded="true"] .chev {
-  transform: rotate(180deg);
-}
-@media (prefers-reduced-motion: reduce) {
-  .chev {
-    transition: none;
-  }
-}
-.acc-panel {
-  padding: 0 var(--s4) var(--s4);
-  border-top: 1px solid var(--border);
-  min-width: 0;
-}
-.acc-panel[hidden] {
-  display: none;
-}
-.acc-panel > * + * {
-  margin-top: var(--s4);
-}
-.acc-panel > :first-child {
-  margin-top: var(--s4);
-}
-
-.summary {
-  padding: var(--s4);
-  background: var(--surface-2);
-  box-shadow: none;
-}
-.summary .what {
-  margin: 0 0 var(--s3);
-  max-width: 70ch;
-}
-.summary dl.stats {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-@media (min-width: 1100px) {
-  .summary dl.stats {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-}
-.summary .src {
-  margin: var(--s3) 0 0;
-  font-size: var(--fs-xs);
-  color: var(--text-muted);
-  overflow-wrap: anywhere;
-}
-.summary .src b {
-  color: var(--text);
-  font-weight: 600;
-}
 .lag {
   color: var(--warn);
   font-weight: 600;
@@ -596,12 +491,186 @@ table.wx-table td.flags-cell .flag + .flag {
   }
 }
 
-.summary dl.stats > div {
-  min-width: 0;
-  overflow-wrap: anywhere;
+/* ---- Dataset pages: facts grid, about block, overview cards ---- */
+.ds-body > * + * {
+  margin-top: var(--s4);
 }
-@media (max-width: 479px) {
-  .summary dl.stats {
-    grid-template-columns: minmax(0, 1fr);
+.ds-rovers {
+  display: flex;
+  gap: var(--s2);
+  flex-wrap: wrap;
+  margin: var(--s2) 0;
+}
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
+  gap: var(--s3) var(--s4);
+  margin: 0;
+  padding: var(--s4);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.facts > div {
+  min-width: 0;
+}
+.facts dt {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+.facts dd {
+  margin: 2px 0 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+.facts-sm {
+  padding: var(--s3);
+  margin: var(--s3) 0;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 130px), 1fr));
+}
+.about {
+  padding: var(--s4);
+}
+.about h2 {
+  margin: 0 0 var(--s3);
+  font-size: var(--fs-lg);
+}
+.about-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px 0;
+  margin: 0;
+  max-width: 80ch;
+}
+.about-list dt {
+  margin-top: var(--s3);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.about-list dt:first-child {
+  margin-top: 0;
+}
+.about-list dd {
+  margin: 0;
+  overflow-wrap: break-word;
+}
+@media (min-width: 720px) {
+  .about-list {
+    grid-template-columns: 11rem minmax(0, 1fr);
+    gap: var(--s3) var(--s4);
+  }
+  .about-list dt {
+    margin-top: 0;
+    padding-top: 2px;
+  }
+}
+.ds-cards {
+  list-style: none;
+  padding: 0;
+  margin: var(--s4) 0 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: var(--s4);
+}
+.ds-card {
+  padding: var(--s4);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+.ds-card h2 {
+  margin: 0;
+  font-size: var(--fs-lg);
+}
+.ds-card .facts {
+  align-self: stretch;
+}
+.ds-card .btn {
+  margin-top: auto;
+}
+
+/* ---- "Data" menu in the header ---- */
+.nav-menu {
+  position: relative;
+}
+.nav-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--s2) var(--s3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  cursor: pointer;
+}
+.nav-menu-btn:hover,
+.nav-menu-btn[aria-expanded="true"],
+.nav-menu-btn[aria-current="page"] {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.nav-menu-btn[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+.nav-menu-list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 20;
+  min-width: 17rem;
+  margin: 4px 0 0;
+  padding: var(--s1);
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
+}
+.nav-menu-list[hidden] {
+  display: none;
+}
+.nav-menu-list a {
+  display: block;
+  white-space: nowrap;
+}
+.nav-menu-list a small {
+  display: block;
+  font-size: var(--fs-xs);
+  font-weight: 400;
+  color: var(--text-muted);
+}
+.nav-menu-all {
+  border-top: 1px solid var(--border);
+  margin-top: var(--s1);
+  padding-top: var(--s1);
+}
+@media (max-width: 640px) {
+  /* The nav row scrolls sideways here: the list drops from the header as a full-width stack of links. */
+  .nav-menu {
+    position: static;
+  }
+  .nav-menu-list {
+    left: 0;
+    right: 0;
+    min-width: 0;
+    margin: 0;
+    border-radius: 0 0 var(--radius) var(--radius);
+  }
+  .nav-menu-list a {
+    white-space: normal;
+    padding: var(--s3) var(--s4);
   }
 }

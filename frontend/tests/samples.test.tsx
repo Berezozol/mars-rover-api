@@ -327,8 +327,7 @@ describe("Samples entry points", () => {
     window.history.replaceState(null, "", "/");
     render(<App />);
     const nav = await screen.findByRole("navigation", { name: "Main" });
-    await waitFor(() => expect(within(nav).getByRole("link", { name: "Data" })).toBeTruthy());
-    expect(within(nav).getByRole("link", { name: "Data" }).getAttribute("href")).toBe("/data");
+    await waitFor(() => expect(within(nav).getByRole("button", { name: /^Data/ })).toBeTruthy());
     expect(within(nav).queryByRole("link", { name: "Samples" })).toBeNull();
     // the button on the Perseverance card stays
     const links = screen.getAllByRole("link", { name: "Samples" });

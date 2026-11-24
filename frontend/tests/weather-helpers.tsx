@@ -30,7 +30,7 @@ export function weatherRoutes(
 /** Mock the API for the weather section and open the Data page at `#weather`. */
 export function openWeather(
   opts: Parameters<typeof weatherRoutes>[0] = {},
-  path = "/data#weather",
+  path = "/data/weather",
 ) {
   const m = mockApi(weatherRoutes(opts));
   window.history.replaceState(null, "", path);
@@ -38,7 +38,7 @@ export function openWeather(
   return m;
 }
 
-export const panelOf = () => screen.findByRole("region", { name: /Weather by sol/ });
+export const panelOf = () => screen.findByRole("main");
 
 /** Wait for the daily chart and the inspector slider: the section has its data. */
 export async function readyPanel() {

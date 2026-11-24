@@ -438,6 +438,53 @@ else the sync fetches again.
    its data then ages, so fall back by restoring a fresh VPS dump there.
 7. Later: raise HSTS, remove the Funnel (`tailscale funnel reset`), archive the laptop stack.
 
+### 7a. Loading data by hand on the VPS (RAD export, Curiosity thumbnails)
+
+Both jobs change the database, so take a fresh backup first (`update.sh` makes one; otherwise
+run `backup.sh` and check the `.sha256`). Neither needs a code deploy or a migration, but the
+running image must already contain the command (`rad`, `thumbnails` in `python -m app.cli`).
+
+**Windows: use the Windows OpenSSH client.** The key lives in the Windows ssh-agent, so call
+`C:\Windows\System32\OpenSSH\ssh.exe` and `scp.exe`. The `ssh` of Git for Windows does not see
+the agent and fails with `Permission denied (publickey)`. The host key must be accepted once by
+hand (compare the fingerprint with the provider's console). Do not put the server address into
+files; pass it on the command line.
+
+**RAD export.** On the development machine: `uv run python -m app.cli rad export` writes
+`data/export/rad-<date>.jsonl.gz`. Then:
+
+```
+scp data\export\rad-<date>.jsonl.gz deploy@<host>:/srv/mars/     # not into backups/ (rotation)
+ssh deploy@<host> sha256sum /srv/mars/rad-<date>.jsonl.gz         # compare with Get-FileHash locally
+ssh deploy@<host>
+cd /srv/mars
+docker compose run --rm -T -v /srv/mars/rad-<date>.jsonl.gz:/in/rad.jsonl.gz:ro app python -m app.cli rad import --input /in/rad.jsonl.gz
+docker compose exec -T app python -m app.cli rad status
+rm /srv/mars/rad-<date>.jsonl.gz
+```
+
+`docker compose run` with a read-only bind mount is used because the root file system of the
+`app` container is read-only. Add `--force` only when the import refuses because the server
+already has RAD data and the export is a superset (exit codes: `app/cli.py` docstring). Check
+`GET /api/v2/rovers/curiosity/radiation` (`source_max_sol`, `items`). Done on 2026-11-24:
+5351 files, 4625 sols, the server was empty, no `--force`.
+
+**Curiosity thumbnails (`photos.img_small`).** The command asks the JPL feed (about 900
+requests for sols 0-5100) and runs in about 4-5 minutes per 1700 sols. Run it in chunks so one
+SSH session stays short, and take the upper sol from `SELECT max(sol) FROM photos`:
+
+```
+cd /srv/mars
+docker compose run --rm -T app python -m app.cli thumbnails --rover curiosity --from-sol 0    --to-sol 1700
+docker compose run --rm -T app python -m app.cli thumbnails --rover curiosity --from-sol 1701 --to-sol 3400
+docker compose run --rm -T app python -m app.cli thumbnails --rover curiosity --from-sol 3401 --to-sol <latest sol>
+```
+
+Each run ends with `batches=... matched=... updated=... skipped=... failed_batches=0`; a rerun
+of a range is safe. Only Mastcam, MAHLI and MARDI frames have thumbnails (on 2026-11-24:
+MAST_LEFT 96.7 %, MAST_RIGHT 98.2 %, MAHLI 99.5 %, MARDI 84.5 %). Check
+`GET /api/v2/rovers/curiosity/photos?sol=<sol>&camera=MAST_LEFT` shows `images.small`.
+
 ### Accepted risks and TODO (owner's decisions, from the security review)
 
 - Branch `master` is not protected: whoever can push there controls what `update.sh` builds

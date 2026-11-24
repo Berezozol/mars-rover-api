@@ -1,8 +1,8 @@
 import type { ComponentChildren } from "preact";
-import { useEffect, useState } from "preact/hooks";
+import { useState } from "preact/hooks";
 import { api } from "../api/client";
 import type { WeatherParameter, WeatherResponse, WeatherSol } from "../api/types";
-import { fmt, safeHref } from "../lib/format";
+import { fmt } from "../lib/format";
 import { useAsync } from "../lib/hooks";
 import {
   domainOf,
@@ -19,14 +19,14 @@ import {
   WEATHER_ROVERS,
   type WeatherRover,
 } from "../lib/weather";
+import { About, dateOnly, Facts } from "./DataAbout";
 import { FlagPill, WeatherInspector } from "./WeatherInspector";
 import { WeatherChart, WeatherLegend } from "./WeatherChart";
 import { EmptyState, ErrorAlert } from "./States";
 
-const dateOnly = (iso: string) => iso.slice(0, 10);
 const SOURCE_NAME = "NASA PDS Atmospheres Node";
 
-export function WeatherSection({ onMeta }: { onMeta: (text: string) => void }) {
+export function WeatherSection() {
   const [rover, setRover] = useState<WeatherRover>(WEATHER_ROVERS[0]!);
   const [state, retry] = useAsync(() => api.weather(rover.id), [rover.id]);
   // The newest sol of the rover decides the grey "not published yet" zone and the lag.
@@ -35,22 +35,6 @@ export function WeatherSection({ onMeta }: { onMeta: (text: string) => void }) {
 
   const data = state.status === "ok" ? state.data : null;
   const ready = data !== null && data.items.length > 0;
-
-  useEffect(() => {
-    if (state.status === "loading") onMeta("Loading…");
-    else if (state.status === "error") onMeta("Unavailable");
-    else if (!data || data.items.length === 0) onMeta("Not loaded yet");
-    else {
-      const first = data.items[0]!.sol;
-      const last = data.source_max_sol ?? data.items[data.items.length - 1]!.sol;
-      onMeta(
-        `${rover.name} (${rover.instrument}) · ${paramKeys(data.parameters)
-          .map((k) => paramLabel(k))
-          .join(", ")} · sols ${first}–${last}`,
-      );
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.status, ready, rover.id]);
 
   return (
     <>
@@ -104,6 +88,7 @@ export function WeatherSection({ onMeta }: { onMeta: (text: string) => void }) {
       ) : (
         <WeatherView key={rover.id} rover={rover} data={data} maxSol={maxSol} />
       )}
+      {state.status !== "loading" && !ready && <WeatherAbout rover={rover} data={data} />}
     </>
   );
 }
@@ -137,71 +122,38 @@ function WeatherView({
     setDragging(fromSlider);
   };
   const domain = domainOf(view, first, source, now);
-  const archive = safeHref(data.source_url);
   const rows = items.slice(-8).reverse();
 
   return (
     <>
-      <div class="card summary">
-        <p class="what">
-          Air measurements from the rover&rsquo;s weather station ({rover.instrument}): the daily
-          lowest, highest and mean value of {keys.map((x) => paramLabel(x)).join(", ")} for each
-          sol.
-          {!keys.includes("wind") && ` ${rover.name} has no wind data in the archive.`}
-        </p>
-        <dl class="stats">
-          <div>
-            <dt>Rover</dt>
-            <dd>
-              {rover.name} ({rover.instrument})
-            </dd>
-          </div>
-          <div>
-            <dt>Coverage</dt>
-            <dd>
-              sols {first}–{source} · {fmt(items.length)} sols with data
-            </dd>
-          </div>
-          <div>
-            <dt>Last update</dt>
-            <dd>
-              {data.updated_at ? (
-                <time dateTime={data.updated_at}>{dateOnly(data.updated_at)}</time>
-              ) : (
-                "—"
-              )}
-            </dd>
-          </div>
-          <div>
-            <dt>Newest sol</dt>
-            <dd>
-              {source}
-              {lag > 0 && (
-                <>
-                  {" · "}
-                  <span class="lag">
-                    {lagWords(lag)}
-                    {partial && " · only the first sols are loaded so far"}
-                  </span>
-                </>
-              )}
-            </dd>
-          </div>
-        </dl>
-        <p class="src">
-          <b>Source:</b>{" "}
-          {archive ? (
-            <a href={archive} target="_blank" rel="noopener noreferrer">
-              {SOURCE_NAME} ↗
-            </a>
-          ) : (
-            SOURCE_NAME
-          )}
-          . The archive is published in batches, months after the measurements.
-          <br />
-          <b>Credit:</b> {data.credit}
-        </p>
-      </div>
+      <Facts
+        items={[
+          ["Rover", `${rover.name} (${rover.instrument})`],
+          ["Parameters", keys.map((x) => paramLabel(x)).join(", ")],
+          ["Coverage", `sols ${first}–${source}`],
+          ["Sols with data", fmt(items.length)],
+          ["Newest sol", fmt(source)],
+          [
+            "Behind the rover",
+            lag > 0 ? (
+              <span class="lag">
+                {lagWords(lag)}
+                {partial && " · only the first sols are loaded so far"}
+              </span>
+            ) : (
+              "up to date"
+            ),
+          ],
+          [
+            "Last update here",
+            data.updated_at ? (
+              <time dateTime={data.updated_at}>{dateOnly(data.updated_at)}</time>
+            ) : (
+              "—"
+            ),
+          ],
+        ]}
+      />
 
       <div class="wx-controls">
         <div class="field">
@@ -280,10 +232,41 @@ function WeatherView({
         Air: mean (lowest … highest). A flag never hides a value: means and extremes are always
         shown. <code>—</code> means the sensor exists but the sol has no valid readings.
       </p>
-      <p class="api-line xsmall mono muted">
-        API: <code>GET /api/v2/rovers/{rover.id}/weather</code> · <code>/weather/{"{sol}"}</code>
-      </p>
+      <WeatherAbout rover={rover} data={data} keys={keys} />
     </>
+  );
+}
+
+function WeatherAbout({
+  rover,
+  data,
+  keys,
+}: {
+  rover: WeatherRover;
+  data: WeatherResponse | null;
+  keys?: string[];
+}) {
+  return (
+    <About
+      measures={
+        <>
+          Air measurements from the rover&rsquo;s weather station ({rover.instrument}): the daily
+          lowest, highest and mean value of{" "}
+          {(keys ?? []).length > 0
+            ? keys!.map((x) => paramLabel(x)).join(", ")
+            : "air temperature, pressure, humidity and more"}{" "}
+          for each sol. Temperatures are in °C, pressure in pascals.
+          {keys && !keys.includes("wind") && ` ${rover.name} has no wind data in the archive.`} A
+          flag never hides a value: means and extremes are always shown.
+        </>
+      }
+      sourceName={SOURCE_NAME}
+      sourceUrl={data?.source_url}
+      schedule="The mission archives are published in batches, months after the measurements; Sol Index checks them regularly."
+      notes="Recent sols are always missing. The grey area on the chart marks sols not published yet."
+      credit={data?.credit}
+      endpoints={[`/rovers/${rover.id}/weather`, `/rovers/${rover.id}/weather/{sol}`]}
+    />
   );
 }
 

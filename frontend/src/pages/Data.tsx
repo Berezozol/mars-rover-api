@@ -1,156 +1,108 @@
-import type { ComponentChildren } from "preact";
-import { useEffect, useState } from "preact/hooks";
+import { useEffect } from "preact/hooks";
 import { RadiationSection } from "../components/DataRadiation";
 import { SamplesSection } from "../components/DataSamples";
 import { WeatherSection } from "../components/DataWeather";
 import { useTitle } from "../lib/hooks";
-import { useHash } from "../router";
+import { type DataSet, Link, navigate, useHash } from "../router";
 
-type Key = "samples" | "radiation" | "weather";
-const KEYS: Key[] = ["samples", "radiation", "weather"];
-const isKey = (s: string): s is Key => (KEYS as string[]).includes(s);
+export const DATASETS: {
+  key: DataSet;
+  name: string;
+  title: string;
+  rovers: string[];
+  blurb: string;
+  lead: string;
+}[] = [
+  {
+    key: "samples",
+    name: "Rock samples",
+    title: "Rock samples",
+    rovers: ["Perseverance"],
+    blurb: "Sealed sample tubes: where each came from and where it is now.",
+    lead: "Sample tubes sealed by Perseverance for a possible return to Earth: where each came from, whether it is still on the rover or already left in the depot.",
+  },
+  {
+    key: "radiation",
+    name: "Radiation",
+    title: "Radiation",
+    rovers: ["Curiosity"],
+    blurb: "Daily absorbed dose rate at the surface, from the RAD instrument.",
+    lead: "How much radiation reaches the surface of Mars: the daily absorbed dose rate measured by the RAD instrument on Curiosity.",
+  },
+  {
+    key: "weather",
+    name: "Weather",
+    title: "Weather",
+    rovers: ["Perseverance", "Curiosity"],
+    blurb: "Daily air temperature, pressure, humidity and more, by sol.",
+    lead: "Daily air measurements from the rovers' weather stations: the lowest, highest and mean values for each sol.",
+  },
+];
 
-const META: Record<Key, string> = {
-  samples: "Perseverance · sealed sample tubes",
-  radiation: "Curiosity · daily dose rate",
-  weather: "Perseverance and Curiosity · daily air measurements",
-};
+const OLD_HASH = /^#(samples|radiation|weather)$/;
 
-function hashKey(hash: string): Key | null {
-  const k = hash.replace(/^#/, "");
-  return isKey(k) ? k : null;
-}
-
+/** Overview: one card per dataset, linking to its page. Old `/data#radiation` links go to the new paths. */
 export function Data() {
   useTitle("Data — Sol Index");
   const { hash, visit } = useHash();
-  // Without a section in the address the first section is open.
-  const [open, setOpen] = useState<Record<Key, boolean>>(() => {
-    const k = hashKey(window.location.hash);
-    return {
-      samples: k === null || k === "samples",
-      radiation: k === "radiation",
-      weather: k === "weather",
-    };
-  });
-  // A section's content is built when it is first opened (the radiation answer is large).
-  const [seen, setSeen] = useState<Record<Key, boolean>>(open);
-  const [meta, setMeta] = useState<Record<Key, string>>(META);
-
-  const show = (k: Key, on: boolean) => {
-    setOpen((o) => ({ ...o, [k]: on }));
-    if (on) setSeen((s) => ({ ...s, [k]: true }));
-  };
-
-  // A link to `#radiation` opens that section and scrolls to it (also when the page is already open).
   useEffect(() => {
-    const k = hashKey(hash);
-    if (!k) return;
-    show(k, true);
-    const t = setTimeout(() => document.getElementById(k)?.scrollIntoView?.({ block: "start" }), 0);
-    return () => clearTimeout(t);
+    const m = OLD_HASH.exec(hash || window.location.hash);
+    if (m) navigate(`/data/${m[1]}`, { replace: true });
   }, [hash, visit]);
-
-  const toggle = (k: Key) => {
-    const on = !open[k];
-    show(k, on);
-    window.history.replaceState(null, "", on ? `#${k}` : window.location.pathname);
-  };
-  const all = (on: boolean) => {
-    KEYS.forEach((k) => show(k, on));
-    window.history.replaceState(null, "", window.location.pathname);
-  };
-
-  const section = (k: Key, name: string, badge: string | string[], body: ComponentChildren) => (
-    <section class="card acc-item" id={k}>
-      <h2 class="acc-h">
-        <button
-          class="acc-btn"
-          type="button"
-          id={`btn-${k}`}
-          aria-expanded={open[k]}
-          aria-controls={`panel-${k}`}
-          onClick={() => toggle(k)}
-        >
-          <span class="acc-title">
-            <span class="acc-name">
-              {name}{" "}
-              {[badge].flat().map((b) => (
-                <span key={b} class="badge no-dot">
-                  {b}
-                </span>
-              ))}
-            </span>
-            <span class="acc-meta">{meta[k]}</span>
-          </span>
-          <svg class="chev" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
-            <path
-              d="M4 7l6 6 6-6"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-          </svg>
-        </button>
-      </h2>
-      <div
-        class="acc-panel"
-        id={`panel-${k}`}
-        role="region"
-        aria-labelledby={`btn-${k}`}
-        hidden={!open[k]}
-      >
-        {seen[k] && body}
-      </div>
-    </section>
-  );
-
   return (
     <>
       <h1>Data</h1>
       <p class="muted lead">
-        Datasets that the rovers measure besides taking photos. Each one opens as a section; share a
-        link such as <code>/data#radiation</code> to open it directly.
+        Datasets that the rovers measure besides taking photos. Each one has its own page with a
+        chart, the numbers and a description of the source.
       </p>
+      <ul class="ds-cards" aria-label="Datasets">
+        {DATASETS.map((d) => (
+          <li key={d.key} class="card ds-card">
+            <h2>
+              <Link href={`/data/${d.key}`}>{d.name}</Link>
+            </h2>
+            <p class="ds-rovers">
+              {d.rovers.map((r) => (
+                <span key={r} class="badge no-dot">
+                  {r}
+                </span>
+              ))}
+            </p>
+            <p>{d.blurb}</p>
+            <Link class="btn btn-sm" href={`/data/${d.key}`}>
+              Open {d.name.toLowerCase()}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
 
-      <div class="toolbar">
-        <button class="btn btn-sm" type="button" onClick={() => all(true)}>
-          Expand all
-        </button>
-        <button class="btn btn-sm" type="button" onClick={() => all(false)}>
-          Collapse all
-        </button>
-        <span class="spacer" />
-        <span class="xsmall muted">3 datasets · more coming</span>
-      </div>
-
-      <div class="acc">
-        {section(
-          "samples",
-          "Rock samples",
-          "Perseverance",
-          <SamplesSection
-            onMeta={(t) => setMeta((m) => (m.samples === t ? m : { ...m, samples: t }))}
-          />,
-        )}
-        {section(
-          "radiation",
-          "Radiation (RAD)",
-          "Curiosity",
-          <RadiationSection
-            onMeta={(t) => setMeta((m) => (m.radiation === t ? m : { ...m, radiation: t }))}
-          />,
-        )}
-        {section(
-          "weather",
-          "Weather by sol",
-          ["Perseverance", "Curiosity"],
-          <WeatherSection
-            onMeta={(t) => setMeta((m) => (m.weather === t ? m : { ...m, weather: t }))}
-          />,
-        )}
+/** One dataset on its own page. */
+export function DataSetPage({ set }: { set: DataSet }) {
+  const d = DATASETS.find((x) => x.key === set)!;
+  useTitle(`${d.title} — Sol Index`);
+  return (
+    <>
+      <nav class="crumbs" aria-label="Breadcrumb">
+        <Link href="/data">Data</Link> <span aria-hidden="true">/</span>{" "}
+        <span aria-current="page">{d.name}</span>
+      </nav>
+      <h1>{d.name}</h1>
+      <p class="ds-rovers">
+        {d.rovers.map((r) => (
+          <span key={r} class="badge no-dot">
+            {r}
+          </span>
+        ))}
+      </p>
+      <p class="muted lead">{d.lead}</p>
+      <div class="ds-body">
+        {set === "samples" && <SamplesSection />}
+        {set === "radiation" && <RadiationSection />}
+        {set === "weather" && <WeatherSection />}
       </div>
     </>
   );

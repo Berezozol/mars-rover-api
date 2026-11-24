@@ -94,7 +94,7 @@ export function LineChart(p: Props) {
               height={h - T - B}
             />
             {z.label && (
-              <text class="zone-label" x={X(z.from) + 6} y={T + 14}>
+              <text class="zone-label" x={X(z.to) - 6} y={T + 14} text-anchor="end">
                 {z.label}
               </text>
             )}

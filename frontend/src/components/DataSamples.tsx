@@ -1,16 +1,14 @@
-import { useEffect } from "preact/hooks";
 import { api } from "../api/client";
 import { fmt, safeHref } from "../lib/format";
 import { useAsync, useRovers } from "../lib/hooks";
 import { niceScale, solTicks } from "../lib/radiation";
 import { lag, SAMPLES_ROVER, summarize } from "../lib/samples";
 import { Link } from "../router";
+import { About, dateOnly, Facts } from "./DataAbout";
 import { LineChart } from "./LineChart";
 import { EmptyState, ErrorAlert } from "./States";
 
-const dateOnly = (iso: string) => iso.slice(0, 10);
-
-export function SamplesSection({ onMeta }: { onMeta: (text: string) => void }) {
+export function SamplesSection() {
   const [state, retry] = useAsync(() => api.samples(SAMPLES_ROVER), []);
   const [rovers] = useRovers();
   const maxSol =
@@ -20,19 +18,6 @@ export function SamplesSection({ onMeta }: { onMeta: (text: string) => void }) {
   const data = state.status === "ok" ? state.data : null;
   const items = data?.items ?? [];
   const s = summarize(items);
-
-  useEffect(() => {
-    if (state.status === "loading") onMeta("Loading…");
-    else if (state.status === "error") onMeta("Unavailable");
-    else if (items.length === 0) onMeta("Not loaded yet");
-    else
-      onMeta(
-        `Perseverance · ${s.count} sample tubes${
-          s.firstSol !== null ? ` · sealed on sols ${s.firstSol}–${s.lastSol}` : ""
-        }`,
-      );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.status, items.length]);
 
   if (state.status === "loading") {
     return (
@@ -53,9 +38,12 @@ export function SamplesSection({ onMeta }: { onMeta: (text: string) => void }) {
   }
   if (!data || items.length === 0) {
     return (
-      <EmptyState title="Samples not loaded yet">
-        Sol Index has not fetched the sample table yet. Check back soon.
-      </EmptyState>
+      <>
+        <EmptyState title="Samples not loaded yet">
+          Sol Index has not fetched the sample table yet. Check back soon.
+        </EmptyState>
+        <SamplesAbout />
+      </>
     );
   }
 
@@ -72,63 +60,33 @@ export function SamplesSection({ onMeta }: { onMeta: (text: string) => void }) {
 
   return (
     <>
-      <div class="card summary">
-        <p class="what">
-          Sample tubes sealed by the rover for a possible return to Earth: where each came from,
-          whether it is still on the rover or already left in the depot.
-        </p>
-        <dl class="stats">
-          <div>
-            <dt>Rover</dt>
-            <dd>Perseverance</dd>
-          </div>
-          <div>
-            <dt>Samples</dt>
-            <dd>
-              {s.count}
-              {s.tbd.length > 0 && ` (${sealed.length} sealed, ${s.tbd.length} not yet)`}
-            </dd>
-          </div>
-          <div>
-            <dt>Coverage</dt>
-            <dd>{s.firstSol !== null ? `sols ${s.firstSol}–${s.lastSol}` : "—"}</dd>
-          </div>
-          <div>
-            <dt>Page last edited</dt>
-            <dd>
-              {data.source_updated_at ? (
-                <time dateTime={data.source_updated_at}>{dateOnly(data.source_updated_at)}</time>
-              ) : (
-                "—"
-              )}
-              {behind && (
-                <>
-                  {" "}
-                  <span class="lag">(rover is at sol {behind.max})</span>
-                </>
-              )}
-            </dd>
-          </div>
-        </dl>
-        <p class="src">
-          <b>Source:</b>{" "}
-          {source ? (
-            <a href={source} target="_blank" rel="noopener noreferrer">
-              NASA Mars Rock Samples page ↗
-            </a>
-          ) : (
-            "NASA Mars Rock Samples page"
-          )}
-          {data.updated_at && (
-            <>
-              , updated here <time dateTime={data.updated_at}>{dateOnly(data.updated_at)}</time>
-            </>
-          )}
-          <br />
-          <b>Credit:</b> NASA / Mars 2020 Perseverance science team; dossiers: NASA PDS Geosciences
-          Node
-        </p>
-      </div>
+      <Facts
+        items={[
+          ["Rover", "Perseverance"],
+          [
+            "Samples",
+            `${s.count}${s.tbd.length > 0 ? ` (${sealed.length} sealed, ${s.tbd.length} not yet)` : ""}`,
+          ],
+          ["Coverage", s.firstSol !== null ? `sols ${s.firstSol}–${s.lastSol}` : "—"],
+          [
+            "Source page edited",
+            data.source_updated_at ? (
+              <time dateTime={data.source_updated_at}>{dateOnly(data.source_updated_at)}</time>
+            ) : (
+              "—"
+            ),
+          ],
+          [
+            "Last update here",
+            data.updated_at ? (
+              <time dateTime={data.updated_at}>{dateOnly(data.updated_at)}</time>
+            ) : (
+              "—"
+            ),
+          ],
+          ["Rover is at", behind ? <span class="lag">sol {behind.max}</span> : "up to date"],
+        ]}
+      />
 
       <div class="card chart-box">
         <div class="chart-title">
@@ -164,9 +122,21 @@ export function SamplesSection({ onMeta }: { onMeta: (text: string) => void }) {
           Table with filters, dossiers, photos of each tube and route-map links.
         </span>
       </div>
-      <p class="api-line xsmall mono muted">
-        API: <code>GET /api/v2/rovers/perseverance/samples</code>
-      </p>
+      <SamplesAbout source={source} />
     </>
+  );
+}
+
+function SamplesAbout({ source }: { source?: string | null }) {
+  return (
+    <About
+      measures="Sample tubes sealed by the rover for a possible return to Earth: where each came from, whether it is still on the rover or already left in the depot. The chart counts sealed tubes by sol."
+      sourceName="NASA Mars Rock Samples page"
+      sourceUrl={source}
+      schedule="Sol Index re-reads the page regularly; the page itself is edited by hand, so new tubes appear after the science team updates it."
+      notes="A tube is counted when the page gives the sol it was sealed on; planned tubes without a sol are listed as not yet sealed."
+      credit="NASA / Mars 2020 Perseverance science team; dossiers: NASA PDS Geosciences Node"
+      endpoints={["/rovers/perseverance/samples"]}
+    />
   );
 }

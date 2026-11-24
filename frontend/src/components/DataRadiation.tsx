@@ -1,7 +1,7 @@
-import { useEffect, useState } from "preact/hooks";
+import { useState } from "preact/hooks";
 import { api } from "../api/client";
 import type { RadiationResponse, RadiationSol } from "../api/types";
-import { fmt, safeHref } from "../lib/format";
+import { fmt } from "../lib/format";
 import { useAsync, useMedia, useRovers } from "../lib/hooks";
 import {
   cover,
@@ -15,13 +15,13 @@ import {
   solTicks,
   viewOf,
 } from "../lib/radiation";
+import { About, dateOnly, Facts } from "./DataAbout";
 import { LineChart } from "./LineChart";
 import { EmptyState, ErrorAlert } from "./States";
 
-const dateOnly = (iso: string) => iso.slice(0, 10);
 const SOURCE_NAME = "NASA PDS Planetary Plasma Interactions Node, set MSL-M-RAD-3-RDR-V1.0";
 
-export function RadiationSection({ onMeta }: { onMeta: (text: string) => void }) {
+export function RadiationSection() {
   const [state, retry] = useAsync(() => api.radiation(RAD_ROVER), []);
   const [rovers] = useRovers();
   const maxSol =
@@ -30,22 +30,6 @@ export function RadiationSection({ onMeta }: { onMeta: (text: string) => void })
   const data = state.status === "ok" ? state.data : null;
   const ready = data !== null && data.items.length > 0;
   const lag = ready && maxSol !== null ? maxSol - (data.source_max_sol ?? 0) : 0;
-
-  useEffect(() => {
-    if (state.status === "loading") onMeta("Loading…");
-    else if (state.status === "error") onMeta("Unavailable");
-    else if (!ready) onMeta("Not loaded yet");
-    else {
-      const v = viewOf(data.items);
-      const m = lagMonths(lag);
-      onMeta(
-        `Curiosity · daily dose rate · sols ${v.first}–${v.last}${
-          lag > 0 && m >= 1 ? ` · data lags about ${m} ${m === 1 ? "month" : "months"}` : ""
-        }`,
-      );
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.status, ready, lag]);
 
   if (state.status === "loading") {
     return (
@@ -66,12 +50,15 @@ export function RadiationSection({ onMeta }: { onMeta: (text: string) => void })
   }
   if (!data || data.items.length === 0) {
     return (
-      <EmptyState title="Radiation data not loaded yet">
-        The first import of Curiosity RAD data has not run yet. The archive is large, so the first
-        load takes a while. Check back soon.
-        <br />
-        Credit: {data?.credit}
-      </EmptyState>
+      <>
+        <EmptyState title="Radiation data not loaded yet">
+          The first import of Curiosity RAD data has not run yet. The archive is large, so the first
+          load takes a while. Check back soon.
+          <br />
+          Credit: {data?.credit}
+        </EmptyState>
+        <RadAbout lag={0} />
+      </>
     );
   }
   return <RadiationView data={data} maxSol={maxSol} lag={lag} />;
@@ -102,66 +89,33 @@ function RadiationView({
       return num(y) ? [[x.sol, y] as [number, number]] : [];
     });
   const newest = data.items.slice(-3);
-  const archive = safeHref(data.source_url);
 
   return (
     <>
-      <div class="card summary">
-        <p class="what">
-          Radiation measured at the surface by the RAD instrument: the absorbed dose rate per sol.
-          Detector E is plastic (closest to human tissue), detector B is silicon.
-        </p>
-        <dl class="stats">
-          <div>
-            <dt>Rover</dt>
-            <dd>Curiosity</dd>
-          </div>
-          <div>
-            <dt>Coverage</dt>
-            <dd>
-              sols {v.first}–{v.last}
-            </dd>
-          </div>
-          <div>
-            <dt>Last update</dt>
-            <dd>
-              {data.updated_at ? (
-                <time dateTime={data.updated_at}>{dateOnly(data.updated_at)}</time>
-              ) : (
-                "—"
-              )}
-              {data.source_release && ` · archive release ${data.source_release}`}
-            </dd>
-          </div>
-          <div>
-            <dt>Newest sol</dt>
-            <dd>
-              {v.last}
-              {lag > 0 && (
-                <>
-                  {" · "}
-                  <span class="lag">{lagText(lag)}</span>
-                </>
-              )}
-            </dd>
-          </div>
-        </dl>
-        <p class="src">
-          <b>Source:</b>{" "}
-          {archive ? (
-            <a href={archive} target="_blank" rel="noopener noreferrer">
-              {SOURCE_NAME} ↗
-            </a>
-          ) : (
-            SOURCE_NAME
-          )}
-          . Published every 4–5 months; checked monthly.
-          <br />
-          <b>Credit:</b> {data.credit}
-          <br />
-          <b>Citation:</b> {data.citation}
-        </p>
-      </div>
+      <Facts
+        items={[
+          ["Rover", "Curiosity (instrument RAD)"],
+          ["Coverage", `sols ${v.first}–${v.last}`],
+          ["Newest sol", fmt(v.last)],
+          ["Behind the rover", lag > 0 ? <span class="lag">{lagText(lag)}</span> : "up to date"],
+          [
+            "Archive release",
+            data.source_release ? (
+              <time dateTime={data.source_release}>{data.source_release}</time>
+            ) : (
+              "—"
+            ),
+          ],
+          [
+            "Last update here",
+            data.updated_at ? (
+              <time dateTime={data.updated_at}>{dateOnly(data.updated_at)}</time>
+            ) : (
+              "—"
+            ),
+          ],
+        ]}
+      />
 
       <div class="card chart-box">
         <div class="chart-title">
@@ -296,20 +250,40 @@ function RadiationView({
         </table>
       </div>
 
-      <div class="panel-foot">
-        {archive && (
-          <a class="btn" href={archive} target="_blank" rel="noopener noreferrer">
-            Open the archive at NASA PDS ↗
-          </a>
-        )}
-        <span class="hint muted small">
-          The archive holds the original daily files of the RAD team; Sol Index shows daily
-          summaries of them.
-        </span>
-      </div>
-      <p class="api-line xsmall mono muted">
-        API: <code>GET /api/v2/rovers/curiosity/radiation</code>
-      </p>
+      <RadAbout data={data} lag={lag} />
     </>
+  );
+}
+
+function RadAbout({ data, lag }: { data?: RadiationResponse; lag: number }) {
+  const m = lagMonths(lag);
+  return (
+    <About
+      measures={
+        <>
+          Radiation measured at the surface by the RAD instrument: the absorbed dose rate per sol,
+          in micrograys per day (µGy/day). Detector E is plastic, closest to human tissue; detector
+          B is silicon. The second chart is the raw count rate of detector B, in events per second.
+          Absorbed dose rate is not equivalent dose (sieverts): the source has none.
+        </>
+      }
+      sourceName={SOURCE_NAME}
+      sourceUrl={data?.source_url}
+      schedule="The archive is released every 4–5 months; Sol Index checks it monthly. The archive holds the original daily files of the RAD team; Sol Index shows daily summaries of them."
+      notes={
+        <>
+          The data always lags the rover by the archive release cycle
+          {lag > 0 && m >= 1 ? (
+            <>
+              : now {fmt(lag)} sols (about {m} {m === 1 ? "month" : "months"}) behind
+            </>
+          ) : null}
+          . Grey area on the chart marks sols not published yet. Solar events are not smoothed.
+        </>
+      }
+      credit={data?.credit}
+      citation={data?.citation}
+      endpoints={["/rovers/curiosity/radiation"]}
+    />
   );
 }

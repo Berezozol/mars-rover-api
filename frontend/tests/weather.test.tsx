@@ -38,23 +38,22 @@ const CUR_SOLS = curItems.map((i) => i.sol);
 const label = (el: Element | undefined) => el?.getAttribute("aria-label") ?? "";
 
 describe("Weather AC-41: the section and the daily chart of Perseverance", () => {
-  it("AC-41 the section is closed on /data (nothing is asked) and opens from #weather", async () => {
+  it("AC-41 the /data overview asks nothing; /data/weather loads the list", async () => {
     const m = openWeather({}, "/data");
-    const head = await screen.findByRole("button", { name: /Weather by sol/ });
-    expect(head.getAttribute("aria-expanded")).toBe("false");
-    await screen.findByRole("region", { name: /Rock samples/ });
+    await screen.findByRole("heading", { level: 1, name: "Data" });
     expect(callsTo(m, WX("perseverance"))).toHaveLength(0);
-    fireEvent.click(head);
+    fireEvent.click(
+      within(screen.getByRole("main"))
+        .getAllByRole("link")
+        .find((a) => a.getAttribute("href") === "/data/weather")!,
+    );
     await waitFor(() => expect(callsTo(m, WX("perseverance"))).toHaveLength(1));
-    expect(window.location.hash).toBe("#weather");
+    expect(window.location.pathname).toBe("/data/weather");
   });
 
-  it("AC-41 /data#weather asks for the Perseverance list once, without parameters, and for the rover card", async () => {
+  it("AC-41 /data/weather asks for the Perseverance list once, without parameters, and for the rover card", async () => {
     const m = openWeather();
     const panel = await readyPanel();
-    expect(
-      screen.getByRole("button", { name: /Weather by sol/ }).getAttribute("aria-expanded"),
-    ).toBe("true");
     expect(panel).toBeTruthy();
     const list = callsTo(m, WX("perseverance"));
     expect(list).toHaveLength(1);

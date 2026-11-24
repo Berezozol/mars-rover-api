@@ -48,6 +48,9 @@ while (-not (Test-Path $stop) -and -not ($done.weather -and $done.rad)) {
             $stamp = Get-Date -Format 'yyyy-MM-dd_HHmm'
             $procs[$name] = Start-Process $uv -WindowStyle Hidden -PassThru -ArgumentList $args_[$name] `
                 -RedirectStandardOutput (Join-Path $logDir "$stamp-$name.log") -RedirectStandardError (Join-Path $logDir "$stamp-$name.err")
+            # Touch the handle now: without it Start-Process leaves ExitCode empty after exit,
+            # and a finished download would be restarted forever.
+            $null = $procs[$name].Handle
             Write-Note "$name started pid $($procs[$name].Id)"
         }
     }
