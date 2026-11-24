@@ -1,5 +1,7 @@
 # Mars Rover API
 
+[![CI](https://github.com/Berezozol/mars-rover-api/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/Berezozol/mars-rover-api/actions/workflows/ci.yml)
+
 An open-source, **unofficial** replacement for the archived Mars Rover Photos API.
 
 The original API (api.nasa.gov/mars-photos, built by Chris Cerami) was retired in October 2025.
@@ -9,7 +11,7 @@ This service ingests JPL raw-image feeds into PostgreSQL and serves them through
   (`/api/v1/rovers/curiosity/photos?sol=1000&camera=fhaz`);
 - **v2** — a richer API: all image sizes and sample types, real capture timestamps, consistent errors.
 
-Status: public beta at <https://mars-api.sungrazing-menkent.ts.net> (stage 9). See `docs/PLAN.md`.
+Status: public beta at <https://api.solindex.net> (web interface: <https://solindex.net>). See `docs/PLAN.md`.
 
 Rate limit: 60 requests per minute and 2000 per hour per client IP, no API key needed. Over the limit the API answers `429` with a `Retry-After` header (seconds). On v1 paths a response costs the larger of two numbers, at least one request: one per started 256 KiB of the body as sent to the client (after gzip), and one per started 1 MiB of the uncompressed body the server built (this also applies to HEAD and 304 responses). v2 responses always cost one request. A whole-sol v1 request without `page` for Curiosity (about 8 MB) costs about 31 requests uncompressed and 8 with `Accept-Encoding: gzip`, so gzip alone does not make it cheap: use `page` for such requests. Interactive docs: `/docs`; migration guide: `/`.
 

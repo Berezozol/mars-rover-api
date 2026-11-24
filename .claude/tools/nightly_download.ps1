@@ -26,9 +26,16 @@ if ($LASTEXITCODE -ne 0) {
 docker compose up -d --wait db *>> $main
 Write-Note "db exit $LASTEXITCODE"
 
+$running = Get-CimInstance Win32_Process -Filter "name='python.exe'" | Where-Object { $_.CommandLine -match 'weather_download\.py' }
+if ($running) {
+    # A download started by hand is still going: don't run a second copy over the same files.
+    Write-Note "weather download already running (pid $($running[0].ProcessId)), not starting another"
+    $weather = Get-Process -Id $running[0].ProcessId
+} else {
 $weather = Start-Process $uv -NoNewWindow -PassThru `
     -ArgumentList 'run', '--frozen', '--no-sync', 'python', '-u', 'scripts/weather_download.py', '--mission', 'rems', '--interval', '3', '--stop-at', '04:58' `
     -RedirectStandardOutput (Join-Path $logDir "$stamp-weather.log") -RedirectStandardError (Join-Path $logDir "$stamp-weather.err")
+}
 $rad = Start-Process $uv -NoNewWindow -PassThru `
     -ArgumentList 'run', '--frozen', '--no-sync', 'python', '-m', 'app.cli', 'rad', 'sync' `
     -RedirectStandardOutput (Join-Path $logDir "$stamp-rad.log") -RedirectStandardError (Join-Path $logDir "$stamp-rad.err")

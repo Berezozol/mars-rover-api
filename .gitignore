@@ -18,5 +18,5 @@ CLAUDE.local.md
 setup-log.txt
 
 # Local data caches (MER PDS index files, samples)
-data/
+/data/
 .backfill-*.log
