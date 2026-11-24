@@ -63,3 +63,55 @@ def test_thumbnail_key_different_shots_get_different_keys_ac1(first: str, second
 @pytest.mark.parametrize("imageid", ["", "x"], ids=["empty", "short"])
 def test_thumbnail_key_malformed_imageid_is_none_ac1(imageid: str) -> None:
     assert thumbnail_key(imageid) is None
+
+
+# --- AC-11: MARDI video frames M0x pair with the Q01 thumbnail; other cameras do not ------------
+
+MARDI_VIDEO_STEM = "5069MD0018160010401428"
+
+
+@pytest.mark.parametrize("frame_product", ["M01", "M02", "M0A"])
+def test_thumbnail_key_mardi_video_frame_pairs_with_q01_thumbnail_ac11(frame_product: str) -> None:
+    frame = thumbnail_key(f"{MARDI_VIDEO_STEM}{frame_product}_DXXX")
+
+    assert frame == MARDI_VIDEO_STEM
+    assert frame == thumbnail_key(f"{MARDI_VIDEO_STEM}Q01_DXXX")
+
+
+@pytest.mark.parametrize(
+    "thumbnail",
+    [
+        "5069MD0018160010401428Q01_DXXX",
+        "0042ML0001830110102054Q01_DXXX",
+        "0289ML0009620000106364Q01_DXXX",
+        "5073MH0001530001900057Q01_DXXX",
+    ],
+    ids=["mardi", "mastcam-left-sol-42", "mastcam-left-sol-289", "mahli"],
+)
+def test_thumbnail_key_q01_is_recognised_only_for_mardi_ac11(thumbnail: str) -> None:
+    expected = thumbnail[:22] if thumbnail[4:6] == "MD" else None
+
+    assert thumbnail_key(thumbnail) == expected
+
+
+@pytest.mark.parametrize(
+    "imageid",
+    [
+        "0042ML0001830110102054M01_DXXX",
+        "0042ML0001830110102054M02_DXXX",
+        "0042ML0001830110102054K01_DXXX",
+        "0289MR0009620000106364M01_DXXX",
+        "0289MR0009620000106364K01_DXXX",
+        "5073MH0001530001900057M01_DXXX",
+        "5073MH0001530001900057K01_DXXX",
+    ],
+    ids=["ml-M01", "ml-M02", "ml-K01", "mr-M01", "mr-K01", "mh-M01", "mh-K01"],
+)
+def test_thumbnail_key_non_mardi_m_and_k_frames_have_no_key_ac11(imageid: str) -> None:
+    assert thumbnail_key(imageid) is None
+
+
+def test_thumbnail_key_mardi_i01_pairing_still_works_ac11() -> None:
+    assert thumbnail_key("5073MD0018190000402180E01_DXXX") == thumbnail_key(
+        "5073MD0018190000402180I01_DXXX"
+    )

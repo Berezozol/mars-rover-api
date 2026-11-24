@@ -372,3 +372,88 @@ def test_thumbnails_cli_help_lists_the_options_ac6(capsys: pytest.CaptureFixture
     assert code == 0
     out = capsys.readouterr().out
     assert "--from-sol" in out and "--to-sol" in out and "--rover" in out
+
+
+# --- AC-11: MARDI M0x frames pair with Q01 thumbnails; other cameras do not --------------------
+
+AC11_SOL = 5069
+AC11_BASE = "https://mars.nasa.gov/msl-raw-images/msss/05069"
+MARDI_M01 = "5069MD0018160010401428M01_DXXX"
+MARDI_Q01 = "5069MD0018160010401428Q01_DXXX"
+MARDI_E01 = "5069MD0018190000402180E01_DXXX"
+MARDI_I01 = "5069MD0018190000402180I01_DXXX"
+MASTCAM_M01 = "5069ML0001830110102054M01_DXXX"
+MASTCAM_Q01 = "5069ML0001830110102054Q01_DXXX"
+MASTCAM_K01 = "5069MR0009620000106364K01_DXXX"
+MASTCAM_RQ01 = "5069MR0009620000106364Q01_DXXX"
+MAHLI_M01 = "5069MH0001530001900057M01_DXXX"
+MAHLI_Q01 = "5069MH0001530001900057Q01_DXXX"
+
+
+def _ac11_thumbnail(imageid: str, instrument: str, folder: str) -> dict[str, object]:
+    """SYNTHETIC feed item (shape of the recorded sol 5073 items; ids follow the real report
+    examples of docs/reports/msl-thumbnails.md, but this exact sol-5069 data is not recorded)."""
+    url = f"{AC11_BASE}/{folder}/{imageid}.jpg"
+    return {
+        "imageid": imageid,
+        "sol": AC11_SOL,
+        "instrument": instrument,
+        "url": url,
+        "https_url": url,
+        "is_thumbnail": True,
+        "extended": {"sample_type": "thumbnail"},
+    }
+
+
+async def _ac11_seed(factory: SessionFactory) -> None:
+    """SYNTHETIC frames: (imageid, camera, folder)."""
+    from app.repositories.photos import recompute_sol_summaries, upsert_photos
+
+    rows = [
+        (MARDI_M01, "MARDI", "mrdi"),
+        (MARDI_E01, "MARDI", "mrdi"),
+        (MASTCAM_M01, "MAST_LEFT", "mcam"),
+        (MASTCAM_K01, "MAST_RIGHT", "mcam"),
+        (MAHLI_M01, "MAHLI", "mhli"),
+    ]
+    records = [
+        build_record(
+            source_id=f"ac11-{imageid}",
+            sol=AC11_SOL,
+            camera_code=camera,
+            sample_type="full",
+            img_full=f"{AC11_BASE}/{folder}/{imageid}.jpg",
+            extra={"imageid": imageid},
+        )
+        for imageid, camera, folder in rows
+    ]
+    async with factory() as session:
+        await upsert_photos(session, "curiosity", records)
+        await recompute_sol_summaries(session, "curiosity", {AC11_SOL})
+        await session.commit()
+
+
+async def test_thumbnails_mardi_m01_frame_gets_q01_thumbnail_and_others_do_not_ac11(
+    feed: ThumbFeed, session_factory: SessionFactory
+) -> None:
+    """MARDI M01 + Q01 -> img_small; MARDI E01 + I01 still pairs; Mastcam M01/K01 + Q01 and
+    MAHLI M01 + Q01 stay NULL. All frames and thumbnails here are synthetic."""
+    feed.override[AC11_SOL] = [
+        _ac11_thumbnail(MARDI_Q01, "MARDI", "mrdi"),
+        _ac11_thumbnail(MARDI_I01, "MARDI", "mrdi"),
+        _ac11_thumbnail(MASTCAM_Q01, "MAST_LEFT", "mcam"),
+        _ac11_thumbnail(MASTCAM_RQ01, "MAST_RIGHT", "mcam"),
+        _ac11_thumbnail(MAHLI_Q01, "MAHLI", "mhli"),
+    ]
+    await _ac11_seed(session_factory)
+
+    assert await run_thumbnails(AC11_SOL, AC11_SOL) == 0
+
+    assert await stored_small(session_factory, AC11_SOL) == {
+        MARDI_M01: f"{AC11_BASE}/mrdi/{MARDI_Q01}.jpg",
+        MARDI_E01: f"{AC11_BASE}/mrdi/{MARDI_I01}.jpg",
+        MASTCAM_M01: None,
+        MASTCAM_K01: None,
+        MAHLI_M01: None,
+    }
+    assert feed.bad_requests == []

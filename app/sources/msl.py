@@ -38,6 +38,11 @@ DEFAULT_MAX_PAGES = 200
 _MSSS_ID = re.compile(r"^(\d{4}M[A-Z]\d{16})([A-Z])[0-9A-Z]{2}_D[A-Z0-9]{3}$")
 _FRAME_PRODUCTS = frozenset("CDERS")
 _THUMBNAIL_PRODUCTS = frozenset("ITU")
+# MARDI only (instrument code ``MD``, chars 5-6 of the id): video frames are ``M`` and their
+# thumbnails ``Q``. For Mastcam and MAHLI ``Q`` is a 16x16/64x64 stub and ``M`` is not a frame.
+_MARDI = "MD"
+_MARDI_FRAME_PRODUCTS = frozenset("M")
+_MARDI_THUMBNAIL_PRODUCTS = frozenset("Q")
 
 
 @dataclass(frozen=True)
@@ -54,21 +59,30 @@ def thumbnail_key(imageid: str) -> str | None:
     """Key shared by an MSSS frame and its thumbnail: the first 22 characters of the id.
 
     Frames (product letters C, D, E, R, S) and thumbnails (I, T, U) of one shot give the same
-    key; ``None`` for any other id (Navcam, Hazcam, ChemCam and unknown formats).
+    key. MARDI (``MD``) also has video frames ``M`` paired with ``Q`` thumbnails. ``None`` for
+    any other id (Navcam, Hazcam, ChemCam, ``M``/``K``/``Q`` of other instruments, unknown formats).
     """
     match = _MSSS_ID.match(imageid) if isinstance(imageid, str) else None
-    if match is None or match.group(2) not in _FRAME_PRODUCTS | _THUMBNAIL_PRODUCTS:
+    if match is None:
         return None
-    return match.group(1)
+    allowed = _FRAME_PRODUCTS | _THUMBNAIL_PRODUCTS
+    if match.group(1)[4:6] == _MARDI:
+        allowed |= _MARDI_FRAME_PRODUCTS | _MARDI_THUMBNAIL_PRODUCTS
+    return match.group(1) if match.group(2) in allowed else None
 
 
 def parse_thumbnail(raw: Mapping[str, Any]) -> Thumbnail | None:
-    """A thumbnail of an MSSS camera; ``None`` for other items and for incomplete ones."""
+    """A thumbnail of an MSSS camera (``Q`` for MARDI only); ``None`` for other or incomplete."""
     imageid = clean(raw.get("imageid"))
     if not isinstance(imageid, str):
         return None
     match = _MSSS_ID.match(imageid)
-    if match is None or match.group(2) not in _THUMBNAIL_PRODUCTS:
+    if match is None:
+        return None
+    allowed = _THUMBNAIL_PRODUCTS
+    if match.group(1)[4:6] == _MARDI:
+        allowed |= _MARDI_THUMBNAIL_PRODUCTS
+    if match.group(2) not in allowed:
         return None
     url = clean(raw.get("https_url")) or clean(raw.get("url"))
     sol = to_int(raw.get("sol"), field="sol")
