@@ -39,3 +39,8 @@ def is_our_key_format(value: str) -> bool:
 
 def key_prefix(key: str) -> str:
     return key[:DISPLAY_PREFIX_LENGTH]
+
+
+def hash_token(token: str) -> bytes:
+    """SHA-256 of a mail link token (32 bytes), the value of ``api_key_requests.token_hash``."""
+    return hashlib.sha256(token.encode("utf-8")).digest()

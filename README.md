@@ -17,6 +17,15 @@ Rate limit: 60 requests per minute and 2000 per hour per client IP, no API key n
 
 Not affiliated with or endorsed by NASA or JPL. Images courtesy of NASA/JPL-Caltech and instrument partners.
 
+## Getting an API key
+
+A key is optional. With a key the limit is 120 requests per minute and 10,000 per hour per account
+(instead of the per-IP limit above). Where key sign-up is turned on, open `/keys` in the web interface
+or call `POST /api/v2/keys/requests` with `{"email": "user@example.org"}`; you get a one-time link by
+email, and the key is shown once on that page. Send it as the `X-Api-Key` header (preferred) or the `api_key`
+parameter. We keep your email, key hashes and daily request counts; you can delete them at any time
+(`DELETE /api/v2/account` with your key, or `/keys/delete`). Examples: [`examples/curl.md`](examples/curl.md).
+
 ## v2 endpoints for summaries and bulk lookups
 
 Two v2 endpoints for summaries and bulk lookups:

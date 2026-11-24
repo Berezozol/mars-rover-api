@@ -10,6 +10,7 @@ for both API versions.
 
 import logging
 import math
+from datetime import UTC, datetime
 from typing import Any
 
 from asyncpg.exceptions import PostgresConnectionError
@@ -222,6 +223,56 @@ class KeyLimitReached(ConflictError):
         self.limit = limit
 
 
+class ApiKeyRequired(AppError):
+    """401: an endpoint that works on the caller's own account was called without a key."""
+
+    status_code = 401
+    code = "api_key_required"
+
+    def __init__(self) -> None:
+        super().__init__("This endpoint needs an API key (X-Api-Key)")
+
+
+class InvalidToken(AppError):
+    """400: the token of a mail link is unknown, used, expired or meant for another action."""
+
+    status_code = 400
+    code = "invalid_token"
+
+    def __init__(self) -> None:
+        super().__init__("The link is invalid or has expired")
+
+
+class UnsupportedMediaType(AppError):
+    status_code = 415
+    code = "unsupported_media_type"
+
+    def __init__(self) -> None:
+        super().__init__("Content-Type must be application/json")
+
+
+class PayloadTooLarge(AppError):
+    status_code = 413
+    code = "payload_too_large"
+
+    def __init__(self, limit: int) -> None:
+        super().__init__(f"The request body must be at most {limit} bytes")
+
+
+class MailUnavailable(ServiceUnavailableError):
+    """503: the server's daily mail limit is used up; ``Retry-After`` tells when to come back."""
+
+    code = "mail_unavailable"
+
+    def __init__(self, resets_at: datetime, now: datetime) -> None:
+        reset = resets_at.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        super().__init__(
+            f"The daily email limit is reached. Please try again after {reset}",
+            details={"resets_at": reset},
+        )
+        self.retry_after = max(1.0, (resets_at - now).total_seconds())
+
+
 # v1 answers every key error with 403 and the text of ``legacy_message`` (docs/LEGACY-API.md).
 LEGACY_KEY_ERROR_STATUS = 403
 ApiKeyError = InvalidApiKey | ApiKeyRevoked | AccountBlocked
@@ -413,7 +464,7 @@ def log_route(request: Request) -> str:
 async def _handle_app_error(request: Request, exc: AppError) -> JSONResponse:
     headers = None
     message = exc.message
-    if isinstance(exc, RateLimited | ConverterBusy):
+    if isinstance(exc, RateLimited | ConverterBusy | MailUnavailable):
         headers = rate_limited_headers(exc.retry_after)
     elif isinstance(exc, ServiceBusy):
         logger.warning("Heavy query rejected path=%s in_use=%d", log_route(request), exc.in_use)

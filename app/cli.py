@@ -521,12 +521,23 @@ def _main_weather_parse(args: argparse.Namespace, settings: Settings) -> int:
 
 def _main_openapi(args: argparse.Namespace, *, typescript: bool = False) -> int:
     """Dump ``app.openapi()`` (or its TypeScript declarations); the schema does not depend on
-    the database or the environment beyond the admin routes, which are left out so the file
-    is stable."""
+    the database or the environment: the admin routes are left out and the key endpoints are
+    always included, so the file is stable."""
     from app.main import create_app
     from app.openapi_ts import generate
 
-    settings = get_settings().model_copy(update={"admin_token": None})
+    # The key endpoints exist only when keys and sign-up are configured: switch them on with
+    # placeholder values (nothing connects to them while the schema is built).
+    settings = get_settings().model_copy(
+        update={
+            "admin_token": None,
+            "api_keys_enabled": True,
+            "key_signup_enabled": True,
+            "smtp_host": "smtp.example.invalid",
+            "mail_from": "sender@example.invalid",
+            "public_base_url": "https://example.invalid",
+        }
+    )
     schema = create_app(settings).openapi()
     if typescript:
         text = generate(schema)

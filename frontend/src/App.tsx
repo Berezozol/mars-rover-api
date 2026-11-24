@@ -3,6 +3,10 @@ import { Layout } from "./components/Layout";
 import { Data } from "./pages/Data";
 import { Flights } from "./pages/Flights";
 import { Home } from "./pages/Home";
+import { Keys } from "./pages/Keys";
+import { KeysConfirm } from "./pages/KeysConfirm";
+import { KeysDelete } from "./pages/KeysDelete";
+import { KeysManage } from "./pages/KeysManage";
 import { NotFound } from "./pages/NotFound";
 import { PhotoPage } from "./pages/Photo";
 import { RouteMapPage } from "./pages/RouteMap";
@@ -87,6 +91,18 @@ export function App() {
       break;
     case "status":
       page = <Status />;
+      break;
+    case "keys":
+      page = <Keys />;
+      break;
+    case "keysConfirm":
+      page = <KeysConfirm />;
+      break;
+    case "keysManage":
+      page = <KeysManage />;
+      break;
+    case "keysDelete":
+      page = <KeysDelete />;
       break;
     case "photo":
       page = <PhotoPage key={route.id} id={route.id} />;

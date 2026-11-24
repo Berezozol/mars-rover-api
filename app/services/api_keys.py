@@ -10,16 +10,18 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
+from email.utils import parseaddr
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.apikeys import ApiKeyResolver
 from app.core.apikeys import generate_api_key, hash_api_key, key_prefix
 from app.core.config import Settings
-from app.core.errors import InvalidParam, KeyLimitReached, NotFoundError
+from app.core.errors import AccountBlocked, InvalidParam, KeyLimitReached, NotFoundError
 from app.db.models import ApiAccount, ApiKey
 from app.repositories import api_keys as repo
 from app.repositories._common import AnyRow
+from app.repositories.api_keys import USAGE_DAYS
 from app.services.v2 import PageRequest
 
 logger = logging.getLogger(__name__)
@@ -27,7 +29,10 @@ logger = logging.getLogger(__name__)
 MAX_EMAIL_LENGTH = 254
 MAX_TEXT_LENGTH = 500
 # One "@", a domain with a dot (no empty label); checked on the lowercase form.
-_EMAIL_RE = re.compile(r"[^@]+@[^@.]+(?:\.[^@.]+)+")
+_EMAIL_RE = re.compile(
+    r"[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*"
+    r"@[a-z0-9-]+(?:\.[a-z0-9-]+)+"
+)
 
 _EMAIL_MESSAGE = "must be a valid e-mail address of at most 254 characters"
 
@@ -48,7 +53,10 @@ def normalize_email(value: str) -> str:
     email = value.lower()
     if len(email) > MAX_EMAIL_LENGTH or not _is_printable_ascii(email):
         raise ValueError(_EMAIL_MESSAGE)
-    if _EMAIL_RE.fullmatch(email) is None:
+    # "=?" / "?=" open and close an RFC 2047 encoded word, which a mail library may decode.
+    if "=?" in email or "?=" in email:
+        raise ValueError(_EMAIL_MESSAGE)
+    if _EMAIL_RE.fullmatch(email) is None or parseaddr(email)[1] != email:
         raise ValueError(_EMAIL_MESSAGE)
     return email
 
@@ -79,6 +87,18 @@ class IssuedKey:
     key: str
     record: ApiKey
     account: ApiAccount
+    # Keys revoked to make room (``revoke_existing``); their cache entries are still to drop.
+    replaced: tuple[int, ...] = ()
+
+
+@dataclass(frozen=True)
+class OwnAccount:
+    """What an account sees of itself (``GET /api/v2/account``)."""
+
+    account: ApiAccount
+    keys: list[ApiKey]
+    requests_today: int
+    requests_30d: int
 
 
 @dataclass(frozen=True)
@@ -131,6 +151,71 @@ class ApiKeyService:
         await session.commit()
         logger.info("API key issued account=%d key=%d", account.id, record.id)
         return IssuedKey(key, record, account)
+
+    async def issue_from_signup(
+        self, session: AsyncSession, email: str, revoke_existing: bool
+    ) -> IssuedKey:
+        """A key for the e-mail of a confirmed link, in the caller's transaction (nothing is
+        committed: the caller commits together with its own changes and then calls
+        ``invalidate_keys(issued.replaced)``). ``AccountBlocked``; ``KeyLimitReached`` unless
+        ``revoke_existing``, which revokes the active keys (reason ``replaced``) first."""
+        now = self._clock()
+        account = await repo.get_or_create_account(session, email, None, now)
+        if account.status == "blocked":
+            raise AccountBlocked()
+        if account.verified_at is None:
+            account.verified_at = now
+        replaced: list[int] = []
+        limit = self._settings.api_key_max_per_account
+        if await repo.count_active_keys(session, account.id) >= limit:
+            if not revoke_existing:
+                raise KeyLimitReached(limit)
+            replaced = await repo.revoke_active_keys(session, account.id, "replaced")
+        key = generate_api_key()
+        record = await repo.add_key(session, account.id, hash_api_key(key), key_prefix(key))
+        return IssuedKey(key, record, account, tuple(replaced))
+
+    def invalidate_keys(self, key_ids: tuple[int, ...] | list[int]) -> None:
+        for key_id in key_ids:
+            self._invalidate_key(key_id)
+
+    async def get_own_account(self, session: AsyncSession, account_id: int) -> OwnAccount:
+        """The account with its active keys and those revoked in the last 30 days."""
+        account = await repo.get_account(session, account_id)
+        if account is None:
+            raise AccountNotFound()
+        now = self._clock()
+        keys = [
+            key
+            for key in await repo.list_keys(session, account_id)
+            if key.revoked_at is None or key.revoked_at >= now - timedelta(days=USAGE_DAYS)
+        ]
+        usage = await repo.usage_daily(session, account_id, now.date())
+        today = sum(requests for day, requests, _ in usage if day == now.date())
+        return OwnAccount(account, keys, today, sum(requests for _, requests, _ in usage))
+
+    async def add_own_key(self, session: AsyncSession, account_id: int) -> IssuedKey:
+        """A new key for the account (``KeyLimitReached`` at the limit)."""
+        account = await repo.lock_account(session, account_id)
+        if account is None:
+            raise AccountNotFound()
+        limit = self._settings.api_key_max_per_account
+        if await repo.count_active_keys(session, account_id) >= limit:
+            await session.rollback()
+            raise KeyLimitReached(limit)
+        key = generate_api_key()
+        record = await repo.add_key(session, account_id, hash_api_key(key), key_prefix(key))
+        await session.commit()
+        logger.info("API key issued account=%d key=%d", account_id, record.id)
+        return IssuedKey(key, record, account)
+
+    async def revoke_own_key(self, session: AsyncSession, account_id: int, key_id: int) -> None:
+        """Revoke a key of the account; a key of another account is "not found"."""
+        _check_id(key_id, KeyNotFound())
+        key = await repo.get_key(session, key_id)
+        if key is None or key.account_id != account_id:
+            raise KeyNotFound()
+        await self.revoke_key(session, key_id, "owner")
 
     async def list_accounts(
         self, session: AsyncSession, q: str | None, status: str | None, page: PageRequest
@@ -298,14 +383,22 @@ async def flush_api_key_usage(usage: ApiKeyUsage) -> None:
 async def cleanup_api_keys(
     session_factory: async_sessionmaker[AsyncSession], settings: Settings, now: datetime
 ) -> None:
-    """Scheduler job: drop counters older than API_KEY_USAGE_RETENTION_DAYS and confirmation
-    requests that expired long ago. A failure is logged only."""
+    """Scheduler job: drop counters older than API_KEY_USAGE_RETENTION_DAYS, finished mail
+    requests older than a day and accounts that were inactive for API_ACCOUNT_INACTIVE_DAYS
+    (no key created or used). A failure is logged only."""
     cutoff = now.date() - timedelta(days=settings.api_key_usage_retention_days)
+    inactive = now - timedelta(days=settings.api_account_inactive_days)
     try:
         async with session_factory() as session:
             usage = await repo.delete_old_usage(session, cutoff)
             requests = await repo.delete_expired_requests(session, now - timedelta(hours=24))
+            accounts = await repo.delete_inactive_accounts(session, inactive)
             await session.commit()
-        logger.info("API key cleanup usage_rows=%d requests=%d", usage, requests)
+        logger.info(
+            "API key cleanup usage_rows=%d requests=%d inactive_accounts=%d",
+            usage,
+            requests,
+            accounts,
+        )
     except Exception:
         logger.exception("API key cleanup failed")

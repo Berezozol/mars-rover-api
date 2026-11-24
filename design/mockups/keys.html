@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Get an API key — Sol Index</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container">
+    <a class="brand" href="index.html" aria-label="Sol Index home">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="8" fill="var(--accent)"/><ellipse cx="13" cy="13" rx="12" ry="4.5" fill="none" stroke="var(--text-muted)" stroke-width="1.4" transform="rotate(-20 13 13)"/></svg>
+      Sol Index <small>unofficial</small>
+    </a>
+    <nav class="nav" aria-label="Main">
+      <a href="index.html">Rovers</a>
+      <a href="photos.html?rover=perseverance" title="Latest sol">Photos</a>
+      <a href="search.html">Search</a>
+      <a href="manifest.html">Timeline</a>
+      <a href="map.html">Route map</a>
+      <a href="flights.html">Flights</a>
+      <a href="data.html">Data</a>
+      <a href="stats.html">Stats</a>
+      <a href="index.html#api" aria-current="page">API</a>
+    </nav>
+    <button class="theme-toggle" type="button" aria-label="Toggle colour theme">Theme</button>
+  </div>
+</header>
+
+<!-- MOCK DATA, not connected to the API.
+  POST /api/v2/keys/requests  (docs/API.md, "Ключи API (этап 20B)")
+  202 {"status": "accepted", "mail_delayed": false|true} · 422 validation_error · 429 rate_limited (+Retry-After) · 503 mail_unavailable (+Retry-After)
+  Error bodies and Retry-After values below are examples in the v2 error format; message texts are invented. -->
+
+<main>
+  <div class="container narrow">
+
+    <div class="mock-bar" role="group" aria-label="Mockup switcher (not part of the product)">
+      <strong>Mockup</strong>
+      <button class="btn btn-sm" type="button" data-state="form" aria-pressed="true">Form</button>
+      <button class="btn btn-sm" type="button" data-state="loading" aria-pressed="false">Sending</button>
+      <button class="btn btn-sm" type="button" data-state="sent" aria-pressed="false">Check your mail</button>
+      <button class="btn btn-sm" type="button" data-state="delayed" aria-pressed="false">Mail delayed</button>
+      <button class="btn btn-sm" type="button" data-state="e422" aria-pressed="false">422</button>
+      <button class="btn btn-sm" type="button" data-state="e429" aria-pressed="false">429</button>
+      <button class="btn btn-sm" type="button" data-state="e503" aria-pressed="false">503</button>
+      <label><input type="checkbox" id="reveal-hp"> show honeypot field</label>
+      <span class="mock-addr">URL: /keys · <code>?state=sent</code> opens a state</span>
+    </div>
+
+    <h1>Get an API key</h1>
+    <p class="muted">A free key gives your scripts a higher rate limit. Browsing Sol Index and calling the API without a key keeps working. We email you a one-time link; the key is shown once, in your browser.</p>
+
+    <noscript><p class="alert alert-error" role="alert">This mockup switches states with JavaScript.</p></noscript>
+
+    <!-- FORM (default, loading and all error states keep the form visible) -->
+    <section class="card panel" aria-labelledby="form-title" data-show="form loading e422 e429 e503">
+      <h2 id="form-title">Your email address</h2>
+
+      <div class="alert alert-warn" role="alert" data-show="e429" style="margin-bottom:var(--s4)">
+        <div>
+          <div class="alert-title">Too many requests from your network</div>
+          <p class="small">Please try again in about 42 minutes. (Limit: 5 requests per hour from one network.)</p>
+          <details class="more"><summary>Response</summary><pre class="raw">429  Retry-After: 2520
+{"error": {"code": "rate_limited", "message": "Rate limit exceeded", "details": null}}</pre></details>
+        </div>
+      </div>
+
+      <div class="alert alert-error" role="alert" data-show="e503" style="margin-bottom:var(--s4)">
+        <div>
+          <div class="alert-title">Key requests are paused for today</div>
+          <p class="small">Our daily email quota is used up. Please try again in about 4 hours. Your address was not saved.</p>
+          <details class="more"><summary>Response</summary><pre class="raw">503  Retry-After: 14400
+{"error": {"code": "mail_unavailable", "message": "Daily mail limit reached", "details": null}}</pre></details>
+        </div>
+      </div>
+
+      <form id="req-form" novalidate class="stack">
+        <div class="field">
+          <label for="email" class="plain"><strong>Email address</strong></label>
+          <input id="email" name="email" type="email" inputmode="email" autocomplete="email" spellcheck="false" maxlength="254" placeholder="user@example.org" value="user@example.org" required aria-describedby="email-hint email-err">
+          <span id="email-hint" class="hint">We send one link, valid for 60 minutes. ASCII addresses only.</span>
+          <span id="email-err" class="field-err" data-show="e422">Enter a valid address: one “@”, no spaces, a domain with a dot.</span>
+        </div>
+
+        <!-- honeypot: invisible to people and assistive tech, never focusable -->
+        <div class="hp" id="hp" aria-hidden="true">
+          <label for="website">Website (leave empty)</label>
+          <input id="website" name="website" type="text" tabindex="-1" autocomplete="off">
+        </div>
+
+        <button class="btn btn-primary btn-lg btn-block" type="submit" id="send-btn">Email me a link</button>
+        <p class="xsmall muted" role="status" id="send-status" data-show="loading">Sending…</p>
+
+        <details class="more" data-show="e422">
+          <summary>Response</summary>
+          <pre class="raw">422
+{"error": {"code": "validation_error", "message": "Request validation failed",
+  "details": [{"field": "email", "message": "value is not a valid email address"}]}}</pre>
+        </details>
+      </form>
+    </section>
+
+    <!-- SENT -->
+    <section class="card panel" aria-labelledby="sent-title" data-show="sent delayed" hidden>
+      <div class="alert alert-ok" style="margin-bottom:var(--s4)">
+        <div>
+          <div class="alert-title" id="sent-title" tabindex="-1">Check your mail</div>
+          <p>If this address can receive mail, a message from Sol Index is on its way to <strong class="sent-to">user@example.org</strong>. Open the link in it within 60 minutes to see your key.</p>
+        </div>
+      </div>
+      <div class="alert alert-warn" role="status" data-show="delayed" style="margin-bottom:var(--s4)">
+        <div>
+          <div class="alert-title">Our mail is running late</div>
+          <p class="small">The mail server is retrying right now, so the message can take up to about 20 minutes. You do not need to ask again.</p>
+          <details class="more"><summary>Response</summary><pre class="raw">202
+{"status": "accepted", "mail_delayed": true}</pre></details>
+        </div>
+      </div>
+      <ol class="steps">
+        <li>Open the message and press the link.</li>
+        <li>On the next page press “Show my key” and copy it. It is shown once.</li>
+      </ol>
+      <p class="small muted">Nothing after a few minutes? Check the spam folder, then you can <a href="#" data-goto="form">try again</a> (up to 3 messages per address per day). The page cannot tell you whether an address is registered, on purpose.</p>
+    </section>
+
+    <section class="stack" aria-label="Other key actions" style="margin-top:var(--s5)">
+      <p class="small">Already have a key? <a href="keys-manage.html">Manage my keys</a> · Lost it? Request a new one above, or <a href="keys-delete.html">delete my data</a>.</p>
+    </section>
+
+    <section class="data-note" aria-labelledby="data-title" style="margin-top:var(--s5)">
+      <h2 id="data-title">What we store</h2>
+      <p>For a key we store your email address, the dates it was created and confirmed, your keys (only as hashes) and the number of requests per day. The address is used to issue the key and to contact you about abuse; we send nothing but the messages you asked for and never share it with anyone. Email is sent through Google (Gmail). Unconfirmed requests are deleted within a day, request counters after 90 days, an account after 24 months without a request. You can delete your data at any time: in <a href="keys-manage.html">My keys</a> with your key, via the link on <a href="keys-delete.html">Delete my data</a>, or by replying to any of our emails.</p>
+    </section>
+
+    <p class="xsmall mono muted api-line">API: POST /api/v2/keys/requests {"email": "user@example.org"} → 202 {"status": "accepted", "mail_delayed": false}</p>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="container">
+    <nav class="footer-links" aria-label="API keys">
+      <a href="keys.html">Get an API key</a>
+      <a href="keys-manage.html">My keys</a>
+      <a href="keys-delete.html">Delete my data</a>
+    </nav>
+    Sol Index is an independent, unofficial project and is not affiliated with or endorsed by NASA or JPL. Image credit is shown next to every photo.
+  </div>
+</footer>
+
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  const btns = [...document.querySelectorAll('[data-state]')];
+  let state = 'form';
+
+  function setState(s, focus) {
+    state = s;
+    document.querySelectorAll('[data-show]').forEach(el => { el.hidden = !el.dataset.show.split(' ').includes(s); });
+    btns.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.state === s)));
+    const bad = s === 'e422';
+    $('#email').toggleAttribute('aria-invalid', bad);
+    if (bad) $('#email').setAttribute('aria-invalid', 'true');
+    $('#send-btn').disabled = s === 'loading';
+    $('#send-btn').textContent = s === 'loading' ? 'Sending…' : 'Email me a link';
+    $('#email').disabled = s === 'loading';
+    $('.sent-to').textContent = $('#email').value || 'user@example.org';
+    if (focus) {
+      if (s === 'sent' || s === 'delayed') $('#sent-title').focus();
+      else if (bad) $('#email').focus();
+    }
+  }
+
+  btns.forEach(b => b.addEventListener('click', () => setState(b.dataset.state, true)));
+  document.querySelectorAll('[data-goto]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); setState(a.dataset.goto, true); }));
+
+  $('#req-form').addEventListener('submit', e => {
+    e.preventDefault();
+    if (state === 'loading') return;
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test($('#email').value)) { setState('e422', true); return; }
+    setState('loading');
+    setTimeout(() => setState('sent', true), 700);
+  });
+
+  $('#reveal-hp').addEventListener('change', e => $('#hp').classList.toggle('reveal', e.target.checked));
+
+  document.querySelector('.theme-toggle').addEventListener('click', () => {
+    const r = document.documentElement, dark = r.dataset.theme ? r.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+    r.dataset.theme = dark ? 'light' : 'dark';
+  });
+
+  const q = new URLSearchParams(location.search).get('state');
+  setState(btns.some(b => b.dataset.state === q) ? q : 'form');
+})();
+</script>
+</body>
+</html>

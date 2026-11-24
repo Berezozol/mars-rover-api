@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>My keys — Sol Index</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container">
+    <a class="brand" href="index.html" aria-label="Sol Index home">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="8" fill="var(--accent)"/><ellipse cx="13" cy="13" rx="12" ry="4.5" fill="none" stroke="var(--text-muted)" stroke-width="1.4" transform="rotate(-20 13 13)"/></svg>
+      Sol Index <small>unofficial</small>
+    </a>
+    <nav class="nav" aria-label="Main">
+      <a href="index.html">Rovers</a>
+      <a href="photos.html?rover=perseverance" title="Latest sol">Photos</a>
+      <a href="search.html">Search</a>
+      <a href="manifest.html">Timeline</a>
+      <a href="map.html">Route map</a>
+      <a href="flights.html">Flights</a>
+      <a href="data.html">Data</a>
+      <a href="stats.html">Stats</a>
+      <a href="index.html#api" aria-current="page">API</a>
+    </nav>
+    <button class="theme-toggle" type="button" aria-label="Toggle colour theme">Theme</button>
+  </div>
+</header>
+
+<!-- MOCK DATA, not connected to the API.
+  GET /api/v2/account (X-Api-Key) → {email, status, created_at, keys[{id, prefix, created_at, last_used_at, revoked_at}], usage{today, last_30_days}, limits{per_minute, per_hour, concurrent}}
+  POST /api/v2/account/keys → 201 · DELETE /api/v2/account/keys/{id} → 204 · DELETE /api/v2/account → 204
+  Errors: 401 api_key_required | invalid_api_key | api_key_revoked · 403 account_blocked · 409 key_limit_reached
+  The key typed into the field lives only in component state: no localStorage / sessionStorage / cookie, never in the URL. -->
+
+<main>
+  <div class="container narrow">
+
+    <div class="mock-bar" role="group" aria-label="Mockup switcher (not part of the product)">
+      <strong>Mockup</strong>
+      <button class="btn btn-sm" type="button" data-state="out" aria-pressed="true">Key field</button>
+      <button class="btn btn-sm" type="button" data-state="loading" aria-pressed="false">Loading</button>
+      <button class="btn btn-sm" type="button" data-state="account" aria-pressed="false">Account</button>
+      <button class="btn btn-sm" type="button" data-state="limit" aria-pressed="false">2 active keys</button>
+      <button class="btn btn-sm" type="button" data-state="newkey" aria-pressed="false">New key issued</button>
+      <button class="btn btn-sm" type="button" data-state="e401" aria-pressed="false">401 unknown</button>
+      <button class="btn btn-sm" type="button" data-state="e401r" aria-pressed="false">401 revoked</button>
+      <button class="btn btn-sm" type="button" data-state="e403" aria-pressed="false">403 blocked</button>
+      <button class="btn btn-sm" type="button" data-state="deleted" aria-pressed="false">Account deleted</button>
+      <span class="mock-addr">URL: /keys/manage · <code>?state=account</code> opens a state</span>
+    </div>
+
+    <h1>My keys</h1>
+    <noscript><p class="alert alert-error" role="alert">This mockup switches states with JavaScript.</p></noscript>
+
+    <!-- SIGN-IN BY KEY -->
+    <section class="card panel" aria-labelledby="in-title" data-show="out loading e401 e401r e403">
+      <h2 id="in-title">Enter your API key</h2>
+      <p class="small muted">Your key is your login. It stays in this page’s memory only: it is not saved in the browser and never put in the address.</p>
+
+      <div class="alert alert-error" role="alert" data-show="e401" style="margin-bottom:var(--s4)">
+        <div>
+          <div class="alert-title">We do not recognise this key</div>
+          <p class="small">Check for a missing character or a space. Lost your key? <a href="keys.html">Request a new one</a> (a fresh link by email), or <a href="keys-delete.html">delete your data</a>.</p>
+          <details class="more"><summary>Response</summary><pre class="raw">401
+{"error": {"code": "invalid_api_key", "message": "Invalid API key", "details": null}}</pre></details>
+        </div>
+      </div>
+      <div class="alert alert-error" role="alert" data-show="e401r" style="margin-bottom:var(--s4)">
+        <div>
+          <div class="alert-title">This key has been revoked</div>
+          <p class="small">It no longer works. Sign in with another key of yours, or <a href="keys.html">request a new one</a>.</p>
+          <details class="more"><summary>Response</summary><pre class="raw">401
+{"error": {"code": "api_key_revoked", "message": "API key has been revoked", "details": null}}</pre></details>
+        </div>
+      </div>
+      <div class="alert alert-error" role="alert" data-show="e403" style="margin-bottom:var(--s4)">
+        <div>
+          <div class="alert-title">This account is blocked</div>
+          <p class="small">Keys of a blocked account cannot be managed here. If you think this is a mistake, reply to any email we sent you.</p>
+          <details class="more"><summary>Response</summary><pre class="raw">403
+{"error": {"code": "account_blocked", "message": "Account is blocked", "details": null}}</pre></details>
+        </div>
+      </div>
+
+      <form id="in-form" novalidate class="stack">
+        <div class="field">
+          <label for="apikey" class="plain"><strong>API key</strong></label>
+          <input id="apikey" class="mono-in" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="64" placeholder="si_EXAMPLE…" aria-describedby="apikey-hint">
+          <span id="apikey-hint" class="hint">Starts with <code>si_</code>.</span>
+        </div>
+        <label class="check small"><input type="checkbox" id="show-key"> Show the key while I type</label>
+        <button class="btn btn-primary btn-lg btn-block" type="submit" id="in-btn">Show my account</button>
+        <p class="xsmall muted" role="status" data-show="loading">Loading your account…</p>
+      </form>
+      <p class="small muted" style="margin-top:var(--s4)">No key yet? <a href="keys.html">Get an API key</a>. Lost it? <a href="keys-delete.html">Delete my data</a> with just your email.</p>
+    </section>
+
+    <!-- ACCOUNT -->
+    <div class="stack-lg" data-show="account limit newkey" hidden>
+
+      <section class="card panel" aria-labelledby="acc-title">
+        <div class="row" style="align-items:center">
+          <div>
+            <h2 id="acc-title" tabindex="-1" style="margin-bottom:var(--s1)">user@example.org</h2>
+            <span class="badge badge-active">Active</span> <span class="small muted">since 2026-12-01</span>
+          </div>
+          <span class="spacer"></span>
+          <button class="btn btn-sm" type="button" id="signout">Sign out</button>
+        </div>
+      </section>
+
+      <!-- new key, shown once -->
+      <section class="card panel stack" aria-labelledby="new-title" data-show="newkey" hidden>
+        <h2 id="new-title" tabindex="-1">Your new key</h2>
+        <div class="alert alert-warn" role="alert">
+          <div>
+            <div class="alert-title">Save it now. It will not be shown again.</div>
+            <p class="small">We keep only a hash, so we cannot show or resend it.</p>
+          </div>
+        </div>
+        <div class="keybox">
+          <code id="the-key" aria-label="New API key">si_EXAMPLEEXAMPLEEXAMPLEEXAMPLE0001</code>
+          <button class="btn btn-primary" type="button" id="copy-btn">Copy key</button>
+        </div>
+        <span class="copy-status" id="copy-status" role="status"></span>
+      </section>
+
+      <section aria-labelledby="keys-title">
+        <div class="result-head" style="margin-top:0">
+          <h2 id="keys-title">Keys</h2>
+          <span class="muted small" id="keys-count"></span>
+          <span class="spacer"></span>
+          <button class="btn btn-primary" type="button" id="new-btn">Create a new key</button>
+        </div>
+        <p class="small muted" id="limit-note" data-show="limit" hidden>You have 2 active keys, the most an account can hold. Revoke one to create another.</p>
+        <p class="small field-err" role="alert" id="new-err" data-show="none" hidden>You already have 2 active keys.</p>
+        <ul class="keys" id="keys-list" aria-label="Your keys"></ul>
+        <p class="xsmall muted" style="margin-top:var(--s2)">Revoked keys are listed for 30 days. A revoked key stops working at once.</p>
+      </section>
+
+      <section class="card panel" aria-labelledby="use-title">
+        <h2 id="use-title">Usage and limits</h2>
+        <dl class="stats">
+          <div><dt>Requests today (UTC)</dt><dd>312</dd></div>
+          <div><dt>Last 30 days</dt><dd>10,450</dd></div>
+          <div><dt>Per minute</dt><dd>120</dd></div>
+          <div><dt>Per hour</dt><dd>10,000</dd></div>
+          <div><dt>At once</dt><dd>8</dd></div>
+        </dl>
+        <p class="xsmall muted" style="margin:var(--s3) 0 0">Counted per account across all your keys, up to a minute behind.</p>
+      </section>
+
+      <section class="card panel danger-zone stack" aria-labelledby="del-title">
+        <h2 id="del-title">Delete my account</h2>
+        <p class="small">Removes your email address, all keys and all usage counters for good. Scripts that use your keys will get <code>401 invalid_api_key</code>. This cannot be undone.</p>
+        <button class="btn btn-danger" type="button" id="del-open" aria-expanded="false" aria-controls="del-confirm">Delete my account…</button>
+        <div class="confirm-box" id="del-confirm" hidden>
+          <p><strong>Delete user@example.org and everything linked to it?</strong></p>
+          <label class="check small"><input type="checkbox" id="del-check"> I understand this is permanent and my keys will stop working.</label>
+          <div class="row" style="margin-top:var(--s3)">
+            <button class="btn btn-danger" type="button" id="del-go" disabled>Yes, delete everything</button>
+            <button class="btn" type="button" id="del-cancel">Cancel</button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- DELETED -->
+    <section class="card panel stack" aria-labelledby="gone-title" data-show="deleted" hidden>
+      <div class="alert alert-ok">
+        <div>
+          <div class="alert-title" id="gone-title" tabindex="-1">Your account has been deleted</div>
+          <p class="small">Your email address, keys and usage counters are removed. The API keeps working without a key.</p>
+        </div>
+      </div>
+      <a class="btn" href="index.html">Back to Sol Index</a>
+    </section>
+
+    <p class="xsmall mono muted api-line">API: GET /api/v2/account · POST /api/v2/account/keys · DELETE /api/v2/account/keys/{id} · DELETE /api/v2/account</p>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="container">
+    <nav class="footer-links" aria-label="API keys">
+      <a href="keys.html">Get an API key</a>
+      <a href="keys-manage.html">My keys</a>
+      <a href="keys-delete.html">Delete my data</a>
+    </nav>
+    Sol Index is an independent, unofficial project and is not affiliated with or endorsed by NASA or JPL. Image credit is shown next to every photo.
+  </div>
+</footer>
+
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  const btns = [...document.querySelectorAll('[data-state]')];
+  const fmt = iso => iso ? iso.replace('T', ' ').slice(0, 16) + ' UTC' : null;
+  const KEY_SETS = {
+    account: [
+      { id: 41, prefix: 'si_EXAMPLEE', created_at: '2026-12-01T10:00:00Z', last_used_at: '2026-12-03T08:12:00Z', revoked_at: null },
+      { id: 39, prefix: 'si_EXAMPLED', created_at: '2026-11-20T09:30:00Z', last_used_at: '2026-11-28T17:05:00Z', revoked_at: '2026-12-01T10:00:00Z' }
+    ],
+    limit: [
+      { id: 44, prefix: 'si_EXAMPLEF', created_at: '2026-12-04T12:00:00Z', last_used_at: null, revoked_at: null },
+      { id: 41, prefix: 'si_EXAMPLEE', created_at: '2026-12-01T10:00:00Z', last_used_at: '2026-12-03T08:12:00Z', revoked_at: null }
+    ],
+    newkey: [
+      { id: 45, prefix: 'si_EXAMPLEG', created_at: '2026-12-05T09:00:00Z', last_used_at: null, revoked_at: null },
+      { id: 41, prefix: 'si_EXAMPLEE', created_at: '2026-12-01T10:00:00Z', last_used_at: '2026-12-03T08:12:00Z', revoked_at: null }
+    ]
+  };
+  let keys = [], state = 'out', pendingRevoke = null;
+  const active = () => keys.filter(k => !k.revoked_at).length;
+
+  function renderKeys() {
+    $('#keys-count').textContent = active() + ' of 2 active';
+    $('#new-btn').disabled = active() >= 2;
+    $('#new-btn').setAttribute('aria-describedby', active() >= 2 ? 'limit-note' : '');
+    $('#limit-note').hidden = active() < 2;
+    $('#keys-list').innerHTML = keys.map(k => {
+      const rev = !!k.revoked_at;
+      const confirm = pendingRevoke === k.id ? `
+        <div class="confirm-box" role="group" aria-label="Confirm revoking key ${k.prefix}">
+          <p><strong>Revoke ${k.prefix}… (id ${k.id})?</strong> It stops working immediately${active() === 1 ? ' and you will have no active key' : ''}.</p>
+          <div class="row"><button class="btn btn-danger btn-sm" type="button" data-do-revoke="${k.id}">Yes, revoke</button><button class="btn btn-sm" type="button" data-cancel-revoke>Cancel</button></div>
+        </div>` : '';
+      return `<li class="card key-item${rev ? ' revoked' : ''}">
+        <div class="head">
+          <code>${k.prefix}…</code>
+          <span class="badge ${rev ? 'badge-complete' : 'badge-active'}">${rev ? 'Revoked' : 'Active'}</span>
+          <span class="xsmall muted">id ${k.id}</span>
+          <span class="spacer"></span>
+          ${rev ? '' : `<button class="btn btn-sm" type="button" data-revoke="${k.id}" aria-label="Revoke key ${k.prefix}, id ${k.id}">Revoke</button>`}
+        </div>
+        <dl>
+          <div><dt>Created</dt><dd>${fmt(k.created_at)}</dd></div>
+          <div><dt>Last used</dt><dd>${fmt(k.last_used_at) || 'Never'}</dd></div>
+          ${rev ? `<div><dt>Revoked</dt><dd>${fmt(k.revoked_at)}</dd></div>` : ''}
+        </dl>${confirm}
+      </li>`;
+    }).join('');
+  }
+
+  function setState(s, focus) {
+    state = s; pendingRevoke = null;
+    if (KEY_SETS[s]) keys = KEY_SETS[s].map(k => ({ ...k }));
+    document.querySelectorAll('[data-show]').forEach(el => { el.hidden = !el.dataset.show.split(' ').includes(s); });
+    btns.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.state === s)));
+    $('#in-btn').disabled = s === 'loading';
+    $('#in-btn').textContent = s === 'loading' ? 'Loading…' : 'Show my account';
+    $('#new-err').hidden = true;
+    $('#del-confirm').hidden = true; $('#del-open').setAttribute('aria-expanded', 'false');
+    $('#del-check').checked = false; $('#del-go').disabled = true;
+    $('#copy-status').textContent = '';
+    if (KEY_SETS[s]) renderKeys();
+    if (focus) { const h = { account: '#acc-title', limit: '#acc-title', newkey: '#new-title', deleted: '#gone-title' }[s]; if (h) $(h).focus(); else if (s !== 'loading') $('#apikey').focus(); }
+  }
+  btns.forEach(b => b.addEventListener('click', () => setState(b.dataset.state, true)));
+
+  $('#in-form').addEventListener('submit', e => {
+    e.preventDefault();
+    if (state === 'loading') return;
+    const v = $('#apikey').value.trim();
+    if (!v.startsWith('si_')) { setState('e401', true); return; }
+    setState('loading'); setTimeout(() => setState('account', true), 600);
+  });
+  $('#show-key').addEventListener('change', e => { $('#apikey').type = e.target.checked ? 'text' : 'password'; });
+  $('#signout').addEventListener('click', () => { $('#apikey').value = ''; $('#apikey').type = 'password'; $('#show-key').checked = false; setState('out', true); });
+
+  $('#new-btn').addEventListener('click', () => {
+    if (active() >= 2) { $('#new-err').hidden = false; return; }
+    keys.unshift({ id: 45, prefix: 'si_EXAMPLEG', created_at: '2026-12-05T09:00:00Z', last_used_at: null, revoked_at: null });
+    document.querySelectorAll('[data-show]').forEach(el => { el.hidden = !el.dataset.show.split(' ').includes('newkey'); });
+    state = 'newkey'; btns.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.state === 'newkey')));
+    renderKeys(); $('#new-title').focus();
+  });
+
+  $('#keys-list').addEventListener('click', e => {
+    const t = e.target.closest('button'); if (!t) return;
+    if (t.dataset.revoke) { pendingRevoke = +t.dataset.revoke; renderKeys(); $('#keys-list [data-do-revoke]').focus(); }
+    else if (t.dataset.cancelRevoke !== undefined) { const id = pendingRevoke; pendingRevoke = null; renderKeys(); $(`[data-revoke="${id}"]`).focus(); }
+    else if (t.dataset.doRevoke) {
+      const k = keys.find(x => x.id === +t.dataset.doRevoke); k.revoked_at = '2026-12-05T09:10:00Z'; pendingRevoke = null; renderKeys(); $('#keys-count').focus?.();
+    }
+  });
+
+  $('#del-open').addEventListener('click', () => { $('#del-confirm').hidden = false; $('#del-open').setAttribute('aria-expanded', 'true'); $('#del-check').focus(); });
+  $('#del-cancel').addEventListener('click', () => { $('#del-confirm').hidden = true; $('#del-open').setAttribute('aria-expanded', 'false'); $('#del-open').focus(); });
+  $('#del-check').addEventListener('change', e => { $('#del-go').disabled = !e.target.checked; });
+  $('#del-go').addEventListener('click', () => setState('deleted', true));
+
+  $('#copy-btn').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText($('#the-key').textContent); $('#copy-status').textContent = 'Copied. Store it in your password manager or secrets file now.'; }
+    catch (e) {
+      const r = document.createRange(); r.selectNodeContents($('#the-key')); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+      $('#copy-status').textContent = 'Key selected. Press Ctrl+C (or ⌘C) to copy it.';
+    }
+  });
+
+  document.querySelector('.theme-toggle').addEventListener('click', () => {
+    const r = document.documentElement, dark = r.dataset.theme ? r.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+    r.dataset.theme = dark ? 'light' : 'dark';
+  });
+
+  const q = new URLSearchParams(location.search).get('state');
+  setState(btns.some(b => b.dataset.state === q) ? q : 'out');
+})();
+</script>
+</body>
+</html>

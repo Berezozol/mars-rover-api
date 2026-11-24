@@ -3146,10 +3146,648 @@
           }
         }
       }
+    },
+    "/api/v2/account": {
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Get Account",
+        "description": "Your e-mail, keys, usage and limits.",
+        "operationId": "get_account_api_v2_account_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnAccountOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "api_key_required / invalid_api_key / api_key_revoked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "account_blocked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Delete Account",
+        "description": "Delete your account, keys, counters and mail requests for good.",
+        "operationId": "delete_account_api_v2_account_delete",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "api_key_required / invalid_api_key / api_key_revoked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "account_blocked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/account/keys": {
+      "post": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Add Key",
+        "description": "Add a key to your account; it is shown only in this response.",
+        "operationId": "add_key_api_v2_account_keys_post",
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewKeyOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "api_key_required / invalid_api_key / api_key_revoked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "account_blocked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "key_limit_reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/account/keys/{key_id}": {
+      "delete": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Revoke Key",
+        "description": "Revoke one of your keys (also the one that makes this request).",
+        "operationId": "revoke_key_api_v2_account_keys__key_id__delete",
+        "parameters": [
+          {
+            "name": "key_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
+              "title": "Key Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "api_key_required / invalid_api_key / api_key_revoked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "account_blocked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/keys/requests": {
+      "post": {
+        "tags": [
+          "keys"
+        ],
+        "summary": "Request Key",
+        "description": "Ask for a key: a one-time link is mailed to the address (the answer is the same for\nevery valid address).",
+        "operationId": "request_key_api_v2_keys_requests_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "title": "Email"
+                  },
+                  "website": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "title": "Website"
+                  }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "email"
+                ],
+                "title": "MailRequestIn",
+                "description": "POST /keys/requests and /account/deletion-requests body; ``website`` is the honeypot."
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailRequestOut"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "payload_too_large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "unsupported_media_type",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "mail_unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/keys/confirm": {
+      "post": {
+        "tags": [
+          "keys"
+        ],
+        "summary": "Confirm Key",
+        "description": "Spend the link and get the key; it is shown only in this response.",
+        "operationId": "confirm_key_api_v2_keys_confirm_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{43}$",
+                    "title": "Token"
+                  },
+                  "revoke_existing": {
+                    "type": "boolean",
+                    "title": "Revoke Existing",
+                    "default": false
+                  }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "token"
+                ],
+                "title": "ConfirmKeyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssuedKeyOut"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "payload_too_large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "unsupported_media_type",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "account_blocked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "key_limit_reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/account/deletion-requests": {
+      "post": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Request Deletion",
+        "description": "Ask for a deletion link by e-mail (for those who lost the key); the answer is the same\nfor every valid address.",
+        "operationId": "request_deletion_api_v2_account_deletion_requests_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "title": "Email"
+                  },
+                  "website": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "title": "Website"
+                  }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "email"
+                ],
+                "title": "MailRequestIn",
+                "description": "POST /keys/requests and /account/deletion-requests body; ``website`` is the honeypot."
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailRequestOut"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "payload_too_large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "unsupported_media_type",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "mail_unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/account/deletion-confirm": {
+      "post": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Confirm Deletion",
+        "description": "Spend the deletion link: your data is deleted.",
+        "operationId": "confirm_deletion_api_v2_account_deletion_confirm_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{43}$",
+                    "title": "Token"
+                  }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "token"
+                ],
+                "title": "ConfirmDeletionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "400": {
+            "description": "invalid_token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "payload_too_large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "unsupported_media_type",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "ApiKeyInfoOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "prefix": {
+            "type": "string",
+            "title": "Prefix"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "prefix",
+          "created_at",
+          "last_used_at",
+          "revoked_at"
+        ],
+        "title": "ApiKeyInfoOut"
+      },
       "CameraOut": {
         "properties": {
           "code": {
@@ -3453,6 +4091,69 @@
         ],
         "title": "InSolOut"
       },
+      "IssuedAccountOut": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "created_at"
+        ],
+        "title": "IssuedAccountOut"
+      },
+      "IssuedKeyOut": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "key_info": {
+            "$ref": "#/components/schemas/ApiKeyInfoOut"
+          },
+          "account": {
+            "$ref": "#/components/schemas/IssuedAccountOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "key_info",
+          "account"
+        ],
+        "title": "IssuedKeyOut",
+        "description": "The only response that carries the key itself."
+      },
+      "LimitsOut": {
+        "properties": {
+          "per_minute": {
+            "type": "integer",
+            "title": "Per Minute"
+          },
+          "per_hour": {
+            "type": "integer",
+            "title": "Per Hour"
+          },
+          "concurrent": {
+            "type": "integer",
+            "title": "Concurrent"
+          }
+        },
+        "type": "object",
+        "required": [
+          "per_minute",
+          "per_hour",
+          "concurrent"
+        ],
+        "title": "LimitsOut"
+      },
       "LineStringOut": {
         "properties": {
           "type": {
@@ -3555,6 +4256,25 @@
           "items"
         ],
         "title": "LocationResponse"
+      },
+      "MailRequestOut": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "accepted",
+            "title": "Status",
+            "default": "accepted"
+          },
+          "mail_delayed": {
+            "type": "boolean",
+            "title": "Mail Delayed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mail_delayed"
+        ],
+        "title": "MailRequestOut"
       },
       "ManifestOut": {
         "properties": {
@@ -3744,6 +4464,24 @@
         ],
         "title": "NearestSolsOut"
       },
+      "NewKeyOut": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "key_info": {
+            "$ref": "#/components/schemas/ApiKeyInfoOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "key_info"
+        ],
+        "title": "NewKeyOut",
+        "description": "A key added from the account (no ``account`` object)."
+      },
       "ObservationCounts": {
         "properties": {
           "used": {
@@ -3771,6 +4509,49 @@
           "dropped_invalid"
         ],
         "title": "ObservationCounts"
+      },
+      "OwnAccountOut": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "blocked"
+            ],
+            "title": "Status"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "keys": {
+            "items": {
+              "$ref": "#/components/schemas/ApiKeyInfoOut"
+            },
+            "type": "array",
+            "title": "Keys"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/UsageOut"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/LimitsOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "status",
+          "created_at",
+          "keys",
+          "usage",
+          "limits"
+        ],
+        "title": "OwnAccountOut"
       },
       "ParameterInfo": {
         "properties": {
@@ -4895,6 +5676,24 @@
         ],
         "title": "TraverseResponse",
         "description": "GeoJSON FeatureCollection (RFC 7946) with extra top-level members."
+      },
+      "UsageOut": {
+        "properties": {
+          "today": {
+            "type": "integer",
+            "title": "Today"
+          },
+          "last_30_days": {
+            "type": "integer",
+            "title": "Last 30 Days"
+          }
+        },
+        "type": "object",
+        "required": [
+          "today",
+          "last_30_days"
+        ],
+        "title": "UsageOut"
       },
       "UvStats": {
         "properties": {

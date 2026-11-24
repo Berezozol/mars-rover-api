@@ -33,8 +33,9 @@ image feeds and archives published by NASA/JPL.</p>
 <ol>
   <li><strong>Change the host</strong> and keep the rest of the URL.
     <pre>https://api.nasa.gov/mars-photos/...  →  $origin/mars-photos/...</pre></li>
-  <li><strong>No key needed.</strong> An <code>api_key</code> parameter is accepted and ignored,
-    so existing clients keep working unchanged.</li>
+  <li><strong>No key needed.</strong> A key from api.nasa.gov can stay in your requests: it is ignored,
+    so existing clients keep working unchanged. For a higher rate limit, get a key of ours
+    (see <a href="#api-keys">API keys</a>).</li>
   <li><strong>Both paths work:</strong> <code>$origin/api/v1/...</code> and
     <code>$origin/mars-photos/api/v1/...</code> serve the same API.</li>
 </ol>
@@ -75,6 +76,72 @@ image feeds and archives published by NASA/JPL.</p>
       <td>full frames only (counts match from sol 4103)</td></tr>
   </tbody>
 </table>
+
+<h2 id="api-keys">API keys</h2>
+<p>A key is optional. Without one, the rate limit is counted per client IP: 60 requests per minute,
+2000 per hour, 4 at a time. With a key it is counted per account, and all keys of one account share it:
+120 per minute, 10,000 per hour, 8 at a time. The key works on v1 and v2.</p>
+
+<h3>How to get a key</h3>
+<ol>
+  <li>Open <a href="$origin/keys">$origin/keys</a> in the web interface, or send
+    <code>POST /api/v2/keys/requests</code> with <code>{"email": "user@example.org"}</code>
+    (<code>Content-Type: application/json</code>).</li>
+  <li>We email you a one-time link. It works for 60 minutes after the email is sent.</li>
+  <li>Open the link and press the button. The key is shown once on that page: copy it right away.
+    It looks like <code>si_</code> followed by 32 letters and digits.</li>
+</ol>
+<pre>curl -X POST "$origin/api/v2/keys/requests" \
+  -H "Content-Type: application/json" \
+  -d '{"email": "user@example.org"}'
+# 202 {"status": "accepted", "mail_delayed": false}</pre>
+<p>The answer is the same for every valid address, so it does not tell whether an address is known.
+Up to 3 emails per address in 24 hours are sent; more requests get the same answer but no email.
+<code>"mail_delayed": true</code> means the server has trouble sending email right now and will retry,
+so the email may come late. If it does not come, check your spam folder, then ask again later.
+An account can have 2 active keys.</p>
+
+<h3>How to send the key</h3>
+<p>Use the <code>X-Api-Key</code> header. It is preferred: it stays out of proxy logs and browser history.
+The <code>api_key</code> query parameter works too. If both are present, the header is used.</p>
+<pre>curl "$origin/api/v2/account" -H "X-Api-Key: si_EXAMPLEEXAMPLEEXAMPLEEXAMPLE0000"</pre>
+<p><code>GET /api/v2/account</code> shows your keys, the number of requests per day and your limits.
+An <code>api_key</code> value that is not in our format (an api.nasa.gov key, <code>DEMO_KEY</code>) is
+ignored and the request is served without a key. An <code>X-Api-Key</code> header that is not in our
+format gives <code>401 invalid_api_key</code> on v2.</p>
+
+<h3>Errors</h3>
+<table>
+  <thead><tr><th>Status</th><th>Code</th><th>When</th></tr></thead>
+  <tbody>
+    <tr><td>401</td><td><code>invalid_api_key</code></td><td>the key is not found</td></tr>
+    <tr><td>401</td><td><code>api_key_revoked</code></td><td>the key was revoked</td></tr>
+    <tr><td>401</td><td><code>api_key_required</code></td><td><code>/api/v2/account*</code> without a key</td></tr>
+    <tr><td>403</td><td><code>account_blocked</code></td><td>the account is blocked</td></tr>
+    <tr><td>409</td><td><code>key_limit_reached</code></td><td>the account already has 2 active keys</td></tr>
+    <tr><td>400</td><td><code>invalid_token</code></td><td>the link is used, expired or wrong</td></tr>
+    <tr><td>422</td><td><code>validation_error</code></td><td>the email or the request body is not valid</td></tr>
+    <tr><td>429</td><td><code>rate_limited</code></td><td>over the rate limit, or more than 5 key requests per hour from one IP; see <code>Retry-After</code> (seconds)</td></tr>
+    <tr><td>503</td><td><code>mail_unavailable</code></td><td>the server reached its daily email limit; see <code>Retry-After</code></td></tr>
+  </tbody>
+</table>
+<p>A bad or revoked key does not fall back to the no-key limit: the request fails.
+On v1 the same problems answer <code>403</code> in the old error format
+(<code>{"errors": "Invalid API key"}</code>, <code>{"errors": "API key revoked"}</code>).
+Many wrong keys from one IP in a short time lead to <code>429</code> for keys from that IP.
+Bodies of key requests must be JSON up to 2 KiB (<code>415</code> and <code>413</code> otherwise).</p>
+
+<h3>What we store about you</h3>
+<p>For a key we store your email address, the dates when the account and keys were created and confirmed,
+your keys (only as a hash, so we cannot show them again) and the number of requests per day. We need the
+email to issue the key and to reach you in case of abuse. We send you only the emails you asked for, and
+we do not give your address to anyone. Emails are sent through $mail_provider. Unconfirmed requests are
+deleted within a day, request counters after 90 days, and an account with no requests for 24 months is
+deleted automatically.</p>
+<p>You can delete your data at any time: on <a href="$origin/keys/manage">$origin/keys/manage</a> with
+your key (<code>DELETE /api/v2/account</code>), or, if you lost the key, on
+<a href="$origin/keys/delete">$origin/keys/delete</a> with a link sent to your address. You can also reply
+to any email from us.</p>
 
 <h2>Examples</h2>
 <p>v1, compatible with the old API:</p>

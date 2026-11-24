@@ -1,6 +1,14 @@
 // Generated from openapi.json - do not edit; regenerate with
 // `uv run python -m app.cli openapi-ts --output examples/types.ts`
 
+export interface ApiKeyInfoOut {
+  created_at: string;
+  id: number;
+  last_used_at: string | null;
+  prefix: string;
+  revoked_at: string | null;
+}
+
 export interface CameraOut {
   code: string;
   name: string;
@@ -62,6 +70,23 @@ export interface InSolOut {
   total: number;
 }
 
+export interface IssuedAccountOut {
+  created_at: string;
+  email: string;
+}
+
+export interface IssuedKeyOut {
+  account: IssuedAccountOut;
+  key: string;
+  key_info: ApiKeyInfoOut;
+}
+
+export interface LimitsOut {
+  concurrent: number;
+  per_hour: number;
+  per_minute: number;
+}
+
 export interface LineStringOut {
   coordinates: number[][];
   type?: "LineString";
@@ -79,6 +104,11 @@ export interface LocationResponse {
   rover: string;
   source_max_sol: number | null;
   updated_at: string | null;
+}
+
+export interface MailRequestOut {
+  mail_delayed: boolean;
+  status?: "accepted";
 }
 
 export interface ManifestOut {
@@ -118,11 +148,25 @@ export interface NearestSolsOut {
   before: number | null;
 }
 
+export interface NewKeyOut {
+  key: string;
+  key_info: ApiKeyInfoOut;
+}
+
 export interface ObservationCounts {
   dropped_invalid: number;
   dropped_low_rate: number;
   dropped_qc: number;
   used: number;
+}
+
+export interface OwnAccountOut {
+  created_at: string;
+  email: string;
+  keys: ApiKeyInfoOut[];
+  limits: LimitsOut;
+  status: "active" | "blocked";
+  usage: UsageOut;
 }
 
 export interface ParameterInfo {
@@ -308,6 +352,11 @@ export interface TraverseResponse {
   source_max_sol: number | null;
   type?: "FeatureCollection";
   updated_at: string | null;
+}
+
+export interface UsageOut {
+  last_30_days: number;
+  today: number;
 }
 
 export interface UvStats {

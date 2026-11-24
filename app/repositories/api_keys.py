@@ -26,6 +26,9 @@ from app.core.apikeys import DISPLAY_PREFIX_LENGTH
 from app.db.models import ApiAccount, ApiKey, ApiKeyRequest, ApiKeyUsageDaily
 from app.repositories._common import FRESH, AnyRow, AnySelect
 
+# Key of the advisory lock that serializes mail requests.
+_MAIL_LOCK_KEY = 20_260_220
+
 # Days of usage shown by admin (today included).
 USAGE_DAYS = 30
 
@@ -326,5 +329,153 @@ async def delete_old_usage(session: AsyncSession, before: date) -> int:
 
 
 async def delete_expired_requests(session: AsyncSession, before: datetime) -> int:
-    result = await session.execute(delete(ApiKeyRequest).where(ApiKeyRequest.expires_at < before))
+    """Mail requests that are over: sent ones whose link expired, failed and still pending ones
+    created, before ``before``."""
+    statement = delete(ApiKeyRequest).where(
+        or_(
+            and_(ApiKeyRequest.status == "sent", ApiKeyRequest.expires_at < before),
+            and_(ApiKeyRequest.status != "sent", ApiKeyRequest.created_at < before),
+        )
+    )
+    result = await session.execute(statement)
     return int(getattr(result, "rowcount", 0) or 0)
+
+
+async def delete_inactive_accounts(session: AsyncSession, before: datetime) -> int:
+    """Delete accounts created before ``before`` none of whose keys was created or used since
+    (keys, counters and mail requests of the e-mail go with them)."""
+    recent = exists().where(
+        ApiKey.account_id == ApiAccount.id,
+        or_(ApiKey.created_at >= before, ApiKey.last_used_at >= before),
+    )
+    statement = (
+        delete(ApiAccount)
+        .where(ApiAccount.created_at < before, ~recent)
+        .returning(ApiAccount.email)
+    )
+    emails = list((await session.execute(statement)).scalars())
+    if emails:
+        await session.execute(delete(ApiKeyRequest).where(ApiKeyRequest.email.in_(emails)))
+    return len(emails)
+
+
+# Mail requests (stage 20B)
+
+
+async def lock_mail_requests(session: AsyncSession) -> None:
+    """Serialize the limit checks and inserts of mail requests (released at commit/rollback)."""
+    await session.execute(select(func.pg_advisory_xact_lock(_MAIL_LOCK_KEY)))
+
+
+_GMAIL_DOMAINS = ("gmail.com", "googlemail.com")
+
+
+def _same_mailbox(email: str) -> ColumnElement[bool]:
+    """Rows of the same mailbox: the address itself, and for Gmail also its dot and ``+tag``
+    variants (counting only; the address is stored as given)."""
+    local, _, domain = email.rpartition("@")
+    if domain not in _GMAIL_DOMAINS:
+        return ApiKeyRequest.email == email
+    canon = local.split("+", 1)[0].replace(".", "")
+    stored_local = func.split_part(ApiKeyRequest.email, "@", 1)
+    plain = func.replace(func.split_part(stored_local, "+", 1), ".", "")
+    return and_(func.split_part(ApiKeyRequest.email, "@", 2).in_(_GMAIL_DOMAINS), plain == canon)
+
+
+async def count_mail_requests(
+    session: AsyncSession, since: datetime, email: str | None = None
+) -> tuple[int, datetime | None]:
+    """Mail requests created since ``since`` (of one e-mail, or all) and the oldest of them."""
+    statement = select(func.count(), func.min(ApiKeyRequest.created_at)).where(
+        ApiKeyRequest.created_at >= since
+    )
+    if email is not None:
+        statement = statement.where(_same_mailbox(email))
+    row = (await session.execute(statement)).one()
+    return int(row[0]), row[1]
+
+
+async def get_account_by_email(session: AsyncSession, email: str) -> ApiAccount | None:
+    statement = select(ApiAccount).where(ApiAccount.email == email).execution_options(**FRESH)
+    return (await session.execute(statement)).scalar_one_or_none()
+
+
+async def add_mail_request(
+    session: AsyncSession, email: str, purpose: str, now: datetime, status: str = "pending"
+) -> ApiKeyRequest:
+    request = ApiKeyRequest(
+        email=email,
+        purpose=purpose,
+        status=status,
+        attempts=0,
+        created_at=now,
+        next_attempt_at=now,
+    )
+    session.add(request)
+    await session.flush()
+    return request
+
+
+async def claim_pending(session: AsyncSession, now: datetime, limit: int) -> list[ApiKeyRequest]:
+    """Due pending requests, locked (rows locked by another sender are skipped)."""
+    statement = (
+        select(ApiKeyRequest)
+        .where(ApiKeyRequest.status == "pending", ApiKeyRequest.next_attempt_at <= now)
+        .order_by(ApiKeyRequest.id)
+        .limit(limit)
+        .with_for_update(skip_locked=True)
+        .execution_options(**FRESH)
+    )
+    return list((await session.execute(statement)).scalars().all())
+
+
+async def lock_request_by_token(
+    session: AsyncSession, token_hash: bytes, purpose: str
+) -> ApiKeyRequest | None:
+    statement = (
+        select(ApiKeyRequest)
+        .where(ApiKeyRequest.token_hash == token_hash, ApiKeyRequest.purpose == purpose)
+        .with_for_update()
+        .execution_options(**FRESH)
+    )
+    return (await session.execute(statement)).scalar_one_or_none()
+
+
+async def delete_requests_of_email(session: AsyncSession, email: str) -> None:
+    await session.execute(delete(ApiKeyRequest).where(ApiKeyRequest.email == email))
+
+
+async def mail_counters(
+    session: AsyncSession, since: datetime
+) -> tuple[int, int, int, datetime | None]:
+    """Pending requests, sent since ``since``, failed created since ``since``, last sent_at."""
+    r = ApiKeyRequest
+    statement = select(
+        func.count().filter(r.status == "pending"),
+        func.count().filter(and_(r.status == "sent", r.sent_at >= since)),
+        func.count().filter(and_(r.status == "failed", r.created_at >= since)),
+        func.max(r.sent_at),
+    )
+    row = (await session.execute(statement)).one()
+    return int(row[0]), int(row[1]), int(row[2]), row[3]
+
+
+async def lock_account(session: AsyncSession, account_id: int) -> ApiAccount | None:
+    statement = (
+        select(ApiAccount)
+        .where(ApiAccount.id == account_id)
+        .with_for_update()
+        .execution_options(**FRESH)
+    )
+    return (await session.execute(statement)).scalar_one_or_none()
+
+
+async def revoke_active_keys(session: AsyncSession, account_id: int, reason: str) -> list[int]:
+    """Revoke every active key of the account; returns their ids."""
+    statement = (
+        update(ApiKey)
+        .where(ApiKey.account_id == account_id, ApiKey.revoked_at.is_(None))
+        .values(revoked_at=func.now(), revoke_reason=reason)
+        .returning(ApiKey.id)
+    )
+    return list((await session.execute(statement)).scalars())

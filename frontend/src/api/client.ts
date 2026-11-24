@@ -1,11 +1,15 @@
 // The single module that talks to the API. v2 errors are parsed here, once.
 import type {
+  AccountInfo,
   Camera,
   Flight,
   ImageSize,
+  IssuedKey,
   LatestPhotos,
   LocationResponse,
+  MailAccepted,
   Manifest,
+  NewKey,
   PhotoDetail,
   PhotoPage,
   PhotoQuery,
@@ -243,6 +247,86 @@ export async function healthSync(signal?: AbortSignal): Promise<HealthSync> {
   }
   return body as HealthSync;
 }
+
+/**
+ * `POST` / `DELETE` for the key screens. Never retried, never cached, no cookies and no `Referer`
+ * (the body or `X-Api-Key` header holds a secret). A `204` gives `undefined`.
+ */
+async function send<T>(
+  method: "POST" | "DELETE",
+  path: string,
+  opts: { body?: unknown; apiKey?: string } = {},
+): Promise<T> {
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (opts.body !== undefined) headers["Content-Type"] = "application/json";
+  if (opts.apiKey) headers["X-Api-Key"] = opts.apiKey;
+  let res: Response;
+  try {
+    res = await fetch(apiBase() + buildPath(path), {
+      method,
+      headers,
+      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+      cache: "no-store",
+      credentials: "omit",
+      referrerPolicy: "no-referrer",
+    });
+  } catch {
+    throw new ApiError({ status: 0, code: NETWORK_ERROR, message: "Network error" });
+  }
+  if (!res.ok) throw await errorFromResponse(res);
+  if (res.status === 204) return undefined as T;
+  try {
+    return (await res.json()) as T;
+  } catch {
+    throw new ApiError({ status: res.status, code: HTTP_ERROR, message: "Unreadable response" });
+  }
+}
+
+/** `GET /account` with the key in a header (never in the address). */
+async function getAccount(apiKey: string, signal?: AbortSignal): Promise<AccountInfo> {
+  let res: Response;
+  try {
+    res = await fetch(apiBase() + buildPath("/account"), {
+      headers: { Accept: "application/json", "X-Api-Key": apiKey },
+      cache: "no-store",
+      credentials: "omit",
+      referrerPolicy: "no-referrer",
+      signal,
+    });
+  } catch (e) {
+    if (signal?.aborted) throw e;
+    throw new ApiError({ status: 0, code: NETWORK_ERROR, message: "Network error" });
+  }
+  if (!res.ok) throw await errorFromResponse(res);
+  try {
+    return (await res.json()) as AccountInfo;
+  } catch {
+    throw new ApiError({ status: res.status, code: HTTP_ERROR, message: "Unreadable response" });
+  }
+}
+
+/** API keys (stage 20B). `website` is the honeypot: sent only when something was typed into it. */
+export const keysApi = {
+  requestKey: (email: string, website = "") =>
+    send<MailAccepted>("POST", "/keys/requests", {
+      body: website ? { email, website } : { email },
+    }),
+  confirmKey: (token: string, revokeExisting = false) =>
+    send<IssuedKey>("POST", "/keys/confirm", {
+      body: { token, revoke_existing: revokeExisting },
+    }),
+  account: getAccount,
+  createKey: (apiKey: string) => send<NewKey>("POST", "/account/keys", { apiKey }),
+  revokeKey: (apiKey: string, id: number) =>
+    send<void>("DELETE", `/account/keys/${id}`, { apiKey }),
+  deleteAccount: (apiKey: string) => send<void>("DELETE", "/account", { apiKey }),
+  requestDeletion: (email: string, website = "") =>
+    send<MailAccepted>("POST", "/account/deletion-requests", {
+      body: website ? { email, website } : { email },
+    }),
+  confirmDeletion: (token: string) =>
+    send<void>("POST", "/account/deletion-confirm", { body: { token } }),
+};
 
 const slug = (rover: string) => encodeURIComponent(rover);
 

@@ -436,3 +436,40 @@ export interface WeatherSolDetail extends WeatherSol {
   hours: WeatherHour[];
   source: { files: { product: string; version: string; file: string; link: string }[] };
 }
+
+/** API keys (stage 20B). */
+export interface KeyInfo {
+  id: number;
+  prefix: string;
+  created_at: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+}
+
+/** `202` of `POST /keys/requests` and `POST /account/deletion-requests`; same for any address. */
+export interface MailAccepted {
+  status: "accepted";
+  mail_delayed: boolean;
+}
+
+/** `201` of `POST /keys/confirm`. */
+export interface IssuedKey {
+  key: string;
+  key_info: KeyInfo;
+  account: { email: string; created_at: string };
+}
+
+/** `201` of `POST /account/keys`. */
+export interface NewKey {
+  key: string;
+  key_info: KeyInfo;
+}
+
+export interface AccountInfo {
+  email: string;
+  status: string;
+  created_at: string;
+  keys: KeyInfo[];
+  usage: { today: number; last_30_days: number };
+  limits: { per_minute: number; per_hour: number; concurrent: number };
+}

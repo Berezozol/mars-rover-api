@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Show my key — Sol Index</title>
+<meta name="referrer" content="no-referrer">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container">
+    <a class="brand" href="index.html" aria-label="Sol Index home">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="8" fill="var(--accent)"/><ellipse cx="13" cy="13" rx="12" ry="4.5" fill="none" stroke="var(--text-muted)" stroke-width="1.4" transform="rotate(-20 13 13)"/></svg>
+      Sol Index <small>unofficial</small>
+    </a>
+    <nav class="nav" aria-label="Main">
+      <a href="index.html">Rovers</a>
+      <a href="photos.html?rover=perseverance" title="Latest sol">Photos</a>
+      <a href="search.html">Search</a>
+      <a href="manifest.html">Timeline</a>
+      <a href="map.html">Route map</a>
+      <a href="flights.html">Flights</a>
+      <a href="data.html">Data</a>
+      <a href="stats.html">Stats</a>
+      <a href="index.html#api" aria-current="page">API</a>
+    </nav>
+    <button class="theme-toggle" type="button" aria-label="Toggle colour theme">Theme</button>
+  </div>
+</header>
+
+<!-- MOCK DATA, not connected to the API.
+  POST /api/v2/keys/confirm {"token": "<43 chars base64url>", "revoke_existing": false}
+  201 {"key", "key_info", "account"} · 400 invalid_token · 403 account_blocked · 409 key_limit_reached (token is not spent) · 422
+  Opened as /keys/confirm#token=...: the page reads location.hash and removes it at once with history.replaceState;
+  the request goes out only on the button press (mail scanners that open the link spend nothing). -->
+
+<main>
+  <div class="container narrow">
+
+    <div class="mock-bar" role="group" aria-label="Mockup switcher (not part of the product)">
+      <strong>Mockup</strong>
+      <button class="btn btn-sm" type="button" data-state="ready" aria-pressed="true">Ready</button>
+      <button class="btn btn-sm" type="button" data-state="loading" aria-pressed="false">Loading</button>
+      <button class="btn btn-sm" type="button" data-state="shown" aria-pressed="false">Key shown</button>
+      <button class="btn btn-sm" type="button" data-state="e409" aria-pressed="false">409 two keys</button>
+      <button class="btn btn-sm" type="button" data-state="e400" aria-pressed="false">Expired / used</button>
+      <button class="btn btn-sm" type="button" data-state="e403" aria-pressed="false">403 blocked</button>
+      <span class="mock-addr" id="addr">URL on load: /keys/confirm#token=…  → after load: /keys/confirm</span>
+    </div>
+
+    <h1>Your API key</h1>
+    <noscript><p class="alert alert-error" role="alert">This mockup switches states with JavaScript.</p></noscript>
+
+    <!-- READY / LOADING -->
+    <section class="card panel" aria-labelledby="ready-title" data-show="ready loading">
+      <h2 id="ready-title">Email confirmed</h2>
+      <p>The link in your email is valid. Press the button to create your key for <strong>user@example.org</strong>.</p>
+      <p class="small muted">The key appears on this page only once. Be ready to copy it.</p>
+      <button class="btn btn-primary btn-lg btn-block" type="button" id="show-btn">Show my key</button>
+      <p class="xsmall muted" role="status" id="load-status" data-show="loading">Creating your key…</p>
+    </section>
+
+    <!-- KEY SHOWN ONCE -->
+    <section class="card panel stack" aria-labelledby="shown-title" data-show="shown" hidden>
+      <h2 id="shown-title" tabindex="-1">Your key is ready</h2>
+
+      <div class="alert alert-warn" role="alert">
+        <div>
+          <div class="alert-title">Save it now. It will not be shown again.</div>
+          <p class="small">We keep only a one-way hash of the key, so we cannot show or resend it. If you leave this page without saving it, request a new key.</p>
+        </div>
+      </div>
+
+      <div class="field">
+        <span class="label" id="key-label">API key</span>
+        <div class="keybox">
+          <code id="the-key" aria-labelledby="key-label">si_EXAMPLEEXAMPLEEXAMPLEEXAMPLE0000</code>
+          <button class="btn btn-primary" type="button" id="copy-btn">Copy key</button>
+        </div>
+        <span class="copy-status" id="copy-status" role="status"></span>
+      </div>
+
+      <div>
+        <h3>Use it</h3>
+        <pre class="raw">curl -H "X-Api-Key: si_EXAMPLE…" \
+  "https://api.solindex.net/api/v2/rovers"</pre>
+        <p class="small muted">Send it in the <code>X-Api-Key</code> header rather than in the URL, so it stays out of logs and browser history.</p>
+      </div>
+
+      <dl class="stats">
+        <div><dt>Account</dt><dd>user@example.org</dd></div>
+        <div><dt>Key</dt><dd class="mono">si_EXAMPLEE… (id 41)</dd></div>
+        <div><dt>Created</dt><dd>2026-12-01 10:00 UTC</dd></div>
+        <div><dt>Keys on this account</dt><dd>1 of 2</dd></div>
+      </dl>
+
+      <div class="row">
+        <a class="btn" href="keys-manage.html">Go to My keys</a>
+        <a class="btn" href="index.html">Back to Sol Index</a>
+      </div>
+    </section>
+
+    <!-- 409 -->
+    <section class="card panel stack" aria-labelledby="e409-title" data-show="e409" hidden>
+      <div class="alert alert-warn" role="alert">
+        <div>
+          <div class="alert-title" id="e409-title" tabindex="-1">You already have 2 active keys</div>
+          <p class="small">An account can hold 2 active keys. Your link is still valid: nothing was used up.</p>
+        </div>
+      </div>
+      <p>Replace them with a new key? <strong>Both current keys stop working immediately</strong>, so any script that uses them will start getting <code>401 api_key_revoked</code>.</p>
+      <div class="row">
+        <button class="btn btn-danger btn-lg" type="button" id="replace-btn">Replace my keys and show the new one</button>
+        <a class="btn btn-lg" href="keys-manage.html">Keep my keys</a>
+      </div>
+      <p class="small muted">Prefer to revoke just one? Sign in to <a href="keys-manage.html">My keys</a> with one of your keys, revoke it, then come back to this link before it expires.</p>
+      <details class="more"><summary>Response</summary><pre class="raw">409
+{"error": {"code": "key_limit_reached", "message": "Key limit reached", "details": null}}</pre></details>
+    </section>
+
+    <!-- 400 expired / used / unknown -->
+    <section class="card panel stack" aria-labelledby="e400-title" data-show="e400" hidden>
+      <div class="alert alert-error" role="alert">
+        <div>
+          <div class="alert-title" id="e400-title" tabindex="-1">This link has expired or was already used</div>
+          <p class="small">Links work once and for 60 minutes. Email programs that preview links can also use them up. The same message appears for a link that was never valid.</p>
+        </div>
+      </div>
+      <a class="btn btn-primary btn-lg" href="keys.html">Request a new link</a>
+      <details class="more"><summary>Response</summary><pre class="raw">400
+{"error": {"code": "invalid_token", "message": "Token is invalid or expired", "details": null}}</pre></details>
+    </section>
+
+    <!-- 403 -->
+    <section class="card panel stack" aria-labelledby="e403-title" data-show="e403" hidden>
+      <div class="alert alert-error" role="alert">
+        <div>
+          <div class="alert-title" id="e403-title" tabindex="-1">This account cannot get new keys</div>
+          <p class="small">The account for this address is blocked. If you think this is a mistake, reply to the email you received.</p>
+        </div>
+      </div>
+      <details class="more"><summary>Response</summary><pre class="raw">403
+{"error": {"code": "account_blocked", "message": "Account is blocked", "details": null}}</pre></details>
+    </section>
+
+    <p class="xsmall mono muted api-line">API: POST /api/v2/keys/confirm {"token": "…", "revoke_existing": false} → 201 {"key", "key_info", "account"}</p>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="container">
+    <nav class="footer-links" aria-label="API keys">
+      <a href="keys.html">Get an API key</a>
+      <a href="keys-manage.html">My keys</a>
+      <a href="keys-delete.html">Delete my data</a>
+    </nav>
+    Sol Index is an independent, unofficial project and is not affiliated with or endorsed by NASA or JPL. Image credit is shown next to every photo.
+  </div>
+</footer>
+
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  const btns = [...document.querySelectorAll('[data-state]')];
+
+  function setState(s, focus) {
+    document.querySelectorAll('[data-show]').forEach(el => { el.hidden = !el.dataset.show.split(' ').includes(s); });
+    btns.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.state === s)));
+    $('#show-btn').disabled = s === 'loading';
+    $('#show-btn').textContent = s === 'loading' ? 'Creating…' : 'Show my key';
+    $('#copy-status').textContent = '';
+    if (focus) { const h = { shown: '#shown-title', e409: '#e409-title', e400: '#e400-title', e403: '#e403-title' }[s]; if (h) $(h).focus(); }
+  }
+  btns.forEach(b => b.addEventListener('click', () => setState(b.dataset.state, true)));
+
+  $('#show-btn').addEventListener('click', () => { setState('loading'); setTimeout(() => setState('shown', true), 700); });
+  $('#replace-btn').addEventListener('click', () => setState('shown', true));
+
+  $('#copy-btn').addEventListener('click', async () => {
+    const t = $('#the-key').textContent;
+    try { await navigator.clipboard.writeText(t); $('#copy-status').textContent = 'Copied. Store it in your password manager or secrets file now.'; }
+    catch (e) {
+      const r = document.createRange(); r.selectNodeContents($('#the-key'));
+      const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+      $('#copy-status').textContent = 'Key selected. Press Ctrl+C (or ⌘C) to copy it.';
+    }
+  });
+
+  document.querySelector('.theme-toggle').addEventListener('click', () => {
+    const r = document.documentElement, dark = r.dataset.theme ? r.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+    r.dataset.theme = dark ? 'light' : 'dark';
+  });
+
+  // Real page: const token = new URLSearchParams(location.hash.slice(1)).get('token'); history.replaceState(null, '', location.pathname);
+  const q = new URLSearchParams(location.search).get('state');
+  setState(btns.some(b => b.dataset.state === q) ? q : 'ready');
+})();
+</script>
+</body>
+</html>

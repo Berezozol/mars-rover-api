@@ -8,8 +8,8 @@ Pure ASGI middleware. For GET/HEAD under the API prefixes:
   earlier than it does the same (an unparsable date is ignored);
 - 3xx: left as the route set it (the image redirect sends its own Cache-Control);
 - 4xx/5xx: ``Cache-Control: no-store``.
-Admin responses (any method) always get ``no-store`` and no ETag. Other paths (/health, /docs) are
-untouched.
+Admin and key endpoint responses (any method) always get ``no-store`` and no ETag. Other
+paths (/health, /docs) are untouched.
 
 Compression: GZipMiddleware sits outside this middleware, so the ETag is computed on the
 uncompressed body and is the same for gzip and identity responses (a weak validator: the
@@ -29,6 +29,8 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 API_PREFIXES: tuple[str, ...] = ("/api/v1", "/mars-photos/api/v1", "/api/v2")
 ADMIN_PREFIX = "/api/v2/admin"
+# Never cached, any method and status: admin and the key endpoints (stage 20B).
+NO_STORE_PREFIXES: tuple[str, ...] = (ADMIN_PREFIX, "/api/v2/keys", "/api/v2/account")
 # Scope key of a dict the response-size middleware shares with this one: "raw" gets the length
 # of the uncompressed body of a 200 (also for HEAD and 304).
 RESPONSE_SIZE_SCOPE_KEY = "mars.response_size"
@@ -139,7 +141,7 @@ class CachingMiddleware:
             await self.app(scope, receive, send)
             return
         path: str = scope["path"]
-        if _under(path, ADMIN_PREFIX):
+        if any(_under(path, prefix) for prefix in NO_STORE_PREFIXES):
             # Every method, every status.
             await self.app(scope, receive, _no_store_sender(send))
             return

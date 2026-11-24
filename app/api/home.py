@@ -28,14 +28,17 @@ def _page_template() -> Template:
     return Template(PAGE_PATH.read_text(encoding="utf-8"))
 
 
-def render_home(origin: str) -> str:
+def render_home(origin: str, mail_provider: str = "") -> str:
     # The origin comes from the Host header: escape it before it reaches the page.
-    return _page_template().substitute(origin=html.escape(origin, quote=True))
+    return _page_template().substitute(
+        origin=html.escape(origin, quote=True),
+        mail_provider=html.escape(mail_provider.strip() or "our mail provider", quote=True),
+    )
 
 
 async def home(request: Request) -> HTMLResponse:
     response = HTMLResponse(
-        render_home(request_origin(request)),
+        render_home(request_origin(request), request.app.state.settings.mail_provider_name),
         headers={"Cache-Control": PAGE_CACHE_CONTROL, "X-Content-Type-Options": "nosniff"},
     )
     if request.method == "HEAD":

@@ -19,11 +19,21 @@ from app.api.home import root_router as root_home_router
 from app.api.home import router as home_router
 from app.api.legacy import router as legacy_router
 from app.api.llms import router as llms_router
+from app.api.nocors import NoCorsMiddleware
 from app.api.ratelimit import RateLimitMiddleware, ResponseSizeMiddleware
 from app.api.v2 import router as v2_router
+from app.api.v2.account import deletion_router
+from app.api.v2.account import router as account_router
 from app.api.v2.admin import accounts_router, admin_auth_limiter
 from app.api.v2.admin import router as admin_router
-from app.core.config import Settings, check_admin_token, check_pool_settings, get_settings
+from app.api.v2.keys import router as keys_router
+from app.core.config import (
+    Settings,
+    check_admin_token,
+    check_pool_settings,
+    check_signup_settings,
+    get_settings,
+)
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging
 from app.core.overload import HeavyQueryGate
@@ -33,7 +43,10 @@ from app.services.admin import AdapterFactory, cancel_background
 from app.services.alerts import AlertMonitor, TelegramNotifier
 from app.services.api_keys import ApiKeyService, ApiKeyUsage
 from app.services.health import FreshnessCache
+from app.services.key_mail import KeyMailOutbox
+from app.services.key_signup import KeySignupService
 from app.services.location_sync import LocationSyncService
+from app.services.mail import SmtpMailer
 from app.services.mer_images import MerImageService
 from app.services.sample_sync import SampleSyncService
 from app.services.scheduler import AlertScheduler, ApiKeyScheduler, SyncScheduler
@@ -63,6 +76,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
       ``api_key_service`` (only with API_KEYS_ENABLED; the limiters also need RATE_LIMIT_ENABLED):
       limiter of requests with a key (per account), of failed key attempts (per IP), key lookup
       cache (``clock``, ``clear()``), usage counters (``await flush()``), account service.
+    - ``mailer`` (``Mailer``; tests set a ``MemoryMailer``), ``key_mail_outbox`` (``run_once()``,
+      ``wake()``, ``degraded``, ``status()``; ``auto_wake = False`` stops the background send),
+      ``signup_limiter`` (``RateLimiter`` of mail requests per IP), ``key_signup_service``
+      (only with API_KEYS_ENABLED, KEY_SIGNUP_ENABLED and SMTP_HOST).
     - ``alert_monitor``: ``AlertMonitor`` when Telegram alerts are configured, else None.
     - ``mer_image_service``: ``MerImageService`` of the Spirit/Opportunity full frames (a stub
       with ``async get_full_jpeg(photo) -> bytes`` also works; ``aclose()`` is optional).
@@ -72,6 +89,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # model_copy(update=...) skips the validators: repeat the token and pool/gate checks.
     check_admin_token(settings.admin_token)
     check_pool_settings(settings)
+    check_signup_settings(settings)
     configure_logging(settings.log_level)
 
     # Requests get a statement timeout and a short pool wait; the sync service, alerts and
@@ -160,6 +178,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.api_key_usage = None
     app.state.api_key_scheduler = None
     _document_api_key(app)
+    app.state.mailer = None
+    app.state.key_mail_outbox = None
     if settings.api_keys_enabled:
         _setup_api_keys(app, settings)
 
@@ -193,6 +213,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     # Outside the caching middleware: the ETag is computed on the uncompressed body, so it
     # does not depend on the encoding (see app.api.caching).
+    # Outside CORS: strips its headers from the key endpoints.
+    app.add_middleware(NoCorsMiddleware)
     app.add_middleware(
         GZipMiddleware,
         minimum_size=GZIP_MINIMUM_SIZE,
@@ -213,6 +235,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(legacy_router, prefix="/api/v1")
     app.include_router(legacy_router, prefix="/mars-photos/api/v1", include_in_schema=False)
     app.include_router(v2_router, prefix="/api/v2")
+    if settings.api_keys_enabled:
+        app.include_router(account_router, prefix="/api/v2")
+    if settings.key_signup_available:
+        app.include_router(keys_router, prefix="/api/v2")
+        app.include_router(deletion_router, prefix="/api/v2")
     if settings.admin_enabled:
         app.include_router(admin_router, prefix="/api/v2")
         if settings.api_keys_enabled:
@@ -229,6 +256,19 @@ def _setup_api_keys(app: FastAPI, settings: Settings) -> None:
     app.state.api_key_resolver = resolver
     app.state.api_key_usage = ApiKeyUsage(app.state.worker_session_factory)
     app.state.api_key_service = ApiKeyService(settings, resolver)
+    if settings.key_signup_available:
+        _setup_signup(app, settings)
+
+
+def _setup_signup(app: FastAPI, settings: Settings) -> None:
+    """Mail sender, outbox, per-IP limiter and the sign-up service (stage 20B)."""
+    app.state.mailer = SmtpMailer(settings)
+    # The outbox reads the mailer from app.state at send time, so a test double may replace it.
+    app.state.key_mail_outbox = KeyMailOutbox(
+        app.state.worker_session_factory, lambda: app.state.mailer, settings
+    )
+    app.state.signup_limiter = RateLimiter([(settings.key_signup_per_ip_per_hour, 3600)])
+    app.state.key_signup_service = KeySignupService(settings, app.state.api_key_service)
 
 
 def _document_api_key(app: FastAPI) -> None:
@@ -273,7 +313,12 @@ def _start_api_key_jobs(app: FastAPI, settings: Settings) -> None:
     """Periodic flush of the usage counters and the daily cleanup."""
     if app.state.api_key_usage is None:
         return
-    scheduler = ApiKeyScheduler(app.state.api_key_usage, app.state.worker_session_factory, settings)
+    scheduler = ApiKeyScheduler(
+        app.state.api_key_usage,
+        app.state.worker_session_factory,
+        settings,
+        app.state.key_mail_outbox,
+    )
     app.state.api_key_scheduler = scheduler
     scheduler.start()
 
@@ -284,6 +329,8 @@ async def _stop_api_key_jobs(app: FastAPI) -> None:
     if scheduler is not None:
         app.state.api_key_scheduler = None
         await scheduler.shutdown()
+    if app.state.key_mail_outbox is not None:
+        await app.state.key_mail_outbox.aclose()
 
 
 def _default_adapter_factory(app: FastAPI, settings: Settings) -> AdapterFactory:

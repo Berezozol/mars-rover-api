@@ -17,6 +17,7 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.apikeys import client_key
+from app.api.v2.key_schemas import KeyMailOut, key_mail_out
 from app.api.v2.params import Pagination
 from app.api.v2.schemas import (
     AdminAccountDetailOut,
@@ -44,6 +45,7 @@ from app.db.session import get_session
 from app.services import admin
 from app.services.admin import SyncRequest
 from app.services.api_keys import ApiKeyService
+from app.services.key_mail import KeyMailOutbox
 
 ADMIN_TOKEN_HEADER = "X-Admin-Token"
 
@@ -251,3 +253,10 @@ async def delete_account(request: Request, session: Session, account_id: int) ->
     """Delete an account with its keys and counters for good."""
     await _service(request).delete_account(session, account_id)
     return Response(status_code=204)
+
+
+@accounts_router.get("/key-mail", response_model=KeyMailOut, responses=_ERRORS)
+async def key_mail_status(request: Request) -> KeyMailOut:
+    """State of the key mail queue (no addresses)."""
+    outbox: KeyMailOutbox = request.app.state.key_mail_outbox
+    return key_mail_out(await outbox.status())

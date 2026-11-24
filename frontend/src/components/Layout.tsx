@@ -146,6 +146,11 @@ export function Layout({ route, pathname, children }: Props) {
               Status
             </Link>
           </div>
+          <nav class="footer-links" aria-label="API keys">
+            <Link href="/keys">Get an API key</Link>
+            <Link href="/keys/manage">My keys</Link>
+            <Link href="/keys/delete">Delete my data</Link>
+          </nav>
         </div>
       </footer>
     </>

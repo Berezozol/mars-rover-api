@@ -178,8 +178,9 @@ async def add_request(factory: Factory, email: str, expires_in_hours: float) -> 
     async with factory() as session:
         await session.execute(
             text(
-                "INSERT INTO api_key_requests (email, token_hash, expires_at) "
-                "VALUES (:e, :h, now() + make_interval(secs => :s))"
+                "INSERT INTO api_key_requests "
+                "(email, status, token_hash, expires_at, sent_at) "
+                "VALUES (:e, 'sent', :h, now() + make_interval(secs => :s), now())"
             ),
             {"e": email, "h": key_hash(email), "s": expires_in_hours * 3600},
         )

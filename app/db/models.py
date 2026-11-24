@@ -464,18 +464,40 @@ class ApiKey(Base):
 
 
 class ApiKeyRequest(Base):
-    """A key request awaiting e-mail confirmation (stage 20B fills it; the table is created
-    with the rest of the stage so the schema is migrated once)."""
+    """A mail request (stage 20B): a row of the outbox. It is ``pending`` until the sender
+    mails the link; then it holds the SHA-256 of the token and its expiry (the token itself is
+    never stored). ``purpose`` is ``key`` (issue a key) or ``delete`` (delete the account)."""
 
     __tablename__ = "api_key_requests"
-    __table_args__ = (Index("ix_api_key_requests_email_created_at", "email", "created_at"),)
+    __table_args__ = (
+        CheckConstraint("purpose IN ('key', 'delete')", name="purpose_valid"),
+        CheckConstraint(
+            "status IN ('pending', 'sent', 'failed', 'skipped', 'dropped')", name="status_valid"
+        ),
+        CheckConstraint(
+            "status <> 'sent' OR (token_hash IS NOT NULL AND expires_at IS NOT NULL "
+            "AND sent_at IS NOT NULL)",
+            name="sent_complete",
+        ),
+        Index("ix_api_key_requests_email_created_at", "email", "created_at"),
+        Index(
+            "ix_api_key_requests_pending",
+            "next_attempt_at",
+            postgresql_where=text("status = 'pending'"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     email: Mapped[str] = mapped_column(Text)
-    token_hash: Mapped[bytes] = mapped_column(LargeBinary, unique=True)
+    token_hash: Mapped[bytes | None] = mapped_column(LargeBinary, unique=True)
     created_at: Mapped[datetime] = mapped_column(_TIMESTAMPTZ, server_default=func.now())
-    expires_at: Mapped[datetime] = mapped_column(_TIMESTAMPTZ)
+    expires_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ)
     used_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ)
+    purpose: Mapped[str] = mapped_column(Text, server_default=text("'key'"))
+    status: Mapped[str] = mapped_column(Text, server_default=text("'pending'"))
+    attempts: Mapped[int] = mapped_column(SmallInteger, server_default=text("0"))
+    next_attempt_at: Mapped[datetime] = mapped_column(_TIMESTAMPTZ, server_default=func.now())
+    sent_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ)
 
 
 class ApiKeyUsageDaily(Base):

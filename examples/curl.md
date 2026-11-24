@@ -1,6 +1,8 @@
 # curl examples
 
-Set the base URL once. No API key is needed (an `api_key` parameter is accepted and ignored).
+Set the base URL once. No API key is needed: without one, requests are limited per IP.
+An `api_key` that is not one of our keys (for example an api.nasa.gov key) is ignored.
+To get a higher limit, see [API key](#api-key-optional) below.
 
 ```sh
 BASE=https://your-host.example   # or http://127.0.0.1:8000 for a local server
@@ -107,6 +109,32 @@ curl -s "$BASE/api/v2/rovers/perseverance/weather?sol_min=100&sol_max=110" \
 ```
 
 More: [weather.py](weather.py) (Python, standard library) and [weather.mjs](weather.mjs) (JavaScript, `fetch`).
+
+## API key (optional)
+
+A key raises the rate limit. This works only on servers where key sign-up is turned on.
+Ask for a key, then open the link in the email and press the button on that page:
+
+```sh
+curl -X POST "$BASE/api/v2/keys/requests" \
+  -H "Content-Type: application/json" \
+  -d '{"email": "user@example.org"}'
+# 202 {"status": "accepted", "mail_delayed": false}
+```
+
+The answer is the same for any valid address. The key is shown once, on the confirmation page.
+To use it, send it in the `X-Api-Key` header (it stays out of proxy logs and browser history)
+or in the `api_key` parameter. If both are present, the header wins.
+
+```sh
+KEY=si_EXAMPLEEXAMPLEEXAMPLEEXAMPLE0000   # your key
+
+# Your account: keys, usage, limits
+curl "$BASE/api/v2/account" -H "X-Api-Key: $KEY"
+
+# Any other request works the same way
+curl "$BASE/api/v2/rovers/perseverance/photos?sol=100" -H "X-Api-Key: $KEY"
+```
 
 ## Reference
 

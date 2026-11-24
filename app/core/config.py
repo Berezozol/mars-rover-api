@@ -30,8 +30,8 @@ class Settings(BaseSettings):
     environment: Literal["dev", "test", "prod"] = "dev"
     log_level: str = "INFO"
 
-    database_url: str = "postgresql+asyncpg://mars:mars@localhost:5433/mars"
-    test_database_url: str = "postgresql+asyncpg://mars:mars@localhost:5433/mars_test"
+    database_url: str = "postgresql+asyncpg://mars:mars@127.0.0.1:5433/mars"
+    test_database_url: str = "postgresql+asyncpg://mars:mars@127.0.0.1:5433/mars_test"
     db_connect_timeout_seconds: float = 5.0
     # HTTP request connections only (sync, backfill and loaders are not limited); 0 = off.
     db_statement_timeout_seconds: float = Field(default=5.0, ge=0)
@@ -195,9 +195,45 @@ class Settings(BaseSettings):
     # Usage counters are kept in memory and written to the database this often.
     api_key_usage_flush_seconds: int = Field(default=60, ge=1)
     api_key_usage_retention_days: int = Field(default=90, ge=1)
+    # Accounts with no key created or used for this long are deleted by the daily cleanup.
+    api_account_inactive_days: int = Field(default=730, ge=30)
     # Failed admin token checks per IP before admin answers 429 for the rest of the window.
     admin_auth_max_failures: int = Field(default=10, ge=1)
     admin_auth_window_minutes: int = Field(default=15, ge=1)
+
+    # Self-service keys by e-mail (stage 20B); works only with API_KEYS_ENABLED and SMTP_HOST.
+    key_signup_enabled: bool = False
+    # Requests for a key or a deletion link per client address (IPv6: per /64) and hour.
+    key_signup_per_ip_per_hour: int = Field(default=5, ge=1)
+    # Mails per address and 24 hours (key and deletion mails together).
+    key_signup_per_email_per_day: int = Field(default=3, ge=1)
+    # Mail requests of the whole server per UTC day (reset at 00:00 UTC), all valid requests
+    # counted. 50 is a temporary measure (owner's decision, 2026-11-24): a margin below the
+    # provider's limit.
+    key_signup_global_per_day: int = Field(default=50, ge=1)
+    key_token_ttl_minutes: int = Field(default=60, ge=1)
+    key_mail_max_attempts: int = Field(default=4, ge=1)
+    # Pauses before the 2nd, 3rd... attempt, comma separated; the last one repeats.
+    key_mail_retry_minutes: str = "1,5,15"
+    # A failed send this recent (and no success after it) makes the answers say "delayed".
+    # Put the send job into the scheduler (tests switch it off and call run_once()).
+    key_mail_job_enabled: bool = True
+    key_mail_degraded_minutes: int = Field(default=15, ge=1)
+    # Comma separated domains that cannot get a key (exact match, lowercase).
+    key_email_blocked_domains: str = ""
+    smtp_host: str | None = None
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    smtp_username: str | None = None
+    smtp_password: SecretStr | None = None
+    smtp_starttls: bool = True
+    # Implicit TLS (port 465); then STARTTLS is not used.
+    smtp_ssl: bool = False
+    smtp_timeout_seconds: float = Field(default=15.0, gt=0)
+    mail_from: str | None = None
+    mail_from_name: str = "Sol Index"
+    mail_reply_to: str | None = None
+    # Named in the text about data ("mails are sent through ...").
+    mail_provider_name: str = ""
 
     # Data freshness (/health/sync and the alerts).
     sync_stale_hours: int = Field(default=24, ge=1)
@@ -250,6 +286,33 @@ class Settings(BaseSettings):
         check_pool_settings(self)
         return self
 
+    @model_validator(mode="after")
+    def _check_signup(self) -> Self:
+        check_signup_settings(self)
+        return self
+
+    @property
+    def key_signup_available(self) -> bool:
+        """The mail endpoints exist: keys and sign-up on, SMTP configured."""
+        return self.api_keys_enabled and self.key_signup_enabled and bool(self.smtp_host)
+
+    @property
+    def key_mail_retry_schedule(self) -> list[int]:
+        """Minutes to wait after the 1st, 2nd... failed attempt (never empty)."""
+        values = [int(p) for p in self.key_mail_retry_minutes.split(",") if p.strip().isdigit()]
+        return values or [1]
+
+    @property
+    def key_email_blocked_domain_set(self) -> frozenset[str]:
+        parts = (p.strip().lower() for p in self.key_email_blocked_domains.split(","))
+        return frozenset(p for p in parts if p)
+
+    @property
+    def smtp_password_value(self) -> str:
+        """The SMTP password, "" when unset. Never log it."""
+        password = self.smtp_password
+        return password.get_secret_value() if password is not None else ""
+
     @property
     def admin_token_value(self) -> str:
         """The stripped admin token, "" when admin is disabled."""
@@ -288,6 +351,20 @@ def check_pool_settings(settings: Settings) -> None:
         raise ValueError("HEAVY_QUERY_CONCURRENCY must be >= 1")
     if settings.heavy_query_concurrency >= settings.db_pool_size + settings.db_max_overflow:
         raise ValueError("HEAVY_QUERY_CONCURRENCY must be < DB_POOL_SIZE + DB_MAX_OVERFLOW")
+
+
+def check_signup_settings(settings: Settings) -> None:
+    """Sign-up needs the mail settings; the error names the missing variable (never a value).
+    ``create_app`` repeats it for ``model_copy`` settings."""
+    if not settings.key_signup_enabled:
+        return
+    for name, value in (
+        ("SMTP_HOST", settings.smtp_host),
+        ("MAIL_FROM", settings.mail_from),
+        ("PUBLIC_BASE_URL", settings.public_base_url),
+    ):
+        if not (value or "").strip():
+            raise ValueError(f"{name} is required when KEY_SIGNUP_ENABLED is true")
 
 
 MIN_ADMIN_TOKEN_LENGTH = 16

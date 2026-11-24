@@ -107,6 +107,10 @@ export type RouteMatch =
   | { name: "search" }
   | { name: "stats" }
   | { name: "status" }
+  | { name: "keys" }
+  | { name: "keysConfirm" }
+  | { name: "keysManage" }
+  | { name: "keysDelete" }
   | { name: "notfound" };
 
 export function matchRoute(pathname: string): RouteMatch {
@@ -131,6 +135,10 @@ export function matchRoute(pathname: string): RouteMatch {
   if (a === "search" && parts.length === 1) return { name: "search" };
   if (a === "stats" && parts.length === 1) return { name: "stats" };
   if (a === "status" && parts.length === 1) return { name: "status" };
+  if (a === "keys" && parts.length === 1) return { name: "keys" };
+  if (a === "keys" && b === "confirm" && parts.length === 2) return { name: "keysConfirm" };
+  if (a === "keys" && b === "manage" && parts.length === 2) return { name: "keysManage" };
+  if (a === "keys" && b === "delete" && parts.length === 2) return { name: "keysDelete" };
   return { name: "notfound" };
 }
 

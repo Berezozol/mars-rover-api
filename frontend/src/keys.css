@@ -1,0 +1,204 @@
+/* API key screens (/keys, /keys/confirm, /keys/manage, /keys/delete). Ported from design/mockups/styles.css, "Stage 20B". */
+.narrow {
+  max-width: 640px;
+  margin: 0 auto;
+}
+.key-page input[type="email"],
+.key-page input[type="text"],
+.key-page input[type="password"] {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 var(--s3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-md);
+}
+.key-page input[aria-invalid="true"] {
+  border-color: var(--err);
+  box-shadow: 0 0 0 1px var(--err);
+}
+.key-page input.mono-in {
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+}
+.key-page .field label.plain {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: var(--fs-sm);
+  color: var(--text);
+}
+.btn-lg {
+  min-height: 44px;
+  font-size: var(--fs-md);
+}
+.btn-block {
+  width: 100%;
+}
+.btn-danger {
+  background: var(--err);
+  border-color: var(--err);
+  color: var(--on-accent);
+}
+.btn-danger:hover {
+  background: var(--err);
+  filter: brightness(0.92);
+  color: var(--on-accent);
+}
+.alert-ok {
+  background: var(--ok-soft);
+  border-color: var(--ok);
+}
+.alert-ok .alert-title {
+  color: var(--ok);
+}
+.key-page .alert > div {
+  min-width: 0;
+}
+.key-page .alert p:last-child {
+  margin-bottom: 0;
+}
+.stack-lg > * + * {
+  margin-top: var(--s5);
+}
+
+/* honeypot: off-screen, not focusable, hidden from assistive tech */
+.hp {
+  position: absolute;
+  left: -10000px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+/* one-time key display */
+.keybox {
+  display: flex;
+  gap: var(--s2);
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+.keybox code {
+  flex: 1 1 260px;
+  min-width: 0;
+  padding: var(--s3);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-md);
+  word-break: break-all;
+  user-select: all;
+}
+.copy-status {
+  font-size: var(--fs-sm);
+  color: var(--ok);
+  font-weight: 600;
+  min-height: 1.5em;
+}
+
+/* key list */
+.keys {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--s3);
+}
+.key-item {
+  padding: var(--s3) var(--s4);
+  display: grid;
+  gap: var(--s2);
+}
+.key-item .head {
+  display: flex;
+  gap: var(--s2) var(--s3);
+  align-items: center;
+  flex-wrap: wrap;
+}
+.key-item .head code {
+  font-weight: 600;
+  font-size: var(--fs-md);
+}
+.key-item.revoked {
+  opacity: 0.85;
+  background: var(--surface-2);
+  box-shadow: none;
+}
+.key-item dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--s2) var(--s4);
+}
+.key-item dt {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.key-item dd {
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+.confirm-box {
+  border: 1px solid var(--err);
+  background: var(--err-soft);
+  border-radius: var(--radius-sm);
+  padding: var(--s3);
+}
+.confirm-box p {
+  margin-bottom: var(--s2);
+}
+.danger-zone {
+  border-color: var(--err);
+}
+.danger-zone h2 {
+  color: var(--err);
+}
+.key-page .check {
+  display: flex;
+  gap: var(--s2);
+  align-items: flex-start;
+}
+.key-page .check input {
+  width: 20px;
+  height: 20px;
+  margin: 2px 0 0;
+  flex: none;
+  accent-color: var(--accent);
+}
+.data-note {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+  padding-top: var(--s4);
+}
+.data-note h2 {
+  font-size: var(--fs-md);
+  color: var(--text);
+}
+.steps {
+  margin: 0 0 var(--s3);
+  padding-left: 1.25rem;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+.key-page h1:focus,
+.key-page [tabindex="-1"]:focus {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* a button that reads as an inline link (in-page "try again") */
+.linklike {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--link, var(--accent));
+  text-decoration: underline;
+  cursor: pointer;
+}

@@ -11,6 +11,7 @@ from app.core.config import Settings
 from app.core.errors import SyncInProgress
 from app.services.alerts import AlertMonitor
 from app.services.api_keys import ApiKeyUsage, cleanup_api_keys, flush_api_key_usage
+from app.services.key_mail import SEND_JOB_SECONDS, KeyMailOutbox, send_key_mail
 from app.services.location_sync import LocationSyncService
 from app.services.sample_sync import SampleSyncService
 from app.services.sync import SyncResult, SyncService
@@ -170,6 +171,7 @@ class AlertScheduler:
 
 API_KEY_FLUSH_JOB_ID = "api-key-usage-flush"
 API_KEY_CLEANUP_JOB_ID = "api-key-cleanup"
+KEY_MAIL_JOB_ID = "send-key-mail"
 
 
 class ApiKeyScheduler:
@@ -181,15 +183,30 @@ class ApiKeyScheduler:
         usage: ApiKeyUsage,
         session_factory: async_sessionmaker[AsyncSession],
         settings: Settings,
+        outbox: KeyMailOutbox | None = None,
     ) -> None:
         self._usage = usage
         self._session_factory = session_factory
         self._settings = settings
+        self._outbox = outbox
         self._scheduler = AsyncIOScheduler(timezone=UTC)
 
     def start(self) -> None:
         """Schedule the jobs and start; call inside the event loop."""
         common = {"max_instances": 1, "coalesce": True, "misfire_grace_time": None}
+        if self._outbox is not None and self._settings.key_mail_job_enabled:
+            # Picks up retries and what was left over by a restart; sends at once when the
+            # scheduler starts.
+            self._scheduler.add_job(
+                send_key_mail,
+                "interval",
+                args=[self._outbox],
+                seconds=SEND_JOB_SECONDS,
+                id=KEY_MAIL_JOB_ID,
+                next_run_time=datetime.now(UTC),
+                replace_existing=True,
+                **common,
+            )
         self._scheduler.add_job(
             flush_api_key_usage,
             "interval",

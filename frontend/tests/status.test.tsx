@@ -1,6 +1,6 @@
 // Stage 19, screen Status (`/status`, GET /health/sync). Written against
 // docs/proposals/stage-19-status-page.md and docs/API.md, not against the implementation.
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/preact";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/preact";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
 import { json, mockApi } from "./helpers";
@@ -48,9 +48,16 @@ const tick = (ms: number) =>
     await vi.advanceTimersByTimeAsync(ms);
   });
 
-afterEach(() => {
+afterEach(async () => {
+  // Unmount while the fake clock is still installed so the page's interval and
+  // Preact's pending after-paint timers are cleared on the same clock, then
+  // flush what is left and only then restore real timers.
+  cleanup();
+  if (vi.isFakeTimers()) await vi.runOnlyPendingTimersAsync();
   vi.useRealTimers();
   setVisibility("visible");
+  // Let any real after-paint timer queued by the last render fire before teardown.
+  await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
 });
 
 describe("Status", () => {

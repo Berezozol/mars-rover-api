@@ -433,3 +433,60 @@ table.data th button:focus-visible { outline: 3px solid var(--focus); outline-of
 .bar-track { display: block; background: var(--surface-2); border-radius: 3px; }
 .tile-line { justify-content: flex-start; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
 .tile-line > * { white-space: nowrap; }
+
+/* ---------- Stage 20B: API key screens (keys.html, keys-confirm.html, keys-manage.html, keys-delete.html) ---------- */
+.narrow { max-width: 640px; margin: 0 auto; }
+input[type="email"], input[type="text"], input[type="password"] {
+  width: 100%; min-height: 44px; padding: 0 var(--s3);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--text); font: inherit; font-size: var(--fs-md);
+}
+input[type="password"].mono-in, input[type="text"].mono-in { font-family: var(--mono); font-size: var(--fs-sm); }
+.field label.plain { text-transform: none; letter-spacing: 0; font-size: var(--fs-sm); color: var(--text); }
+.btn-lg { min-height: 44px; font-size: var(--fs-md); }
+.btn-block { width: 100%; }
+.btn-danger { background: var(--err); border-color: var(--err); color: var(--on-accent); }
+.btn-danger:hover { background: var(--err); filter: brightness(.92); color: var(--on-accent); }
+.alert-ok { background: var(--ok-soft); border-color: var(--ok); }
+.alert-ok .alert-title { color: var(--ok); }
+.alert > div { min-width: 0; }
+.alert p:last-child { margin-bottom: 0; }
+.alert .row { align-items: center; }
+.stack-lg > * + * { margin-top: var(--s5); }
+
+/* honeypot: off-screen, not focusable, hidden from assistive tech (the real field is aria-hidden + tabindex -1) */
+.hp { position: absolute; left: -10000px; top: auto; width: 1px; height: 1px; overflow: hidden; }
+.hp.reveal { position: static; width: auto; height: auto; overflow: visible; border: 1px dashed var(--warn); padding: var(--s2); border-radius: var(--radius-sm); }
+
+/* one-time key display */
+.keybox { display: flex; gap: var(--s2); align-items: stretch; flex-wrap: wrap; }
+.keybox code {
+  flex: 1 1 260px; min-width: 0; padding: var(--s3); background: var(--surface-2);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  font-size: var(--fs-md); word-break: break-all; user-select: all;
+}
+.copy-status { font-size: var(--fs-sm); color: var(--ok); font-weight: 600; min-height: 1.5em; }
+
+/* key list */
+.keys { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s3); }
+.key-item { padding: var(--s3) var(--s4); display: grid; gap: var(--s2); }
+.key-item .head { display: flex; gap: var(--s2) var(--s3); align-items: center; flex-wrap: wrap; }
+.key-item .head code { font-weight: 600; font-size: var(--fs-md); }
+.key-item.revoked { opacity: .85; background: var(--surface-2); box-shadow: none; }
+.key-item dl { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--s2) var(--s4); }
+.key-item dt { font-size: var(--fs-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+.key-item dd { margin: 0; font-size: var(--fs-sm); }
+.confirm-box { border: 1px solid var(--err); background: var(--err-soft); border-radius: var(--radius-sm); padding: var(--s3); }
+.confirm-box p { margin-bottom: var(--s2); }
+.danger-zone { border-color: var(--err); }
+.danger-zone h2 { color: var(--err); }
+.check { display: flex; gap: var(--s2); align-items: flex-start; }
+.check input { width: 20px; height: 20px; margin: 2px 0 0; flex: none; accent-color: var(--accent); }
+.data-note { font-size: var(--fs-sm); color: var(--text-muted); border-top: 1px solid var(--border); padding-top: var(--s4); }
+.data-note h2 { font-size: var(--fs-md); color: var(--text); }
+.steps { margin: 0 0 var(--s3); padding-left: 1.25rem; color: var(--text-muted); font-size: var(--fs-sm); }
+.footer-links { display: flex; gap: var(--s2) var(--s4); flex-wrap: wrap; margin-bottom: var(--s3); }
+.mock-bar .btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.mock-bar label { display: inline-flex; gap: 6px; align-items: center; }
+.mock-addr { font: var(--fs-xs)/1.4 var(--mono); color: var(--text-muted); }
+.api-err { margin-top: var(--s2); }

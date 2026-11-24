@@ -27,9 +27,7 @@ Opportunity and Spirit rovers (and Ingenuity flights) from public NASA/JPL feeds
 
 Base URL: {origin}
 
-No API key is needed. An `api_key` query parameter is accepted and ignored. Rate limit per client \
-IP: 60 requests per minute, 2000 per hour (`429` with `Retry-After` when exceeded). \
-On v1 paths a response costs the larger of: one request per started 256 KiB of the body as sent \
+An API key is optional. Without one the rate limit is per client IP: 60 requests per minute, 2000 per hour (`429` with `Retry-After` when exceeded). With a key (`si_` and 32 letters and digits) it is per account: 120 per minute, 10000 per hour. A key from api.nasa.gov or `DEMO_KEY` in `api_key` is ignored. On v1 paths a response costs the larger of: one request per started 256 KiB of the body as sent \
 (after gzip), and one per started 1 MiB of the uncompressed body (also for HEAD and 304), \
 so use `page` for whole-sol v1 requests: gzip alone does not make them cheap.
 
@@ -111,11 +109,18 @@ about ±3 K; sol 1 and incomplete sols are `null`), while Curiosity's is measure
 exists, the sol has no valid value. The archive lags by 6-8 months, so the latest sols are missing. Other \
 rovers: `404 not_found`. Keep the `credit` field when you show or redistribute the data
 
+## API keys (optional)
+
+- [Get a key]({origin}/keys): enter an email, open the one-time link from the email (valid 60 minutes), press the button; the key is shown once. Without the web interface: `POST /api/v2/keys/requests` with JSON `{{"email": "user@example.org"}}` answers `202` for any valid address. Key sign-up may be turned off on a server (`404`)
+- Send the key in the `X-Api-Key` header (preferred) or the `api_key` parameter; the header wins. Works on v1 and v2. Wrong key: `401 invalid_api_key`; revoked: `401 api_key_revoked`; blocked account: `403 account_blocked`; on v1 these are `403` with `{{"errors": ...}}`
+- `GET /api/v2/account` with the key: your keys, usage per day and limits. `POST /api/v2/account/keys` adds a key (at most 2 active), `DELETE /api/v2/account/keys/{{id}}` revokes one, `DELETE /api/v2/account` deletes the account and all its data
+- [Manage keys]({origin}/keys/manage) and [delete your data]({origin}/keys/delete) (no key needed: a link comes by email). We store the email, key hashes and request counts per day
+
 ## Docs
 
 - [OpenAPI schema]({origin}/openapi.json): machine-readable description of every endpoint
 - [Interactive docs]({origin}/docs): Swagger UI
-- [Developer page]({origin}/developers): migration guide and examples
+- [Developer page]({origin}/developers): migration guide, API keys and examples
 
 ## Credit
 
