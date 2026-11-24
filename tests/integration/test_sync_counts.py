@@ -264,6 +264,8 @@ def msl_responder(pages_by_sol: dict[int, dict[int, dict[str, Any]]]) -> Any:
 
     def respond(request: httpx.Request) -> httpx.Response:
         params = query(request)
+        if params.get("extended") == "thumbnail::sample_type::eq":
+            return httpx.Response(200, json={**empty, "per_page": 1000})
         sol = int(params["condition_2"].split(":")[0])
         pages = pages_by_sol.get(sol)
         if pages is None:
@@ -290,7 +292,13 @@ async def test_sync_msl_writes_sol_source_counts_received_dropped_and_source_tot
     result = await service.run(adapter, from_sol=4326, to_sol=4327)
 
     assert result.status == "success"
-    assert route.call_count == 4  # sol 4327: 3 pages, sol 4326: 1 empty page
+    eq = "thumbnail::sample_type::eq"
+    frame_calls = [c for c in route.calls if c.request.url.params.get("extended") != eq]
+    thumbnail_calls = [c for c in route.calls if c.request.url.params.get("extended") == eq]
+    assert len(frame_calls) == 4  # sol 4327: 3 pages, sol 4326: 1 empty page
+    assert (
+        len(thumbnail_calls) == 1
+    )  # stored sol 4327 has Mastcam frames; empty sol 4326 is skipped
     items = raw_items(pages)
     thumbnails = sum(1 for item in items if item["is_thumbnail"])
     stored = (await photo_sols(session_factory, "curiosity"))[4327]

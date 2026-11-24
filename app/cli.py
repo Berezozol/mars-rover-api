@@ -54,6 +54,11 @@
 - ``weather import --input PATH [--force]``: replace the weather data of the rovers in an export
   file. Exit codes: 0 imported or already identical, 1 the file has far fewer sols than the
   database (``--force`` imports it anyway), 2 invalid file or input, or the lock is taken.
+- ``thumbnails --rover curiosity --from-sol A --to-sol B [--batch-sols N]``: write the JPL
+  thumbnails of Mastcam, MAHLI and MARDI frames into ``photos.img_small``, ``N`` sols (default 20)
+  per feed request, paused like sync. Idempotent; every batch is committed and logged, so after an
+  interruption rerun with --from-sol set past the last logged batch (or the same range). Exit
+  codes: 0 done, 1 some batches failed, 2 invalid input or another rover, 130 interrupted.
 - ``openapi [--output PATH]``: write the OpenAPI schema (admin routes excluded) as JSON, to
   stdout by default. Exit codes: 0 written, 2 the file cannot be written.
 - ``openapi-ts [--output PATH]``: the same schemas as TypeScript declarations; same exit codes.
@@ -99,6 +104,10 @@ from app.services.rad_transfer import (
 )
 from app.services.sample_sync import SampleSyncResult, SampleSyncService
 from app.services.sync import SyncResult, SyncService, compact_ranges
+from app.services.thumbnails import (
+    DEFAULT_BATCH_SOLS as THUMBNAIL_BATCH_SOLS,
+)
+from app.services.thumbnails import MSL_ROVER_ID, backfill_thumbnails
 from app.services.v2 import ROVER_SLUGS
 from app.services.weather_sync import (
     WeatherParser,
@@ -120,6 +129,7 @@ from app.sources.base import SourceAdapter
 from app.sources.http import UpstreamClient, UpstreamError
 from app.sources.locations import LOCATION_MISSIONS
 from app.sources.mer import ROVER_PREFIXES, MerAdapter
+from app.sources.msl import MslAdapter
 from app.sources.registry import SYNCABLE_ROVERS, build_adapter
 
 logger = logging.getLogger(__name__)
@@ -311,6 +321,18 @@ def _build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_BATCH_SOLS,
         help=f"sols per batch, one commit each (default {DEFAULT_BATCH_SOLS})",
     )
+    thumbs = commands.add_parser(
+        "thumbnails", help="load Curiosity thumbnails (img_small) of stored frames from the feed"
+    )
+    thumbs.add_argument("--rover", required=True, type=str.lower, help="curiosity only")
+    thumbs.add_argument("--from-sol", type=int, required=True, help="lowest sol")
+    thumbs.add_argument("--to-sol", type=int, required=True, help="highest sol")
+    thumbs.add_argument(
+        "--batch-sols",
+        type=int,
+        default=THUMBNAIL_BATCH_SOLS,
+        help=f"sols per feed request (default {THUMBNAIL_BATCH_SOLS})",
+    )
     rec = commands.add_parser("reconcile", help="compare stored photos with the source")
     rec.add_argument("--rover", required=True, type=str.lower, help="rover slug")
     rec.add_argument(
@@ -336,6 +358,8 @@ def main(argv: list[str] | None = None) -> int:
         return _main_batches(args, run_backfill_command)
     if args.command == "reconcile":
         return _main_reconcile(args)
+    if args.command == "thumbnails":
+        return _main_thumbnails(args)
     if args.command == "backfill-meta":
         return _main_backfill_meta(args)
     if args.command == "mer-download":
@@ -380,6 +404,62 @@ def _main_batches(args: argparse.Namespace, command: BatchesCommand) -> int:
         # The running sync run was marked failed on cancellation; a rerun resumes.
         print("interrupted: rerun the same command to resume", file=sys.stderr)
         return EXIT_INTERRUPTED
+
+
+def _main_thumbnails(args: argparse.Namespace) -> int:
+    if args.rover != MSL_ROVER_ID:
+        print(
+            f"error: thumbnails are loaded for {MSL_ROVER_ID} only, not {args.rover[:64]!r}",
+            file=sys.stderr,
+        )
+        return EXIT_USAGE
+    if args.batch_sols < 1 or args.from_sol < 0 or args.to_sol < args.from_sol:
+        print(
+            "error: need 0 <= --from-sol <= --to-sol and --batch-sols of at least 1",
+            file=sys.stderr,
+        )
+        return EXIT_USAGE
+    settings = get_settings()
+    configure_logging(settings.log_level)
+    try:
+        return asyncio.run(
+            run_thumbnails_command(args.from_sol, args.to_sol, args.batch_sols, settings)
+        )
+    except KeyboardInterrupt:
+        print("interrupted: rerun the same command to continue", file=sys.stderr)
+        return EXIT_INTERRUPTED
+
+
+async def run_thumbnails_command(
+    from_sol: int, to_sol: int, batch_sols: int, settings: Settings
+) -> int:
+    """Run ``thumbnails`` for Curiosity and return the exit code (0 done, 1 failed batches)."""
+    engine = create_engine(
+        settings.database_url, connect_timeout=settings.db_connect_timeout_seconds
+    )
+    try:
+        async with UpstreamClient(settings) as client:
+            run = await backfill_thumbnails(
+                create_session_factory(engine),
+                MslAdapter(client, settings),
+                from_sol,
+                to_sol,
+                batch_sols=batch_sols,
+            )
+    except Exception:
+        logger.exception("Thumbnail load crashed; rerun to continue")
+        return EXIT_PARTIAL
+    finally:
+        await engine.dispose()
+    result = run.result
+    print(
+        f"curiosity thumbnails {from_sol}-{to_sol}: batches={run.batches} "
+        f"matched={result.matched} updated={result.updated} skipped={result.skipped} "
+        f"failed_batches={len(run.failed_batches)}"
+    )
+    for start, end in run.failed_batches:
+        print(f"  failed: sols {start}-{end}")
+    return EXIT_PARTIAL if run.failed_batches else EXIT_SUCCESS
 
 
 def _main_backfill_meta(args: argparse.Namespace) -> int:

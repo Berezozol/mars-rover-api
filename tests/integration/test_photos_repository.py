@@ -195,6 +195,60 @@ async def test_upsert_photos_identical_data_does_not_rewrite_row(
     assert row["updated_at"] == OLD_TS
 
 
+async def test_upsert_photos_img_small_none_keeps_the_stored_thumbnail(
+    db_session: AsyncSession, make_record: MakeRecord
+) -> None:
+    thumb = "https://images.example.test/thumb.jpg"
+    await photos_repo.upsert_photos(
+        db_session, "curiosity", [make_record(source_id="rec-thumb", img_small=thumb)]
+    )
+
+    await photos_repo.upsert_photos(
+        db_session, "curiosity", [make_record(source_id="rec-thumb", img_small=None)]
+    )
+
+    (row,) = await photo_rows(db_session, "curiosity")
+    assert row["img_small"] == thumb
+
+
+async def test_upsert_photos_same_img_small_does_not_rewrite_row(
+    db_session: AsyncSession, make_record: MakeRecord
+) -> None:
+    thumb = "https://images.example.test/thumb.jpg"
+    record = make_record(source_id="rec-thumb-same", img_small=thumb)
+    await photos_repo.upsert_photos(db_session, "curiosity", [record])
+    await backdate_timestamps(db_session, "rec-thumb-same")
+
+    await photos_repo.upsert_photos(db_session, "curiosity", [record])
+    await photos_repo.upsert_photos(
+        db_session, "curiosity", [make_record(source_id="rec-thumb-same", img_small=None)]
+    )
+
+    (row,) = await photo_rows(db_session, "curiosity")
+    assert row["img_small"] == thumb
+    assert row["updated_at"] == OLD_TS
+
+
+async def test_upsert_photos_new_img_small_replaces_the_stored_thumbnail(
+    db_session: AsyncSession, make_record: MakeRecord
+) -> None:
+    await photos_repo.upsert_photos(
+        db_session,
+        "curiosity",
+        [make_record(source_id="rec-thumb-new", img_small="https://images.example.test/old.jpg")],
+    )
+    await backdate_timestamps(db_session, "rec-thumb-new")
+    new = "https://images.example.test/new.jpg"
+
+    await photos_repo.upsert_photos(
+        db_session, "curiosity", [make_record(source_id="rec-thumb-new", img_small=new)]
+    )
+
+    (row,) = await photo_rows(db_session, "curiosity")
+    assert row["img_small"] == new
+    assert row["updated_at"] != OLD_TS
+
+
 async def test_upsert_photos_field_cleared_to_none_is_updated(
     db_session: AsyncSession, make_record: MakeRecord
 ) -> None:

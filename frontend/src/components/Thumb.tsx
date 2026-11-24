@@ -27,8 +27,15 @@ export function Thumb({ sources, alt, width, height }: Props) {
   const src = sources[i];
   const ratio = thumbRatio(width, height);
   const known = !!width && !!height;
+  // Frame size unknown (Curiosity thumbnails: 192x144, 144x144, even portrait 80x112): the tile stays
+  // 4:3 and a loaded image of other proportions is shown whole (letterboxed), never cropped or stretched.
+  const [fitWhole, setFitWhole] = useState({ src, whole: false });
+  const whole = fitWhole.src === src && fitWhole.whole;
   return (
-    <div class="thumb" style={known ? { aspectRatio: String(ratio) } : undefined}>
+    <div
+      class={whole ? "thumb thumb-whole" : "thumb"}
+      style={known ? { aspectRatio: String(ratio) } : undefined}
+    >
       {src ? (
         <img
           src={src}
@@ -37,6 +44,12 @@ export function Thumb({ sources, alt, width, height }: Props) {
           height={Math.round(320 / ratio)}
           loading="lazy"
           decoding="async"
+          onLoad={(e) => {
+            const { naturalWidth: w, naturalHeight: h } = e.currentTarget;
+            if (!known && w > 0 && h > 0 && Math.abs(w / h - ratio) / ratio > 0.05) {
+              setFitWhole({ src, whole: true });
+            }
+          }}
           onError={() => setFailed({ key, n: i + 1 })}
         />
       ) : (

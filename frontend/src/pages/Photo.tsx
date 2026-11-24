@@ -314,9 +314,13 @@ function Viewer({ photo }: { photo: PhotoDetail }) {
   const available = (s: ImageSize) => (s === "full" ? true : !!photo.images[s]);
   const converted = isConverted(photo);
   const onlyFull = !photo.images.small && !photo.images.medium && !photo.images.large;
+  // Without a medium size (Curiosity: only a tiny thumbnail up to 192x144) the card opens at full;
+  // small stays available in the switcher and is used for grid tiles.
+  const thumbOnly = !!photo.images.small && !photo.images.medium && !photo.images.large;
+  // Exception: Spirit/Opportunity full frames are rendered on demand (slow), so they open on the preview.
   const defaultSize: ImageSize = photo.images.medium
     ? "medium"
-    : photo.images.small
+    : converted && photo.images.small
       ? "small"
       : "full";
   const [size, setSize] = useState<ImageSize>(defaultSize);
@@ -382,7 +386,9 @@ function Viewer({ photo }: { photo: PhotoDetail }) {
           ? "Small is the archive preview. Full is rendered on demand from the original data file, so it can take a while the first time."
           : onlyFull
             ? "Raw images of this rover are published in one size only, so Small, Medium and Large are unavailable."
-            : "Full is the original file as published by the source."}
+            : thumbOnly
+              ? "Small is a thumbnail of up to 192×144 px; this rover has no Medium or Large size. Full is the original file as published by the source."
+              : "Full is the original file as published by the source."}
       </p>
       <p class="credit-line">
         <span class="muted">Credit:</span> <strong>{photo.credit ?? "not provided"}</strong>

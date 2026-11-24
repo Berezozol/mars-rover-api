@@ -1,7 +1,9 @@
 """Curiosity (MSL) adapter for the mars.nasa.gov raw_image_items API."""
 
 import logging
-from collections.abc import AsyncGenerator, Mapping
+import re
+from collections.abc import AsyncGenerator, Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any
 
 from app.core.config import Settings
@@ -23,6 +25,93 @@ THUMBNAIL = "thumbnail"
 SITE_ORIGIN = "https://mars.nasa.gov"
 MISSION_CONDITION = "msl:mission"
 NO_THUMBNAILS = "thumbnail::sample_type::noteq"
+
+
+ONLY_THUMBNAILS = "thumbnail::sample_type::eq"
+THUMBNAIL_PAGE_SIZE = 1000
+DEFAULT_MAX_PAGES = 200
+
+# MSSS ids (Mastcam, MAHLI, MARDI): 4 digits of the sol, camera code (M + letter), 16 digits of
+# the shot, a product letter with a 2-character version, then ``_D`` and 3 more characters.
+# The sol is 4 digits and the key is exactly 22 characters; sol 10000 is decades away and would
+# need a new key rule, so such ids are not matched (None) rather than guessed.
+_MSSS_ID = re.compile(r"^(\d{4}M[A-Z]\d{16})([A-Z])[0-9A-Z]{2}_D[A-Z0-9]{3}$")
+_FRAME_PRODUCTS = frozenset("CDERS")
+_THUMBNAIL_PRODUCTS = frozenset("ITU")
+
+
+@dataclass(frozen=True)
+class Thumbnail:
+    """One thumbnail item of the feed: its sol, matching key and URL."""
+
+    key: str
+    url: str
+    sol: int
+    imageid: str
+
+
+def thumbnail_key(imageid: str) -> str | None:
+    """Key shared by an MSSS frame and its thumbnail: the first 22 characters of the id.
+
+    Frames (product letters C, D, E, R, S) and thumbnails (I, T, U) of one shot give the same
+    key; ``None`` for any other id (Navcam, Hazcam, ChemCam and unknown formats).
+    """
+    match = _MSSS_ID.match(imageid) if isinstance(imageid, str) else None
+    if match is None or match.group(2) not in _FRAME_PRODUCTS | _THUMBNAIL_PRODUCTS:
+        return None
+    return match.group(1)
+
+
+def parse_thumbnail(raw: Mapping[str, Any]) -> Thumbnail | None:
+    """A thumbnail of an MSSS camera; ``None`` for other items and for incomplete ones."""
+    imageid = clean(raw.get("imageid"))
+    if not isinstance(imageid, str):
+        return None
+    match = _MSSS_ID.match(imageid)
+    if match is None or match.group(2) not in _THUMBNAIL_PRODUCTS:
+        return None
+    url = clean(raw.get("https_url")) or clean(raw.get("url"))
+    sol = to_int(raw.get("sol"), field="sol")
+    if not isinstance(url, str) or sol is None:
+        return None
+    return Thumbnail(key=match.group(1), url=url, sol=sol, imageid=imageid)
+
+
+async def fetch_thumbnails(
+    client: UpstreamClient,
+    sols: Sequence[int],
+    *,
+    url: str,
+    max_pages: int = DEFAULT_MAX_PAGES,
+) -> list[Thumbnail]:
+    """MSSS thumbnails of ``sols`` (one feed query for all of them, every page of it).
+
+    One thumbnail per key (the first one seen). Raises ``UpstreamError`` on a failed request
+    or when pages remain after ``max_pages``.
+    """
+    if not sols:
+        return []
+    wanted = ",".join(str(sol) for sol in sorted(set(sols)))
+    found: dict[str, Thumbnail] = {}
+    for page in range(max_pages):
+        params: dict[str, str | int] = {
+            "order": MslAdapter.ORDER,
+            "per_page": THUMBNAIL_PAGE_SIZE,
+            "page": page,
+            "condition_1": MISSION_CONDITION,
+            "condition_2": f"{wanted}:sol:in",
+            "extended": ONLY_THUMBNAILS,
+        }
+        data = await client.get_json(url, params)
+        if not isinstance(data, dict) or not isinstance(data.get("items"), list):
+            raise UpstreamError(url, None, "response has no items list")
+        for raw in data["items"]:
+            thumbnail = parse_thumbnail(raw) if isinstance(raw, Mapping) else None
+            if thumbnail is not None:
+                found.setdefault(thumbnail.key, thumbnail)
+        if data.get("more") is not True:
+            return list(found.values())
+    raise PageLimitExceeded(url, None, f"thumbnails: page limit reached after {max_pages} pages")
 
 
 def _mapping(value: Any) -> Mapping[str, Any]:
@@ -92,6 +181,10 @@ class MslAdapter:
         self._url = settings.msl_feed_url
         self._page_size = settings.msl_page_size
         self._max_pages = settings.upstream_max_pages
+
+    async def fetch_thumbnails(self, sols: Sequence[int]) -> list[Thumbnail]:
+        """MSSS thumbnails of ``sols``, one feed query (plus pages) for all of them."""
+        return await fetch_thumbnails(self._client, sols, url=self._url, max_pages=self._max_pages)
 
     async def latest_sol(self) -> int:
         params: dict[str, str | int] = {

@@ -194,11 +194,12 @@ def _photo_row(rover_id: str, camera_id: int, record: PhotoRecord) -> dict[str, 
 def _upsert_statement(rows: list[dict[str, Any]]) -> Insert:
     """Upsert that touches a row (and updated_at) only when some data column changed."""
     stmt = pg_insert(Photo).values(rows)
-    updates: dict[str, Any] = {name: stmt.excluded[name] for name in _DATA_COLUMNS}
-    updates["updated_at"] = func.now()
-    changed = or_(
-        *(Photo.__table__.c[name].is_distinct_from(stmt.excluded[name]) for name in _DATA_COLUMNS)
-    )
+    new: dict[str, Any] = {name: stmt.excluded[name] for name in _DATA_COLUMNS}
+    # A record without a small image keeps the one stored: Curiosity thumbnails come from a
+    # separate feed query (app.services.thumbnails) and a re-sync of the frames must not drop them.
+    new["img_small"] = func.coalesce(stmt.excluded["img_small"], Photo.__table__.c["img_small"])
+    updates = {**new, "updated_at": func.now()}
+    changed = or_(*(Photo.__table__.c[name].is_distinct_from(new[name]) for name in _DATA_COLUMNS))
     return stmt.on_conflict_do_update(
         index_elements=[Photo.rover_id, Photo.source_id], set_=updates, where=changed
     )

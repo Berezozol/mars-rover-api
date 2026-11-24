@@ -102,10 +102,17 @@ class MslFeed:
         self.fail = dict(fail or {})
         self.sol_requests: list[int] = []
         self.latest_requests = 0
+        self.thumbnail_sol_lists: list[str] = []
         self.on_sol: Callable[[int], None] | None = None
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         params = query(request)
+        if params.get("extended") == "thumbnail::sample_type::eq":
+            # Thumbnail step of the sync (AC-4): recorded apart, answered with an empty page.
+            self.thumbnail_sol_lists.append(params["condition_2"])
+            return httpx.Response(
+                200, json={"items": [], "more": False, "total": 0, "page": 0, "per_page": 1000}
+            )
         if "condition_2" not in params:
             self.latest_requests += 1
             body = load_fixture("msl/latest.json")
@@ -202,6 +209,13 @@ async def test_backfill_walks_batches_from_to_sol_down_one_backfill_run_each(
     assert feed.sol_requests == list(range(24, -1, -1))
     assert feed.latest_requests == 0
     assert await photo_sols(session_factory, "curiosity") == expected_photos(range(25))
+    # Thumbnail step (AC-4): only sols that stored MSSS frames (the fixtures are Mastcam).
+    thumbnail_sols = sorted(
+        int(sol)
+        for entry in feed.thumbnail_sol_lists
+        for sol in entry.removesuffix(":sol:in").split(",")
+    )
+    assert thumbnail_sols == list(DATA_SOLS)
     captured = capsys.readouterr()
     assert "eta" in (captured.out + captured.err).lower()
 

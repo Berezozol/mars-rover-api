@@ -22,8 +22,10 @@ from app.repositories import rovers as rovers_repo
 from app.repositories import source_counts as counts_repo
 from app.repositories import sync_runs as runs_repo
 from app.repositories.source_counts import SourceCountRow
+from app.services.thumbnails import has_thumbnail_cameras, sync_sol_thumbnails
 from app.sources.base import FetchStats, PhotoRecord, SolStats, SourceAdapter
 from app.sources.http import SolsFetchFailed, UpstreamError
+from app.sources.msl import MslAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -542,7 +544,14 @@ async def _sync_chunk(
             # not reported: that needs the failing sol in the adapter exception.
             pending.discard(sol)
             counts = _sol_counts(stats, sol, records)
+            stored = progress.stored_sols
             await _store_sol(session, rover_id, sol, records, counts, progress, mark_new=mark_new)
+            if (
+                isinstance(adapter, MslAdapter)
+                and progress.stored_sols > stored
+                and has_thumbnail_cameras(records)
+            ):
+                await sync_sol_thumbnails(session, adapter, sol)
     except UpstreamError as exc:
         # A failed refetch also names sols that were yielded (and stored) before it.
         incomplete = exc.sols if isinstance(exc, SolsFetchFailed) else frozenset()

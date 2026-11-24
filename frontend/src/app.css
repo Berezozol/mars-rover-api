@@ -62,6 +62,9 @@ pre.raw {
   object-fit: cover;
   display: block;
 }
+.thumb.thumb-whole img {
+  object-fit: contain;
+}
 .thumb .thumb-fail {
   position: absolute;
   inset: 0;
