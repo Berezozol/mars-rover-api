@@ -14,12 +14,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # BACKUP_KIND: scheduled (systemd timer, weekly; default) -> mars-<stamp>.dump, keep 4 (about
 # a month); pre-update (update.sh, before every migration) -> preupdate-<stamp>.dump, keep 3.
 # Separate prefixes and separate rotation: frequent releases never push out the weekly copies.
+# pre-import (rad-import.sh, weather-import.sh) -> preimport-<stamp>.dump, keep 2: its own
+# rotation, so imports never evict the pre-update rollback points.
 # Only mars-* dumps are pulled by the owner's computer, verified weekly and uploaded.
 BACKUP_KIND="${BACKUP_KIND:-scheduled}"
 case "$BACKUP_KIND" in
   scheduled) PREFIX="mars"; KEEP="${KEEP:-4}" ;;
   pre-update) PREFIX="preupdate"; KEEP="${KEEP:-3}" ;;
-  *) echo "BACKUP_KIND must be scheduled or pre-update" >&2; exit 2 ;;
+  pre-import) PREFIX="preimport"; KEEP="${KEEP:-2}" ;;
+  *) echo "BACKUP_KIND must be scheduled, pre-update or pre-import" >&2; exit 2 ;;
 esac
 LOG_FILE="$BACKUP_DIR/backup.log"
 mkdir -p "$BACKUP_DIR"
@@ -71,7 +74,7 @@ done
 # (configure the remote with `rclone config` as the deploy user first). Not set: skipped.
 remote="$(env_get BACKUP_REMOTE)"
 if [[ "$BACKUP_KIND" != "scheduled" ]]; then
-  say "Off-server upload skipped (pre-update dump)"
+  say "Off-server upload skipped ($BACKUP_KIND dump)"
 elif [[ -n "$remote" ]]; then
   if ! command -v rclone >/dev/null 2>&1; then
     fail "BACKUP_REMOTE is set but rclone is not installed"

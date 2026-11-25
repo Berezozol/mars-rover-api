@@ -1,0 +1,13 @@
+[Unit]
+Description=Monthly MSL RAD radiation sync of the Mars Rover API
+
+[Timer]
+# First day of the month, 06:00 UTC: after the unattended-upgrades reboot (05:00 UTC), so a
+# long run is not cut off by it. Spread by up to 1 hour to be gentle to the PDS server.
+OnCalendar=*-*-01 06:00:00 UTC
+RandomizedDelaySec=1h
+# Run at boot if the machine was off at the scheduled time.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

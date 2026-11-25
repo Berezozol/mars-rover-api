@@ -142,10 +142,11 @@ Files in `deploy/vps/`:
 | `Caddyfile` | HTTPS, one upstream for both hosts, `www` redirect, admin closed (404), URL/header/body limits, timeouts, HSTS and protective headers, no `Server`/`Via`, no compression, JSON logs without credentials |
 | `.env.example` | all variables of the VPS `.env` |
 | `update.sh` | pull, build, copy compose/Caddyfile, backup, migrate, restart, health check |
-| `backup.sh`, `restore.sh`, `verify-backup.sh` | weekly dump (4 kept) and pre-update dump (3 kept) with `.sha256`, restore, weekly restore test |
+| `backup.sh`, `restore.sh`, `verify-backup.sh` | weekly dump (4 kept), pre-update dump (3 kept) and pre-import dump (2 kept) with `.sha256`, restore, weekly restore test |
 | `pull-backup.ps1` | runs on the owner's Windows computer: downloads the newest verified dump (size and SHA-256 checked), keeps 12 |
 | `host-check.sh` | disk, memory, containers, `/health`, HTTPS, backup age -> Telegram |
-| `systemd/` | timers: `mars-backup` (Sunday 02:30 UTC), `mars-verify-backup` (Sunday 03:30 UTC), `mars-hostcheck` (every 5 min) |
+| `rad-import.sh`, `weather-import.sh`, `rad-sync.sh` | import of an export file (status, backup, import, status), monthly `rad sync` (7a) |
+| `systemd/` | timers: `mars-backup` (Sunday 02:30 UTC), `mars-verify-backup` (Sunday 03:30 UTC), `mars-hostcheck` (every 5 min), `mars-rad-sync` (1st of the month, 06:00 UTC; enable after the RAD import, 7a) |
 | `bootstrap.sh` | server preparation (already applied), installs the units |
 | `lib.sh` | helpers sourced by the scripts |
 
@@ -283,7 +284,7 @@ while the server was off starts after boot), and `update.sh` runs it before ever
 `/srv/mars/backups/mars-<stamp>.dump.partial`, `pg_restore --list` must read it, then it is
 renamed. Rotation is separate per kind: the 4 newest weekly `mars-<stamp>.dump` (about a month)
 and the 3 newest `preupdate-<stamp>.dump`, so frequent releases never push out the weekly
-copies; `pre-restore-*` dumps are not rotated (delete by hand). Weekly means up to a week of
+copies (data imports use `BACKUP_KIND=pre-import`, 2 newest `preimport-<stamp>.dump`); `pre-restore-*` dumps are not rotated (delete by hand). Weekly means up to a week of
 data between copies: the sync can refill recent photos from the feeds, but take an extra
 `backup.sh` before risky work; log `backups/backup.log`; on failure a Telegram message
 and a failed unit (`systemctl status mars-backup.service`). The backups are on the same disk as
@@ -457,17 +458,49 @@ files; pass it on the command line.
 scp data\export\rad-<date>.jsonl.gz deploy@<host>:/srv/mars/     # not into backups/ (rotation)
 ssh deploy@<host> sha256sum /srv/mars/rad-<date>.jsonl.gz         # compare with Get-FileHash locally
 ssh deploy@<host>
-cd /srv/mars
-docker compose run --rm -T -v /srv/mars/rad-<date>.jsonl.gz:/in/rad.jsonl.gz:ro app python -m app.cli rad import --input /in/rad.jsonl.gz
-docker compose exec -T app python -m app.cli rad status
+/srv/mars/repo/deploy/vps/rad-import.sh /srv/mars/rad-<date>.jsonl.gz
 rm /srv/mars/rad-<date>.jsonl.gz
 ```
 
-`docker compose run` with a read-only bind mount is used because the root file system of the
-`app` container is read-only. Add `--force` only when the import refuses because the server
-already has RAD data and the export is a superset (exit codes: `app/cli.py` docstring). Check
-`GET /api/v2/rovers/curiosity/radiation` (`source_max_sol`, `items`). Done on 2026-11-24:
-5351 files, 4625 sols, the server was empty, no `--force`.
+`rad-import.sh [--no-backup] [--force] PATH` checks that the file exists and is world-readable
+(the container runs as uid 10001: `chmod 644` it otherwise), starts the db (`up -d --wait`),
+prints `rad status`, takes a backup (`BACKUP_KIND=pre-import`: its own rotation, the 2 newest
+`preimport-<stamp>.dump`, so pre-update rollback points are not evicted; `--no-backup` skips it),
+runs `rad import` in a one-off container with the file mounted read-only (the root file system
+of the `app` container is read-only), then prints `rad status` again. Repeating it is safe: an
+identical file changes nothing. Exit codes: 0 done (also `--help`); 1 the app refused the file
+because it has far fewer sols than the database (output says "use --force"; add `--force` only
+after checking it is the right file); 2 bad arguments, invalid file, unreadable file or the lock
+is taken; 4 a step failed before the app could judge the file (db did not start, backup, docker
+or compose; nothing was imported). Check `GET /api/v2/rovers/curiosity/radiation`
+(`source_max_sol`, `items`). Done by hand on 2026-11-24: 5351 files, 4625 sols, the server was
+empty, no `--force`.
+
+**Weather export (REMS, MEDA).** The same way, with `weather export` on the development machine
+and `deploy/vps/weather-import.sh /srv/mars/weather-<date>.jsonl.gz` on the server (same options
+and exit codes; it prints `weather status` before and after).
+
+**Monthly RAD update: `mars-rad-sync.timer`.** Enable it only after the RAD import. As a guard,
+`rad-sync.sh` reads `rad status` first and, when the database holds no sols, sends an alert and
+exits 2 without downloading (a first full load of ~230-340 GB is deliberate only with
+`rad-sync.sh --initial`, which is not what the timer does). It runs `rad-sync.sh` on the
+1st of each month at 06:00 UTC (+ up to 1 h random delay, after the 05:00 reboot;
+`Persistent=true`: a run missed while the server was off starts after boot): `rad sync` in a
+one-off container, files are streamed through the parser and not stored on disk. The import
+carries the md5 of every file and the `ETag`/`Last-Modified` of the listings, so a run only
+loads new or changed sols. With nothing new: 2 conditional requests (`CHECKSUMS.TXT`,
+`TIMING_ERRORS.TXT`, normally `304`, about 0 bytes; without validators about 1.2 MB for the two
+listings, still no file). A new PDS release (every 4-5 months): about 130 files, about 9 GB,
+about 30 minutes (2 s pause between requests). Exit code 0 is success; 1 (some files stay
+unloaded) and 3 (server unavailable) send a Telegram message from the app (its `rad sync: ...`
+summary line is the marker; without it the failure was in docker/compose and the script sends
+the message); other codes (2 refused or lock taken, 4 status unreadable, 143 stopped by systemd:
+timeout, `systemctl stop`, reboot) are sent by the script, which names the container
+`mars-rad-sync`, stops it on SIGTERM so no lock stays held, and removes a stale one at the start;
+the unit then shows `failed`. Rerun by hand: `sudo systemctl start mars-rad-sync.service`
+(or `rad-sync.sh`); a rerun continues where it stopped. Log: `/srv/mars/backups/rad-sync.log`
+(trimmed to the last 10000 lines at each start),
+state: `docker compose run --rm --no-deps -T app python -m app.cli rad status`.
 
 **Curiosity thumbnails (`photos.img_small`).** The command asks the JPL feed (about 900
 requests for sols 0-5100) and runs in about 4-5 minutes per 1700 sols. Run it in chunks so one

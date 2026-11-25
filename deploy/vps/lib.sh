@@ -64,6 +64,81 @@ latest_dump() {
   printf '%s' "$f"
 }
 
+# Import of a dataset export file (rad-import.sh, weather-import.sh): status, backup, import,
+# status. KIND is the app.cli command (rad or weather); the rest are the script's arguments:
+#   [--no-backup] [--force] PATH
+# The import is idempotent (an identical file changes nothing), so a repeat is safe. The file
+# is mounted read-only into a one-off container: the root file system of `app` is read-only.
+# The backup before it is BACKUP_KIND=pre-import (its own rotation, 2 kept).
+# Exit code: 0 done (or --help), 1 the app refused the file (far fewer sols than the database:
+# use --force), 2 bad arguments, an invalid file or the lock is taken, 4 a step failed before
+# the app could judge (db did not start, backup, docker or the container itself).
+mars_import_dataset() {
+  local kind="$1" backup=1 force=() path="" arg rc out usage mode
+  shift
+  usage="usage: ${0##*/} [--no-backup] [--force] PATH"
+  for arg in "$@"; do
+    case "$arg" in
+      --no-backup) backup=0 ;;
+      --force) force=(--force) ;;
+      -h | --help) echo "$usage"; return 0 ;;
+      -*) echo "unknown option: $arg ($usage)" >&2; return 2 ;;
+      *) [[ -z "$path" ]] || { echo "only one PATH is accepted" >&2; return 2; }; path="$arg" ;;
+    esac
+  done
+  [[ -n "$path" ]] || { echo "$usage" >&2; return 2; }
+  [[ -f "$path" && -r "$path" ]] || { echo "file not found or not readable: $path" >&2; return 2; }
+  path="$(realpath -e -- "$path")" || { echo "cannot resolve the path: $path" >&2; return 2; }
+  case "$path" in
+    *:* | *,*) echo "the path must not contain ':' or ',' (docker volume syntax): $path" >&2; return 2 ;;
+  esac
+  # The container runs as uid 10001: the file must be readable by others.
+  mode="$(stat -c %a -- "$path")"
+  if (( ((8#$mode) & 4) == 0 )); then
+    echo "the file is not world-readable (the container runs as uid 10001): chmod 644 $path" >&2
+    return 2
+  fi
+  log "Import of $path into the $kind data (project $MARS_PROJECT)"
+  mars_compose up -d --wait db >/dev/null || { log "FAILED: the db container did not become healthy"; return 4; }
+  log "--- $kind status before"
+  mars_compose run --rm --no-deps -T app python -m app.cli "$kind" status \
+    || { log "FAILED: $kind status (docker, compose or the database)"; return 4; }
+  if [[ "$backup" -eq 1 ]]; then
+    log "--- backup before the import (pre-import kind, 2 kept; --no-backup skips it)"
+    BACKUP_KIND=pre-import "$(dirname "${BASH_SOURCE[0]}")/backup.sh" \
+      || { log "FAILED: the backup (nothing was imported)"; return 4; }
+  else
+    log "--- backup skipped (--no-backup)"
+  fi
+  log "--- $kind import"
+  out="$(mktemp)"
+  set +e
+  mars_compose run --rm -T -v "$path:/in/x.jsonl.gz:ro" app \
+    python -m app.cli "$kind" import --input /in/x.jsonl.gz "${force[@]}" 2>&1 | tee "$out"
+  rc="${PIPESTATUS[0]}"
+  set -e
+  case "$rc" in
+    0) ;;
+    1)
+      if grep -q 'use --force' "$out"; then
+        rm -f "$out"
+        log "IMPORT REFUSED: the file has far fewer sols than the database. Check that it is the right file; if so, repeat with --force"
+        return 1
+      fi
+      rm -f "$out"
+      log "IMPORT FAILED with exit code 1 before the app judged the file (docker, compose or a crash): see the output above"
+      return 4
+      ;;
+    2) rm -f "$out"; log "IMPORT FAILED: invalid file or another import/sync holds the lock (exit code 2)"; return 2 ;;
+    *) rm -f "$out"; log "IMPORT FAILED with exit code $rc (docker or the container)"; return 4 ;;
+  esac
+  rm -f "$out"
+  log "--- $kind status after"
+  mars_compose run --rm --no-deps -T app python -m app.cli "$kind" status \
+    || { log "WARNING: the import is done but $kind status failed"; return 4; }
+  log "Import done. The file can be deleted: rm $path"
+}
+
 # Alembic as the schema owner `mars` (one-off container `migrate`, owner password from the
 # secret file; the running app uses the restricted role mars_app).
 mars_migrate() {

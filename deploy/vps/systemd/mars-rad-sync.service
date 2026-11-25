@@ -1,0 +1,22 @@
+[Unit]
+Description=Monthly MSL RAD radiation sync of the Mars Rover API (rad sync in the app image)
+Wants=docker.service network-online.target
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+User=deploy
+Group=deploy
+# Exit code 0 = success. Failures send a Telegram message (the app for exit codes 1 and 3 when
+# it got to report, the script otherwise) and leave the unit failed:
+#   systemctl status mars-rad-sync.service
+# A database without RAD history is refused (exit 2) instead of downloading everything.
+ExecStart=/srv/mars/repo/deploy/vps/rad-sync.sh
+# Quiet month: 2 requests. A new release (about 130 files, 9 GB at 2 s pauses) takes about
+# 30 minutes; retries and the 15 minute cooldown can double that. On a timeout the script
+# stops its container and sends an alert (it needs a few seconds after SIGTERM).
+TimeoutStartSec=6h
+TimeoutStopSec=2min
+NoNewPrivileges=yes
+Nice=10
+IOSchedulingClass=idle

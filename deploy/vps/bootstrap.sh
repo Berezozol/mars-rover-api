@@ -142,6 +142,7 @@ if [[ -d "$unit_dir" ]]; then
   systemctl daemon-reload
   # Timers are enabled by the owner once .env and the stack exist (README step 7).
   echo "units installed; enable with: systemctl enable --now mars-backup.timer mars-hostcheck.timer mars-verify-backup.timer"
+  echo "RAD update (monthly, after the RAD import, README 7a): systemctl enable --now mars-rad-sync.timer"
 else
   echo "no clone at /srv/mars/repo yet: units not installed"
 fi
