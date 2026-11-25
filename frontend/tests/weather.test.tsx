@@ -15,12 +15,14 @@ import {
   weatherDetail,
   weatherList,
 } from "./fixtures/weather";
+import { perLong } from "./fixtures/range";
 import {
   WX,
   callsTo,
   chip,
   dailyChart,
   hasChip,
+  inspectorSlider,
   openWeather,
   panelOf,
   pickSol,
@@ -148,31 +150,27 @@ describe("Weather AC-41: the section and the daily chart of Perseverance", () =>
     expect(m.calls.length).toBe(before);
   });
 
-  it("AC-41 the range selector 'Sols shown' redraws against Rover.max_sol, no new request", async () => {
-    const m = openWeather();
+  it("AC-41 the range presets redraw the chart against source_max_sol, with no new list request", async () => {
+    const m = openWeather({ per: perLong });
     const panel = await readyPanelWithRover();
-    const select = within(panel).getByLabelText("Sols shown") as HTMLSelectElement;
-    const options = Array.from(select.options).map((o) => o.textContent ?? "");
-    expect(options.some((o) => /Whole mission/i.test(o))).toBe(true);
-    expect(options.some((o) => /Last 365 sols/i.test(o))).toBe(true);
-    expect(options.some((o) => /Last 100 sols/i.test(o))).toBe(true);
-    expect(options.some((o) => /Loaded data only/i.test(o))).toBe(true);
-    const before = m.calls.length;
-    // 'Whole mission' runs to the rover's current sol, the grey zone is between 108 and 2031
-    expect(label(dailyChart(panel))).toMatch(/2031/);
-    const choose = (re: RegExp) => {
-      const o = Array.from(select.options).find((x) => re.test(x.textContent ?? ""))!;
-      fireEvent.change(select, { target: { value: o.value } });
-    };
-    choose(/Last 100 sols/i);
-    await waitFor(() => expect(label(dailyChart(panel))).toMatch(/1931/));
-    expect(label(dailyChart(panel))).toMatch(/2031/);
-    choose(/Loaded data only/i);
-    await waitFor(() => expect(label(dailyChart(panel))).toMatch(/\b100\b/));
-    expect(m.calls.length).toBe(before);
+    const before =
+      callsTo(m, WX("perseverance")).length + callsTo(m, "/api/v2/rovers/perseverance").length;
+    // the default range ends at the newest published sol (1859), not at the rover's current sol (2031)
+    expect(label(dailyChart(panel))).toMatch(/1,?859/);
+    expect(label(dailyChart(panel))).not.toMatch(/2,?031/);
+    expect(within(panel).queryByLabelText("Sols shown")).toBeNull();
+    fireEvent.click(
+      within(within(panel).getByRole("group", { name: /range presets/i })).getByRole("button", {
+        name: /Last 120 sols/,
+      }),
+    );
+    await waitFor(() => expect(label(dailyChart(panel))).toMatch(/1,?740/));
+    expect(
+      callsTo(m, WX("perseverance")).length + callsTo(m, "/api/v2/rovers/perseverance").length,
+    ).toBe(before);
   });
 
-  it("AC-41 the table lists the 8 newest sols, newest first, with the date, hours and flags", async () => {
+  it("AC-41 the table lists the sols of the range, newest first, with the date and the flags", async () => {
     const many = Array.from({ length: 12 }, (_, i) => perSol(200 + i));
     openWeather({ per: many });
     const panel = await readyPanel();
@@ -180,16 +178,30 @@ describe("Weather AC-41: the section and the daily chart of Perseverance", () =>
     const heads = within(table)
       .getAllByRole("columnheader")
       .map((h) => h.textContent ?? "");
-    for (const h of [/^Sol$/, /Date/, /Air/, /Pressure/, /Humidity/, /Wind/, /Hours/, /Flags/]) {
+    for (const h of [/^Sol/, /Date/, /Air/, /Pressure/, /Humidity/, /Wind/, /Hours/, /Flags/]) {
       expect(
         heads.some((x) => h.test(x)),
         String(h),
       ).toBe(true);
     }
+    // stage 22: all 12 sols of the range (they fit one page), not the 8 newest
     const rows = within(table).getAllByRole("row").slice(1);
-    expect(rows).toHaveLength(8);
-    const sols = rows.map((r) => r.firstElementChild?.textContent?.trim());
-    expect(sols).toEqual(["211", "210", "209", "208", "207", "206", "205", "204"]);
+    expect(rows).toHaveLength(12);
+    const sols = rows.map((r) => (r.firstElementChild?.textContent ?? "").replace(/\D/g, ""));
+    expect(sols).toEqual([
+      "211",
+      "210",
+      "209",
+      "208",
+      "207",
+      "206",
+      "205",
+      "204",
+      "203",
+      "202",
+      "201",
+      "200",
+    ]);
     expect(rows[0]!.textContent).toMatch(/2021-06-01/);
     expect(rows[0]!.textContent).toMatch(/24\s*\/\s*24/);
   });
@@ -403,12 +415,7 @@ describe("Weather AC-43: flags", () => {
   it("AC-43 a partial-coverage sol is drawn differently, not hidden", async () => {
     openWeather();
     const panel = await readyPanel();
-    // the dots need room: in the whole-mission range 8 sols are a few pixels wide
-    const select = within(panel).getByLabelText("Sols shown") as HTMLSelectElement;
-    const loaded = Array.from(select.options).find((o) =>
-      /Loaded data only/i.test(o.textContent ?? ""),
-    )!;
-    fireEvent.change(select, { target: { value: loaded.value } });
+    // the default range is the 9 loaded sols, so the dots have room
     await waitFor(() =>
       expect(within(panel).queryAllByTestId("weather-mean-partial").length).toBeGreaterThan(0),
     );
@@ -433,7 +440,7 @@ describe("Weather AC-44: the inspector and hourly charts", () => {
   it("AC-44 the slider has a label, a range type and a text value with the sol and its flags", async () => {
     const m = openWeather();
     const panel = await readyPanel();
-    const slider = within(panel).getByRole("slider") as HTMLInputElement;
+    const slider = inspectorSlider(panel);
     expect(slider.type).toBe("range");
     expect(slider.step === "1" || slider.step === "").toBe(true);
     await pickSol(panel, m, "perseverance", 106, PER_SOLS);
@@ -617,7 +624,7 @@ describe("Weather AC-45: states", () => {
     expect(within(panel).getByRole("radiogroup", { name: "Rover" })).toBeTruthy();
     // the other rover is one click away
     fireEvent.click(within(panel).getByRole("radio", { name: /Curiosity/ }));
-    expect(await within(panel).findByRole("slider")).toBeTruthy();
+    expect((await within(panel).findAllByRole("slider")).length).toBeGreaterThan(0);
   });
 
   it("AC-45 error 503: message and 'Try again' that works, the rover switch stays", async () => {
@@ -635,7 +642,7 @@ describe("Weather AC-45: states", () => {
     const panel = await panelOf();
     expect(within(panel).getByRole("radiogroup", { name: "Rover" })).toBeTruthy();
     fireEvent.click(within(alert).getByRole("button", { name: "Try again" }));
-    expect(await within(panel).findByRole("slider")).toBeTruthy();
+    expect((await within(panel).findAllByRole("slider")).length).toBeGreaterThan(0);
     expect(callsTo(m, WX("perseverance"))).toHaveLength(2);
   });
 
@@ -646,7 +653,7 @@ describe("Weather AC-45: states", () => {
     await screen.findByRole("alert");
     const panel = await panelOf();
     fireEvent.click(within(panel).getByRole("radio", { name: /Curiosity/ }));
-    expect(await within(panel).findByRole("slider")).toBeTruthy();
+    expect((await within(panel).findAllByRole("slider")).length).toBeGreaterThan(0);
     expect(within(panel).queryByRole("alert")).toBeNull();
   });
 
@@ -701,7 +708,7 @@ describe("Weather AC-45: states", () => {
     expect(await within(panel).findByText(/No data for sol 104/i)).toBeTruthy();
     expect(within(panel).queryByRole("alert")).toBeNull();
     expect(dailyChart(panel)).toBeTruthy();
-    expect(within(panel).getByRole("slider")).toBeTruthy();
+    expect(within(panel).getAllByRole("slider").length).toBeGreaterThan(0);
     // choosing another sol recovers the inspector
     await pickSol(panel, m, "perseverance", 100, PER_SOLS);
     await waitFor(() => expect(panel.textContent).toMatch(/Sol 100\b/));
@@ -733,7 +740,7 @@ describe("Weather AC-45: states", () => {
     await pickSol(panel, m, "perseverance", 102, PER_SOLS);
     const alert = await within(panel).findByRole("alert");
     expect(dailyChart(panel)).toBeTruthy();
-    expect(within(panel).getByRole("slider")).toBeTruthy();
+    expect(within(panel).getAllByRole("slider").length).toBeGreaterThan(0);
     fireEvent.click(within(alert).getByRole("button", { name: "Try again" }));
     await waitFor(() => expect(within(panel).queryByRole("alert")).toBeNull());
     expect(callsTo(m, `${WX("perseverance")}/102`)).toHaveLength(2);

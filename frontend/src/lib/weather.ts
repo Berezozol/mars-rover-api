@@ -196,20 +196,7 @@ export const isAnomaly = (s: WeatherSol): boolean =>
 export const isPartial = (s: WeatherSol): boolean =>
   s.flags.some((f) => f.code === "partial_coverage");
 
-// ---- range of the chart ----
-
-export type View = "all" | "365" | "100" | "loaded";
-
-/** The sol axis of the chart: `[from, to]`. `now` is the rover's newest sol, `last` the newest loaded one. */
-export function domainOf(view: View, first: number, last: number, now: number): [number, number] {
-  const end = Math.max(now, last);
-  let d: [number, number];
-  if (view === "365") d = [Math.max(0, end - 365), end];
-  else if (view === "100") d = [Math.max(0, end - 100), end];
-  else if (view === "loaded") d = [first, Math.min(end, last + Math.max(8, (last - first) * 0.18))];
-  else d = [Math.min(1, first), end];
-  return d[1] > d[0] ? d : [d[0], d[0] + 1];
-}
+// ---- how far the data is behind the rover ----
 
 /** True while only the beginning of the mission is loaded: the whole-mission range would be mostly empty. */
 export const isPartialLoad = (last: number, now: number): boolean => now > 0 && last / now < 0.5;

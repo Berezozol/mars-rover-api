@@ -1,0 +1,2114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Radiation (RAD) · Sol Index</title>
+<style>
+/* Sol Index — shared design tokens and components for the static mockups.
+   Working name, unofficial project. No NASA/JPL marks anywhere. */
+
+/* ---------- Tokens: light (default) ---------- */
+:root {
+  color-scheme: light;
+
+  /* surfaces */
+  --bg: #f6f4f1;
+  --surface: #ffffff;
+  --surface-2: #efebe6;
+  --border: #d9d2c9;
+  --border-strong: #a99f93;
+
+  /* text (AA on --surface and --bg) */
+  --text: #1d1a17;
+  --text-muted: #5a534b;      /* 7.1:1 on #fff */
+  --text-faint: #6e665d;      /* 5.5:1 on #fff — captions only */
+
+  /* accent: muted rust */
+  --accent: #a83c17;          /* 5.9:1 on #fff */
+  --accent-hover: #8a3011;
+  --accent-soft: #f7e4da;
+  --on-accent: #ffffff;
+
+  /* status (always paired with a text label) */
+  --ok: #1d6b38;   --ok-soft: #dcefe2;
+  --done: #4b5563; --done-soft: #e6e7ea;
+  --warn: #8a5a00; --warn-soft: #fbefd5;
+  --err: #a8201a;  --err-soft: #fbe2df;
+
+  /* sequential ramp for the manifest chart (one hue, light -> dark) */
+  --seq-0: #ece6df;  /* no photos */
+  --seq-1: #f2c9b1;
+  --seq-2: #e3946b;
+  --seq-3: #c25e33;
+  --seq-4: #8c3613;
+
+  /* route map (plain background, no imagery); graphics >= 3:1 on --map-bg */
+  --map-bg: #efebe6;
+  --map-grid: #d6cec4;
+  --map-route: #857a6e;       /* whole route, muted */
+  --map-route-hi: #a83c17;    /* selected sol range */
+  --map-stop: #6b6157;        /* stop dots */
+  --map-latest: #1f5fbf;      /* latest position */
+  --map-sample: #6a3da8;      /* sample marker (triangle), 6.2:1 on --map-bg */
+
+  /* charts (stage 19): one hue; bars >= 3:1 on --surface, grid is decorative */
+  --chart-bar: #a83c17;
+  --chart-bar-hi: #1d1a17;
+  --chart-grid: #e4ded6;
+  --chart-axis: #5a534b;
+  --map-pin: #1f5fbf;         /* search point, 5.8:1 on --map-bg */
+  --map-radius: #1f5fbf;
+
+  --focus: #1f5fbf;
+  --skeleton: #e6e0d8;
+  --skeleton-hi: #f3efea;
+
+  /* typography — system fonts only */
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --fs-xs: 0.75rem;
+  --fs-sm: 0.875rem;
+  --fs-md: 1rem;
+  --fs-lg: 1.25rem;
+  --fs-xl: 1.625rem;
+  --fs-2xl: 2.125rem;
+
+  /* spacing scale (4px base) */
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px;
+
+  --radius: 10px;
+  --radius-sm: 6px;
+  --shadow: 0 1px 2px rgb(0 0 0 / .06), 0 2px 8px rgb(0 0 0 / .05);
+  --maxw: 1200px;
+}
+
+/* ---------- Tokens: dark ---------- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #12100e;
+    --surface: #1c1916;
+    --surface-2: #26221e;
+    --border: #3a342e;
+    --border-strong: #5c544b;
+    --text: #eee8e1;
+    --text-muted: #b3aaa0;
+    --text-faint: #9d948a;
+    --accent: #f08f62;
+    --accent-hover: #f6a882;
+    --accent-soft: #3a2419;
+    --on-accent: #1a0d06;
+    --ok: #74d394;   --ok-soft: #173322;
+    --done: #b8bec8; --done-soft: #2a2d33;
+    --warn: #f0c062; --warn-soft: #3a2d10;
+    --err: #ff8f86;  --err-soft: #3d1715;
+    --seq-0: #2b2621;
+    --seq-1: #5a3424;
+    --seq-2: #9a4e2c;
+    --seq-3: #d9764a;
+    --seq-4: #f7b08c;
+    --map-bg: #1a1714; --map-grid: #2e2924; --map-route: #8f857a; --map-route-hi: #f08f62;
+    --map-stop: #b3aaa0; --map-latest: #7fb2ff; --map-sample: #c8aaff;
+    --chart-bar: #f08f62; --chart-bar-hi: #eee8e1; --chart-grid: #2e2924; --chart-axis: #b3aaa0;
+    --map-pin: #7fb2ff; --map-radius: #7fb2ff;
+    --focus: #7fb2ff;
+    --skeleton: #2a2621;
+    --skeleton-hi: #36312b;
+    --shadow: 0 1px 2px rgb(0 0 0 / .4);
+  }
+}
+/* manual override used by the header toggle in the mockups */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #12100e; --surface: #1c1916; --surface-2: #26221e;
+  --border: #3a342e; --border-strong: #5c544b;
+  --text: #eee8e1; --text-muted: #b3aaa0; --text-faint: #9d948a;
+  --accent: #f08f62; --accent-hover: #f6a882; --accent-soft: #3a2419; --on-accent: #1a0d06;
+  --ok: #74d394; --ok-soft: #173322; --done: #b8bec8; --done-soft: #2a2d33;
+  --warn: #f0c062; --warn-soft: #3a2d10; --err: #ff8f86; --err-soft: #3d1715;
+  --seq-0: #2b2621; --seq-1: #5a3424; --seq-2: #9a4e2c; --seq-3: #d9764a; --seq-4: #f7b08c;
+  --map-bg: #1a1714; --map-grid: #2e2924; --map-route: #8f857a; --map-route-hi: #f08f62;
+  --map-stop: #b3aaa0; --map-latest: #7fb2ff; --map-sample: #c8aaff;
+  --chart-bar: #f08f62; --chart-bar-hi: #eee8e1; --chart-grid: #2e2924; --chart-axis: #b3aaa0;
+  --map-pin: #7fb2ff; --map-radius: #7fb2ff;
+  --focus: #7fb2ff; --skeleton: #2a2621; --skeleton-hi: #36312b;
+  --shadow: 0 1px 2px rgb(0 0 0 / .4);
+}
+
+/* ---------- Base ---------- */
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 400 var(--fs-md)/1.5 var(--font);
+}
+h1, h2, h3 { line-height: 1.2; margin: 0 0 var(--s3); }
+h1 { font-size: var(--fs-xl); }
+h2 { font-size: var(--fs-lg); }
+h3 { font-size: var(--fs-md); }
+p { margin: 0 0 var(--s3); }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:hover { color: var(--accent-hover); }
+code, .mono { font-family: var(--mono); font-size: .92em; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+.visually-hidden {
+  position: absolute !important; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+.muted { color: var(--text-muted); }
+.small { font-size: var(--fs-sm); }
+.xsmall { font-size: var(--fs-xs); }
+
+.container { max-width: var(--maxw); margin: 0 auto; padding: 0 var(--s4); }
+main { padding: var(--s5) 0 var(--s7); }
+
+/* ---------- Header ---------- */
+.site-header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 10;
+}
+.site-header .container {
+  display: flex; align-items: center; gap: var(--s4);
+  min-height: 56px; flex-wrap: wrap;
+}
+.brand {
+  display: flex; align-items: center; gap: var(--s2);
+  font-weight: 700; color: var(--text); text-decoration: none; letter-spacing: .01em;
+}
+.brand svg { flex: none; }
+.brand small { font-weight: 500; color: var(--text-muted); font-size: var(--fs-xs); }
+.nav { display: flex; gap: var(--s1); flex-wrap: wrap; margin-left: auto; }
+.nav a {
+  color: var(--text-muted); text-decoration: none; padding: var(--s2) var(--s3);
+  border-radius: var(--radius-sm); font-size: var(--fs-sm); font-weight: 500; white-space: nowrap;
+}
+.nav a:hover { background: var(--surface-2); color: var(--text); }
+.nav a[aria-current="page"] { color: var(--text); background: var(--surface-2); }
+.theme-toggle {
+  border: 1px solid var(--border); background: transparent; color: var(--text-muted);
+  border-radius: var(--radius-sm); padding: 6px 10px; font: inherit; font-size: var(--fs-sm); cursor: pointer;
+}
+
+.site-footer {
+  border-top: 1px solid var(--border); padding: var(--s5) 0; color: var(--text-muted); font-size: var(--fs-sm);
+}
+
+/* mockup-only control bar (clearly not product UI) */
+.mock-bar {
+  border: 1px dashed var(--border-strong); border-radius: var(--radius-sm);
+  padding: var(--s2) var(--s3); margin-bottom: var(--s4);
+  display: flex; gap: var(--s2); flex-wrap: wrap; align-items: center;
+  font-size: var(--fs-xs); color: var(--text-muted);
+}
+.mock-bar strong { text-transform: uppercase; letter-spacing: .06em; }
+
+/* ---------- Components ---------- */
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.panel { padding: var(--s4); }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--s2);
+  min-height: 40px; padding: 0 var(--s4);
+  border-radius: var(--radius-sm); border: 1px solid var(--border-strong);
+  background: var(--surface); color: var(--text);
+  font: 500 var(--fs-sm)/1 var(--font); text-decoration: none; cursor: pointer;
+}
+.btn:hover { background: var(--surface-2); color: var(--text); }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: var(--on-accent); }
+.btn[disabled], .btn[aria-disabled="true"] { opacity: .5; cursor: not-allowed; }
+.btn-sm { min-height: 32px; padding: 0 var(--s3); }
+
+.badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 2px 8px; border-radius: 999px; font-size: var(--fs-xs); font-weight: 600;
+  background: var(--surface-2); color: var(--text-muted); white-space: nowrap;
+}
+.badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.badge.no-dot::before { display: none; }
+.badge-active { background: var(--ok-soft); color: var(--ok); }
+.badge-complete { background: var(--done-soft); color: var(--done); }
+.badge-warn { background: var(--warn-soft); color: var(--warn); }
+
+.field { display: flex; flex-direction: column; gap: var(--s1); }
+.field label, .field .label { font-size: var(--fs-xs); font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+input[type="number"], input[type="date"], input[type="time"], select {
+  min-height: 40px; padding: 0 var(--s3);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--text); font: inherit; font-size: var(--fs-sm);
+}
+input:disabled, select:disabled { opacity: .55; }
+.hint { font-size: var(--fs-xs); color: var(--text-faint); }
+
+/* segmented control (radio group) */
+.segmented {
+  display: inline-flex; border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  overflow: hidden; background: var(--surface);
+}
+.segmented input { position: absolute; opacity: 0; pointer-events: none; }
+.segmented label {
+  padding: 8px 12px; font-size: var(--fs-sm); cursor: pointer; color: var(--text-muted);
+  border-right: 1px solid var(--border); text-transform: none; letter-spacing: 0; font-weight: 500;
+}
+.segmented label:last-of-type { border-right: 0; }
+.segmented input:checked + label { background: var(--accent); color: var(--on-accent); }
+.segmented input:focus-visible + label { outline: 3px solid var(--focus); outline-offset: -3px; }
+.segmented input:disabled + label { opacity: .45; cursor: not-allowed; text-decoration: line-through; }
+
+/* chips (filters) */
+.chips { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px;
+  border: 1px solid var(--border-strong); border-radius: 999px; background: var(--surface);
+  color: var(--text); font: 500 var(--fs-sm)/1 var(--font); cursor: pointer;
+}
+.chip .count { color: var(--text-muted); font-weight: 400; font-size: var(--fs-xs); }
+.chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
+.chip.dim { opacity: .55; }
+
+/* alerts */
+.alert {
+  border-radius: var(--radius); padding: var(--s4); border: 1px solid;
+  display: flex; gap: var(--s3); align-items: flex-start;
+}
+.alert-error { background: var(--err-soft); border-color: var(--err); }
+.alert-error .alert-title { color: var(--err); }
+.alert-title { font-weight: 700; margin-bottom: var(--s1); }
+
+/* stat list */
+.stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s3) var(--s4); margin: 0; }
+.stats div { min-width: 0; }
+.stats dt { font-size: var(--fs-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+.stats dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* breadcrumbs */
+.crumbs { font-size: var(--fs-sm); color: var(--text-muted); margin-bottom: var(--s3); }
+.crumbs a { color: var(--text-muted); }
+.crumbs span[aria-current] { color: var(--text); }
+
+/* ---------- Image placeholders (no external images) ---------- */
+.ph {
+  position: relative; width: 100%; aspect-ratio: 4 / 3; overflow: hidden; border-radius: var(--radius-sm);
+  background:
+    linear-gradient(180deg, #d8b99a 0 38%, transparent 38%),
+    radial-gradient(120% 60% at 30% 100%, #8a5a3c 0 40%, transparent 41%),
+    linear-gradient(180deg, #b98762 38%, #7d5034 100%);
+}
+.ph::after { /* subtle horizon line */
+  content: ""; position: absolute; left: 0; right: 0; top: 38%; height: 2px; background: rgb(0 0 0 / .12);
+}
+.ph-gray { filter: grayscale(1) contrast(1.05); }                    /* Navcam / Hazcam style */
+.ph-haz { border-radius: var(--radius-sm); background:
+    radial-gradient(70% 55% at 50% 110%, #6e6e6e 0 50%, transparent 51%),
+    radial-gradient(140% 120% at 50% 0%, #c9c9c9 0 35%, #8d8d8d 60%, #2b2b2b 100%); }
+.ph-haz::after { display: none; }
+.ph-rmi { background: radial-gradient(circle at 50% 50%, #c7a27f 0 22%, #9a6d4b 34%, #3d2a1d 46%, #000 47%); }
+.ph-rmi::after { display: none; }
+.ph-sky { background: linear-gradient(180deg, #e9c9a6, #c99a72); }
+.ph-sky::after { display: none; }
+.ph-close { background:
+    radial-gradient(14% 18% at 30% 40%, #6a4a35 0 60%, transparent 62%),
+    radial-gradient(10% 12% at 70% 65%, #4f3626 0 60%, transparent 62%),
+    radial-gradient(18% 14% at 60% 25%, #8a6248 0 60%, transparent 62%),
+    linear-gradient(135deg, #b48a68, #8d6447); }
+.ph-close::after { display: none; }
+.ph-sub { aspect-ratio: 16 / 5; }                                   /* subframe strips */
+.ph-label {
+  position: absolute; left: 8px; bottom: 8px; z-index: 1;
+  font: 600 10px/1 var(--mono); letter-spacing: .04em;
+  color: #fff; background: rgb(0 0 0 / .55); padding: 3px 5px; border-radius: 4px;
+}
+
+/* skeleton */
+.skeleton {
+  background: linear-gradient(90deg, var(--skeleton) 25%, var(--skeleton-hi) 50%, var(--skeleton) 75%);
+  background-size: 200% 100%; animation: shimmer 1.4s infinite linear; border-radius: var(--radius-sm);
+}
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }
+
+/* ---------- Layout helpers ---------- */
+.grid-rovers { display: grid; gap: var(--s4); grid-template-columns: 1fr; }
+@media (min-width: 640px)  { .grid-rovers { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 960px)  { .grid-rovers { grid-template-columns: repeat(3, 1fr); } }
+/* only rovers with data are shown (3 with Ingenuity); 4 columns when Spirit and Opportunity are imported */
+
+.photo-grid { display: grid; gap: var(--s3); grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 640px)  { .photo-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 900px)  { .photo-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (min-width: 1200px) { .photo-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+
+.stack > * + * { margin-top: var(--s4); }
+.row { display: flex; gap: var(--s3); flex-wrap: wrap; align-items: flex-end; }
+.spacer { flex: 1; }
+
+/* ---------- Small screens ---------- */
+@media (max-width: 640px) {
+  .site-header .container { gap: 0 var(--s3); padding-top: var(--s2); }
+  .nav { order: 3; margin-left: 0; width: 100%; flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; }
+  .theme-toggle { margin-left: auto; }
+}
+.card, .filters > *, .when > * { min-width: 0; }
+.chip { max-width: 100%; }
+.chip .mono { overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 400px) { .segmented label { padding: 8px 9px; } }
+
+[hidden] { display: none !important; }
+
+/* ---------- Stage 19: search, near-a-point, stats (shared by search.html, near.html, stats.html) ---------- */
+.alert-warn { background: var(--warn-soft); border-color: var(--warn); }
+.alert-warn .alert-title { color: var(--warn); }
+.alert .row { margin-top: var(--s2); }
+
+/* photo tile (same look as photos.html, plus a rover line for multi-rover lists) */
+.tile { display: flex; flex-direction: column; gap: 6px; text-decoration: none; color: var(--text); min-width: 0; }
+.tile:hover .ph { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tile-meta { display: flex; justify-content: space-between; gap: var(--s1); font-size: var(--fs-xs); align-items: center; }
+.tile-meta .cam { font-family: var(--mono); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tile-credit { font-size: 11px; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st { font-size: 10px; padding: 1px 6px; border-radius: 4px; background: var(--surface-2); color: var(--text-muted); white-space: nowrap; }
+.st.other { background: var(--warn-soft); color: var(--warn); }
+
+.result-head { display: flex; gap: var(--s3); flex-wrap: wrap; align-items: baseline; margin: var(--s5) 0 var(--s3); }
+.result-head h2 { margin: 0; }
+.result-head .spacer { flex: 1; }
+.empty { text-align: center; padding: var(--s7) var(--s4); }
+.empty svg { color: var(--text-faint); }
+.empty .row { justify-content: center; margin-top: var(--s4); }
+pre.raw { margin: var(--s2) 0 0; padding: var(--s3); background: var(--surface-2); border-radius: var(--radius-sm); overflow-x: auto; overflow-y: hidden; font: var(--fs-xs)/1.5 var(--mono); }
+.api-line { font-size: var(--fs-xs); color: var(--text-muted); margin-top: var(--s4); word-break: break-all; font-family: var(--mono); }
+
+/* pager with "Go to page" (mirrors frontend/src/components/Pager.tsx) */
+.pager { display: flex; gap: var(--s2); align-items: center; justify-content: center; flex-wrap: wrap; margin-top: var(--s5); }
+.pager .btn[aria-current="page"] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.goto-page { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--s2); }
+.goto-page input { width: 6rem; min-height: 32px; }
+.goto-page input[aria-invalid="true"] { border-color: var(--err); box-shadow: 0 0 0 1px var(--err); }
+.goto-page-err { flex-basis: 100%; text-align: center; color: var(--err); font-size: var(--fs-sm); }
+
+/* collapsible filter panel: always open on wide screens, toggle on phones */
+.filters-bar { display: flex; gap: var(--s3); align-items: center; flex-wrap: wrap; padding: var(--s3) var(--s4); }
+.filters-bar .summary-text { flex: 1 1 200px; min-width: 0; font-size: var(--fs-sm); color: var(--text-muted); overflow-wrap: anywhere; }
+.filters-toggle { display: none; }
+.filters-panel { padding: 0 var(--s4) var(--s4); display: grid; gap: var(--s4); }
+@media (max-width: 759px) {
+  .filters-toggle { display: inline-flex; }
+  .filters-panel[data-collapsed="true"] { display: none; }
+}
+@media (min-width: 760px) {
+  .filters-panel { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  .filters-panel .wide { grid-column: 1 / -1; }
+  .filters-bar .summary-text { display: block; }
+}
+.fieldset { border: 0; margin: 0; padding: 0; min-width: 0; display: grid; gap: var(--s2); }
+.fieldset > legend { padding: 0; margin-bottom: var(--s2); font-size: var(--fs-xs); font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+.inline-fields { display: flex; gap: var(--s3); flex-wrap: wrap; align-items: flex-end; }
+.inline-fields .field { min-width: 0; }
+.inline-fields input[type="number"] { width: 7.5rem; }
+.inline-fields input[type="date"] { width: 11rem; }
+.inline-fields input[type="time"] { width: 7.5rem; }
+.field-err { color: var(--err); font-size: var(--fs-sm); font-weight: 600; }
+input[aria-invalid="true"] { border-color: var(--err); box-shadow: 0 0 0 1px var(--err); }
+.note { font-size: var(--fs-xs); color: var(--text-muted); border-left: 3px solid var(--border-strong); padding-left: var(--s3); }
+.note.warn { border-left-color: var(--warn); color: var(--text); }
+.note[hidden] { display: none; }
+details.more > summary { cursor: pointer; font-size: var(--fs-sm); color: var(--accent); }
+details.more .chips { margin-top: var(--s2); }
+.cam-group + .cam-group { margin-top: var(--s3); }
+.cam-group h4 { margin: 0 0 var(--s1); font-size: var(--fs-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+.chip[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
+.chip .mono { font-size: var(--fs-xs); }
+
+/* data table + inline bars */
+.table-wrap { overflow-x: auto; }
+table.data { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+table.data caption { text-align: left; padding: 0 0 var(--s2); font-size: var(--fs-xs); color: var(--text-muted); }
+table.data th, table.data td { text-align: left; padding: 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+table.data th { font-size: var(--fs-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; }
+table.data td.num, table.data th.num { text-align: right; }
+table.data th button { all: unset; cursor: pointer; text-transform: inherit; letter-spacing: inherit; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+table.data th button:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.bar-cell { min-width: 120px; }
+.bar { display: block; height: 10px; border-radius: 3px; background: var(--chart-bar); min-width: 2px; }
+.bar-track { display: block; background: var(--surface-2); border-radius: 3px; }
+.tile-line { justify-content: flex-start; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+.tile-line > * { white-space: nowrap; }
+
+/* ---------- Stage 20B: API key screens (keys.html, keys-confirm.html, keys-manage.html, keys-delete.html) ---------- */
+.narrow { max-width: 640px; margin: 0 auto; }
+input[type="email"], input[type="text"], input[type="password"] {
+  width: 100%; min-height: 44px; padding: 0 var(--s3);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--text); font: inherit; font-size: var(--fs-md);
+}
+input[type="password"].mono-in, input[type="text"].mono-in { font-family: var(--mono); font-size: var(--fs-sm); }
+.field label.plain { text-transform: none; letter-spacing: 0; font-size: var(--fs-sm); color: var(--text); }
+.btn-lg { min-height: 44px; font-size: var(--fs-md); }
+.btn-block { width: 100%; }
+.btn-danger { background: var(--err); border-color: var(--err); color: var(--on-accent); }
+.btn-danger:hover { background: var(--err); filter: brightness(.92); color: var(--on-accent); }
+.alert-ok { background: var(--ok-soft); border-color: var(--ok); }
+.alert-ok .alert-title { color: var(--ok); }
+.alert > div { min-width: 0; }
+.alert p:last-child { margin-bottom: 0; }
+.alert .row { align-items: center; }
+.stack-lg > * + * { margin-top: var(--s5); }
+
+/* honeypot: off-screen, not focusable, hidden from assistive tech (the real field is aria-hidden + tabindex -1) */
+.hp { position: absolute; left: -10000px; top: auto; width: 1px; height: 1px; overflow: hidden; }
+.hp.reveal { position: static; width: auto; height: auto; overflow: visible; border: 1px dashed var(--warn); padding: var(--s2); border-radius: var(--radius-sm); }
+
+/* one-time key display */
+.keybox { display: flex; gap: var(--s2); align-items: stretch; flex-wrap: wrap; }
+.keybox code {
+  flex: 1 1 260px; min-width: 0; padding: var(--s3); background: var(--surface-2);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  font-size: var(--fs-md); word-break: break-all; user-select: all;
+}
+.copy-status { font-size: var(--fs-sm); color: var(--ok); font-weight: 600; min-height: 1.5em; }
+
+/* key list */
+.keys { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s3); }
+.key-item { padding: var(--s3) var(--s4); display: grid; gap: var(--s2); }
+.key-item .head { display: flex; gap: var(--s2) var(--s3); align-items: center; flex-wrap: wrap; }
+.key-item .head code { font-weight: 600; font-size: var(--fs-md); }
+.key-item.revoked { opacity: .85; background: var(--surface-2); box-shadow: none; }
+.key-item dl { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--s2) var(--s4); }
+.key-item dt { font-size: var(--fs-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+.key-item dd { margin: 0; font-size: var(--fs-sm); }
+.confirm-box { border: 1px solid var(--err); background: var(--err-soft); border-radius: var(--radius-sm); padding: var(--s3); }
+.confirm-box p { margin-bottom: var(--s2); }
+.danger-zone { border-color: var(--err); }
+.danger-zone h2 { color: var(--err); }
+.check { display: flex; gap: var(--s2); align-items: flex-start; }
+.check input { width: 20px; height: 20px; margin: 2px 0 0; flex: none; accent-color: var(--accent); }
+.data-note { font-size: var(--fs-sm); color: var(--text-muted); border-top: 1px solid var(--border); padding-top: var(--s4); }
+.data-note h2 { font-size: var(--fs-md); color: var(--text); }
+.steps { margin: 0 0 var(--s3); padding-left: 1.25rem; color: var(--text-muted); font-size: var(--fs-sm); }
+.footer-links { display: flex; gap: var(--s2) var(--s4); flex-wrap: wrap; margin-bottom: var(--s3); }
+.mock-bar .btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.mock-bar label { display: inline-flex; gap: 6px; align-items: center; }
+.mock-addr { font: var(--fs-xs)/1.4 var(--mono); color: var(--text-muted); }
+.api-err { margin-top: var(--s2); }
+
+/* Data page (stage 21): line charts, inspect slider. */
+.lead {
+  max-width: 70ch;
+}
+.toolbar {
+  display: flex;
+  gap: var(--s2);
+  flex-wrap: wrap;
+  align-items: center;
+  margin: var(--s4) 0 var(--s3);
+}
+.toolbar .spacer {
+  flex: 1;
+}
+
+.lag {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+.chart-box {
+  padding: var(--s3) var(--s3) var(--s2);
+}
+.chart-title {
+  display: flex;
+  gap: var(--s2) var(--s4);
+  flex-wrap: wrap;
+  align-items: baseline;
+  margin-bottom: var(--s2);
+}
+.chart-title h3 {
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+.chart-title-2 {
+  margin-top: var(--s4);
+}
+.legend {
+  display: flex;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+.legend i {
+  display: inline-block;
+  width: 22px;
+  height: 0;
+  border-top: 3px solid var(--accent);
+  vertical-align: middle;
+  margin-right: 6px;
+}
+.legend i.b {
+  border-top-style: dashed;
+  border-top-color: var(--text-muted);
+}
+.chart-host {
+  min-width: 0;
+}
+svg.chart {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  overflow: visible;
+}
+svg.chart text {
+  fill: var(--chart-axis);
+  font: 11px var(--font);
+}
+@media (max-width: 479px) {
+  svg.chart .zone-label {
+    display: none;
+  }
+}
+svg.chart .grid {
+  stroke: var(--chart-grid);
+  stroke-width: 1;
+}
+svg.chart .axis {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+svg.chart .ln {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+svg.chart .ln-e,
+svg.chart .ln-s {
+  stroke: var(--accent);
+}
+svg.chart .ln-b {
+  stroke: var(--text-muted);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 3;
+}
+svg.chart .gap {
+  fill: var(--surface-2);
+  stroke: var(--border-strong);
+  stroke-dasharray: 3 3;
+}
+svg.chart .cursor {
+  stroke: var(--text);
+  stroke-width: 1;
+}
+svg.chart .dot-e {
+  fill: var(--accent);
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+svg.chart .dot-b {
+  fill: var(--text-muted);
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+.inspect {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s2);
+  margin-top: var(--s3);
+  font-size: var(--fs-sm);
+}
+.inspect input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+  min-height: 32px;
+}
+.inspect input[type="range"]:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.inspect .readout {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  min-height: 3em;
+  overflow-wrap: anywhere;
+}
+.inspect .readout b {
+  color: var(--text);
+}
+.chart-note {
+  margin: var(--s2) 0 0;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+table.last {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+table.last caption {
+  text-align: left;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  padding-bottom: var(--s1);
+}
+table.last th,
+table.last td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: right;
+}
+table.last th:first-child,
+table.last td:first-child {
+  text-align: left;
+}
+table.last thead th {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  vertical-align: bottom;
+}
+table.last tbody td:first-child {
+  font-weight: 600;
+}
+
+.panel-foot {
+  display: flex;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  align-items: center;
+}
+.panel-foot .hint {
+  flex: 1 1 220px;
+}
+
+/* Weather by sol (stage 17) */
+.rover-switch {
+  display: flex;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  align-items: center;
+}
+.rover-switch .label {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.segmented .seg {
+  display: contents;
+}
+.wx-controls {
+  display: flex;
+  gap: var(--s4);
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+.wx-controls .field {
+  min-width: 0;
+}
+.wx-chartwrap {
+  position: relative;
+  min-height: 120px;
+}
+.wx-tip {
+  position: absolute;
+  top: 8px;
+  z-index: 2;
+  max-width: min(320px, 90%);
+  padding: var(--s2) var(--s3);
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+  pointer-events: none;
+}
+.wx-tip .tip-f {
+  font-weight: 700;
+  color: var(--warn);
+}
+svg.chart .wx-band {
+  fill: var(--accent);
+  fill-opacity: 0.3;
+  stroke: none;
+}
+svg.chart .wx-band-p {
+  fill: var(--text-muted);
+  fill-opacity: 0.4;
+  stroke: none;
+}
+svg.chart .wx-mean {
+  stroke: var(--accent);
+}
+svg.chart .wx-mean-d {
+  stroke: var(--text-muted);
+  stroke-dasharray: 3 3;
+}
+svg.chart .wx-gust {
+  stroke: var(--text);
+  stroke-width: 1.2;
+  stroke-dasharray: 4 3;
+}
+svg.chart .wx-pdot {
+  fill: var(--surface);
+  stroke: var(--text-muted);
+  stroke-width: 1.5;
+}
+svg.chart .wx-ref {
+  stroke: var(--warn);
+  stroke-width: 1.2;
+  stroke-dasharray: 4 3;
+}
+svg.chart text.wx-reft {
+  fill: var(--warn);
+  font-weight: 600;
+}
+svg.chart .wx-mk-h,
+.legend .wx-mk-h {
+  fill: var(--warn);
+  stroke: var(--surface);
+  stroke-width: 1;
+}
+svg.chart .wx-mk-o,
+.legend .wx-mk-o {
+  fill: none;
+  stroke: var(--err);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+svg.chart.wxc {
+  cursor: crosshair;
+}
+.legend svg {
+  vertical-align: -2px;
+}
+.legend i.sw {
+  height: 10px;
+  width: 18px;
+  border: 0;
+  background: var(--accent);
+  opacity: 0.35;
+  vertical-align: -1px;
+}
+.legend i.sw-part {
+  background: var(--text-muted);
+  opacity: 0.5;
+}
+.flag {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  border: 1px solid;
+  white-space: nowrap;
+}
+.flag-partial_coverage,
+.flag-unknown {
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+  border-style: dashed;
+}
+.flag-humidity_over_100 {
+  color: var(--warn);
+  background: var(--warn-soft);
+  border-color: var(--warn);
+}
+.flag-out_of_range {
+  color: var(--err);
+  background: var(--err-soft);
+  border-color: var(--err);
+}
+.flag-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--s2);
+  font-size: var(--fs-sm);
+}
+.flag-list li {
+  display: flex;
+  gap: var(--s2);
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.flag-list li span:last-child {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.wx-nav {
+  display: flex;
+  gap: var(--s2);
+  flex-wrap: wrap;
+  align-items: center;
+}
+.wx-inspect-body {
+  margin-top: var(--s3);
+}
+.wx-inspect-body > * + * {
+  margin-top: var(--s3);
+}
+.hours-strip {
+  display: flex;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  align-items: center;
+}
+.hc-row {
+  display: inline-grid;
+  grid-template-columns: repeat(24, 9px);
+  gap: 2px;
+  max-width: 100%;
+}
+.hc {
+  height: 14px;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: calc(0.25 + var(--c) * 0.75);
+}
+.hc.hc-0 {
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+  opacity: 1;
+  box-sizing: border-box;
+}
+.wx-minis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--s3);
+}
+.mini {
+  padding: var(--s3);
+  min-width: 0;
+  box-shadow: none;
+}
+.mini .k {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.mini .k .badge {
+  text-transform: none;
+  letter-spacing: 0;
+  margin-left: 4px;
+}
+.mini .v {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.mini .v small {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+.mini-empty {
+  display: grid;
+  place-items: center;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+table.wx-table small {
+  color: var(--text-muted);
+}
+table.wx-table td.flags-cell {
+  text-align: right;
+}
+table.wx-table td.flags-cell .flag + .flag {
+  margin-left: 4px;
+}
+@media (max-width: 679px) {
+  table.wx-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  table.wx-table,
+  table.wx-table tbody,
+  table.wx-table tr,
+  table.wx-table th,
+  table.wx-table td {
+    display: block;
+  }
+  table.wx-table tr {
+    padding: var(--s2) 0;
+    border-bottom: 1px solid var(--border-strong);
+  }
+  table.wx-table th,
+  table.wx-table td {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--s3);
+    border: 0;
+    padding: 3px 4px;
+    text-align: right;
+  }
+  table.wx-table th:first-child,
+  table.wx-table td:first-child {
+    text-align: right;
+  }
+  table.wx-table th::before,
+  table.wx-table td::before {
+    content: attr(data-label);
+    color: var(--text-muted);
+    font-size: var(--fs-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    text-align: left;
+    flex: none;
+  }
+  table.wx-table th[scope="row"] {
+    font-size: var(--fs-md);
+  }
+  table.wx-table td.flags-cell {
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 420px) {
+  .hc-row {
+    grid-template-columns: repeat(24, minmax(0, 1fr));
+    width: 100%;
+  }
+  .hc {
+    height: 12px;
+  }
+}
+
+/* ---- Dataset pages: facts grid, about block, overview cards ---- */
+.ds-body > * + * {
+  margin-top: var(--s4);
+}
+.ds-rovers {
+  display: flex;
+  gap: var(--s2);
+  flex-wrap: wrap;
+  margin: var(--s2) 0;
+}
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
+  gap: var(--s3) var(--s4);
+  margin: 0;
+  padding: var(--s4);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.facts > div {
+  min-width: 0;
+}
+.facts dt {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+.facts dd {
+  margin: 2px 0 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+.facts-sm {
+  padding: var(--s3);
+  margin: var(--s3) 0;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 130px), 1fr));
+}
+.about {
+  padding: var(--s4);
+}
+.about h2 {
+  margin: 0 0 var(--s3);
+  font-size: var(--fs-lg);
+}
+.about-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px 0;
+  margin: 0;
+  max-width: 80ch;
+}
+.about-list dt {
+  margin-top: var(--s3);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.about-list dt:first-child {
+  margin-top: 0;
+}
+.about-list dd {
+  margin: 0;
+  overflow-wrap: break-word;
+}
+@media (min-width: 720px) {
+  .about-list {
+    grid-template-columns: 11rem minmax(0, 1fr);
+    gap: var(--s3) var(--s4);
+  }
+  .about-list dt {
+    margin-top: 0;
+    padding-top: 2px;
+  }
+}
+.ds-cards {
+  list-style: none;
+  padding: 0;
+  margin: var(--s4) 0 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: var(--s4);
+}
+.ds-card {
+  padding: var(--s4);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+.ds-card h2 {
+  margin: 0;
+  font-size: var(--fs-lg);
+}
+.ds-card .facts {
+  align-self: stretch;
+}
+.ds-card .btn {
+  margin-top: auto;
+}
+
+/* ---- "Data" menu in the header ---- */
+.nav-menu {
+  position: relative;
+}
+.nav-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--s2) var(--s3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  cursor: pointer;
+}
+.nav-menu-btn:hover,
+.nav-menu-btn[aria-expanded="true"],
+.nav-menu-btn[aria-current="page"] {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.nav-menu-btn[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+.nav-menu-list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 20;
+  min-width: 17rem;
+  margin: 4px 0 0;
+  padding: var(--s1);
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
+}
+.nav-menu-list[hidden] {
+  display: none;
+}
+.nav-menu-list a {
+  display: block;
+  white-space: nowrap;
+}
+.nav-menu-list a small {
+  display: block;
+  font-size: var(--fs-xs);
+  font-weight: 400;
+  color: var(--text-muted);
+}
+.nav-menu-all {
+  border-top: 1px solid var(--border);
+  margin-top: var(--s1);
+  padding-top: var(--s1);
+}
+@media (max-width: 640px) {
+  /* The nav row scrolls sideways here: the list drops from the header as a full-width stack of links. */
+  .nav-menu {
+    position: static;
+  }
+  .nav-menu-list {
+    left: 0;
+    right: 0;
+    min-width: 0;
+    margin: 0;
+    border-radius: 0 0 var(--radius) var(--radius);
+  }
+  .nav-menu-list a {
+    white-space: normal;
+    padding: var(--s3) var(--s4);
+  }
+}
+
+/* ---- Range pages and sol reports (this iteration) ---- */
+html, body { overflow-x: clip; }
+main > .container > * + * { margin-top: var(--s4); }
+.lead { max-width: 70ch; color: var(--text-muted); }
+.mock-bar .btn { min-height: 28px; font-size: var(--fs-xs); padding: 0 var(--s2); }
+.mock-bar .btn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
+.state-box { padding: var(--s5) var(--s4); text-align: center; }
+.state-box h3 { margin-bottom: var(--s2); }
+.state-box p { color: var(--text-muted); max-width: 60ch; margin: 0 auto var(--s3); }
+.sec-head { display: flex; gap: var(--s2) var(--s4); flex-wrap: wrap; align-items: baseline; justify-content: space-between; margin-bottom: var(--s2); }
+.sec-head h2 { margin: 0; font-size: var(--fs-lg); }
+.chart-box { padding: var(--s3) var(--s3) var(--s3); }
+.chart-cap { margin: var(--s2) 0 0; font-size: var(--fs-xs); color: var(--text-muted); }
+.credit { font-size: var(--fs-xs); color: var(--text-muted); margin: 0; }
+.lag { color: var(--warn); font-weight: 600; }
+svg.chart text.sub { fill: var(--text-faint); font-size: 10px; }
+svg.chart .dot-m { fill: var(--accent); }
+.wx-chartwrap { min-height: 120px; }
+.chart-host { min-height: 250px; position: relative; }
+
+/* range block */
+.rs { margin-top: var(--s4); padding-top: var(--s3); border-top: 1px solid var(--border); }
+.rs-title { display: flex; flex-wrap: wrap; gap: var(--s1) var(--s4); justify-content: space-between; align-items: baseline; margin-bottom: var(--s2); }
+.rs-title h3 { margin: 0; font-size: var(--fs-sm); }
+.rs-sum { font-size: var(--fs-sm); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.rs-sum b { color: var(--text); }
+.rs-wrap { padding: 0 12px 0; }
+.rs-track { position: relative; height: 64px; background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); touch-action: none; cursor: pointer; }
+.rs-ov { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.rs-ov path { fill: none; stroke: var(--text-muted); stroke-width: 1.2; vector-effect: non-scaling-stroke; }
+.rs-unpub { position: absolute; top: 0; bottom: 0; right: 0; width: 0; border-left: 1px dashed var(--border-strong); overflow: hidden;
+  background: repeating-linear-gradient(135deg, transparent 0 5px, var(--border-strong) 5px 6px); opacity: .6; pointer-events: none; }
+.rs-dim { position: absolute; top: 0; bottom: 0; background: var(--surface); opacity: .62; pointer-events: none; }
+.rs-dim-l { left: 0; } .rs-dim-r { right: 0; }
+.rs-sel { position: absolute; top: -1px; bottom: -1px; border-top: 3px solid var(--accent); border-bottom: 3px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent); cursor: grab; min-width: 2px; }
+.rs-sel:active { cursor: grabbing; }
+.rs-h { position: absolute; top: 50%; width: 20px; height: 48px; transform: translate(-50%, -50%); background: var(--accent); color: var(--on-accent);
+  border: 2px solid var(--surface); border-radius: 7px; cursor: ew-resize; touch-action: none; display: grid; place-items: center; box-shadow: 0 1px 4px rgb(0 0 0 / .35); z-index: 2; }
+.rs-h::before { content: ""; width: 6px; height: 18px; border-left: 2px solid currentColor; border-right: 2px solid currentColor; opacity: .9; }
+.rs-h::after { content: ""; position: absolute; inset: -4px -10px; } /* larger touch target */
+.rs-h:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.rs-hv { position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); display: none; padding: 2px 6px; font-size: var(--fs-xs);
+  font-weight: 600; background: var(--text); color: var(--bg); border-radius: 4px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rs-h:focus .rs-hv, .rs-h.drag .rs-hv { display: block; }
+.rs-axis { position: relative; height: 22px; font-size: var(--fs-xs); color: var(--text-muted); font-variant-numeric: tabular-nums; margin-top: 4px; }
+.rs-axis span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.rs-axis span:first-child { transform: none; margin-left: -12px; }
+.rs-inputs { display: flex; gap: var(--s3) var(--s4); flex-wrap: wrap; align-items: flex-end; margin-top: var(--s2); }
+.rs-inputs .field { flex: 0 0 auto; width: 9.5rem; }
+.rs-inputs input { width: 100%; font-variant-numeric: tabular-nums; }
+.rs-inputs input[aria-invalid="true"] { border-color: var(--err); box-shadow: 0 0 0 1px var(--err); }
+.rs-presets { display: flex; gap: var(--s2); flex-wrap: wrap; flex: 1 1 260px; justify-content: flex-end; }
+.rs-hint { margin: var(--s2) 0 0; }
+.rs-err { color: var(--err); font-weight: 600; font-size: var(--fs-sm); min-height: 1.4em; margin: var(--s1) 0 0; }
+@media (max-width: 640px) {
+  .rs-inputs .field { flex: 1 1 40%; width: auto; }
+  .rs-presets { justify-content: flex-start; flex-basis: 100%; }
+  .rs-axis span:nth-child(even) { display: none; }
+}
+
+/* table */
+.tbl-head { display: flex; gap: var(--s3) var(--s4); flex-wrap: wrap; align-items: flex-end; justify-content: space-between; margin-bottom: var(--s3); }
+.tbl-head h2 { margin: 0; font-size: var(--fs-lg); }
+.tbl-tools { display: flex; gap: var(--s3); flex-wrap: wrap; align-items: flex-end; }
+.sort-mobile { display: none; gap: var(--s2); align-items: flex-end; }
+.jump { display: flex; gap: var(--s2); align-items: flex-end; }
+.jump input { width: 8rem; }
+.jump-msg { min-height: 1.4em; margin: var(--s2) 0 0; font-size: var(--fs-sm); color: var(--text-muted); }
+.jump-msg .btn { margin-left: var(--s2); }
+table.sol-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+table.sol-table th, table.sol-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
+table.sol-table .n { text-align: right; }
+table.sol-table thead th { font-size: var(--fs-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; vertical-align: bottom; }
+table.sol-table th small { display: block; text-transform: none; letter-spacing: 0; font-weight: 400; }
+table.sol-table tbody th { font-weight: 600; }
+table.sol-table tbody tr:hover td, table.sol-table tbody tr:hover th { background: var(--surface-2); }
+table.sol-table tr.hl td, table.sol-table tr.hl th { background: var(--accent-soft); }
+table.sol-table tr.hl th { box-shadow: inset 3px 0 0 var(--accent); }
+table.sol-table button.sort { display: inline-flex; gap: 4px; align-items: flex-end; min-height: 32px; padding: 2px 4px; margin: -2px -4px; border: 0; background: none; color: inherit;
+  font: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer; border-radius: 4px; text-align: inherit; }
+table.sol-table th.n button.sort { flex-direction: row-reverse; }
+table.sol-table button.sort:hover { color: var(--text); }
+table.sol-table button.sort .arr::before { content: "\2195"; opacity: .45; }
+table.sol-table th[aria-sort="ascending"] .arr::before { content: "\25B2"; opacity: 1; color: var(--accent); }
+table.sol-table th[aria-sort="descending"] .arr::before { content: "\25BC"; opacity: 1; color: var(--accent); }
+table.sol-table td .flag + .flag { margin-left: 4px; }
+table.sol-table .n-empty { text-align: center; color: var(--text-muted); padding: var(--s5); }
+table.sol-table td.link { text-align: right; white-space: nowrap; }
+.tbl-foot { display: flex; gap: var(--s3); flex-wrap: wrap; align-items: center; justify-content: space-between; margin-top: var(--s3); }
+.tbl-foot .pager { margin: 0; justify-content: flex-end; }
+@media (max-width: 759px) {
+  .sort-mobile { display: flex; }
+  table.sol-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  table.sol-table, table.sol-table tbody, table.sol-table tr, table.sol-table th, table.sol-table td { display: block; }
+  table.sol-table tr { padding: var(--s2) var(--s2); border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: var(--s2); }
+  table.sol-table tr.hl { border-color: var(--accent); }
+  table.sol-table th, table.sol-table td { display: flex; justify-content: space-between; gap: var(--s3); border: 0; padding: 3px 4px; text-align: right; }
+  table.sol-table td::before, table.sol-table th[scope="row"]::before { content: attr(data-label); color: var(--text-muted); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .04em; text-align: left; flex: none; }
+  table.sol-table th[scope="row"] { font-size: var(--fs-md); }
+  table.sol-table td.link { justify-content: flex-end; padding-top: var(--s2); }
+  table.sol-table td.link::before { display: none; }
+  table.sol-table td.flags-cell { flex-wrap: wrap; }
+  table.sol-table tr:hover td, table.sol-table tr:hover th { background: transparent; }
+  .tbl-foot { justify-content: center; }
+  .tbl-foot .pager { justify-content: center; }
+  .jump input { width: 100%; }
+  .jump { flex: 1 1 100%; }
+  .jump .field { flex: 1; }
+}
+.table-scroll { overflow-x: auto; }
+
+/* ---- sol report ---- */
+.sr-head { padding: var(--s4); }
+.sr-top { display: flex; gap: var(--s3) var(--s4); flex-wrap: wrap; align-items: center; justify-content: space-between; }
+.sr-top h1 { margin: 0; }
+.sr-nav { display: flex; gap: var(--s2); flex-wrap: wrap; }
+.sr-facts { margin-top: var(--s3); }
+.opt { display: inline-block; margin-left: 6px; padding: 0 6px; border: 1px dashed var(--border-strong); border-radius: 999px; font-size: 10px; font-weight: 600; letter-spacing: .03em; color: var(--text-muted); text-transform: uppercase; vertical-align: 1px; }
+.sr-cov { display: flex; gap: var(--s3); flex-wrap: wrap; align-items: center; margin-top: var(--s3); font-size: var(--fs-sm); color: var(--text-muted); }
+.sr-links { display: flex; gap: var(--s2); flex-wrap: wrap; margin-top: var(--s3); }
+.hour-bar { position: sticky; top: 56px; z-index: 5; display: flex; gap: var(--s3) var(--s4); flex-wrap: wrap; align-items: center; padding: var(--s2) var(--s3);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
+.hour-bar input[type="range"] { flex: 1 1 200px; min-width: 0; accent-color: var(--accent); min-height: 32px; }
+.hour-bar input[type="range"]:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.hour-bar label { font-size: var(--fs-xs); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); }
+.hour-bar output { font-weight: 700; font-variant-numeric: tabular-nums; min-width: 9ch; }
+.hour-bar .chk { display: inline-flex; gap: 6px; align-items: center; font-size: var(--fs-sm); color: var(--text-muted); }
+.charts { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s4); }
+@media (min-width: 760px) { .charts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.pc { padding: var(--s3); min-width: 0; }
+.pc-head { display: flex; gap: var(--s1) var(--s2); flex-wrap: wrap; align-items: baseline; }
+.pc-head h3 { margin: 0; font-size: var(--fs-sm); }
+.pc-sum { font-size: var(--fs-xs); color: var(--text-muted); font-variant-numeric: tabular-nums; margin: 2px 0 var(--s1); }
+.pc-ro { min-height: 2.6em; margin-top: var(--s1); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; color: var(--text-muted); }
+.pc-ro b { color: var(--text); }
+.pc svg.chart { touch-action: pan-y; cursor: crosshair; }
+svg.chart .night { fill: var(--text-faint); fill-opacity: .13; }
+svg.chart .nodata { fill: var(--surface-2); stroke: var(--border-strong); stroke-dasharray: 2 3; stroke-width: 1; }
+svg.chart .hl-col { fill: var(--accent); fill-opacity: .13; }
+svg.chart .solband { fill: var(--accent); fill-opacity: .12; }
+svg.chart .solref { stroke: var(--text-muted); stroke-width: 1; stroke-dasharray: 4 3; }
+svg.chart .pt { fill: var(--accent); }
+svg.chart .pt-b { fill: var(--text-muted); }
+svg.chart .ln-hr { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
+svg.chart .ln-hr-b { fill: none; stroke: var(--text-muted); stroke-width: 1.6; stroke-dasharray: 5 3; }
+.concept { border-style: dashed; border-color: var(--border-strong); }
+.concept-note { padding: var(--s3) var(--s4); }
+.sr-sources { font-size: var(--fs-sm); color: var(--text-muted); }
+.sr-sources ul { margin: var(--s2) 0 0; padding-left: 1.2em; overflow-wrap: anywhere; }
+.skel-h { height: 1.4em; margin-bottom: var(--s2); }
+.skel-chart { height: 150px; }
+.hours-table { width: 100%; border-collapse: collapse; font-size: var(--fs-xs); font-variant-numeric: tabular-nums; min-width: 520px; }
+.hours-table th, .hours-table td { padding: 4px 8px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
+.hours-table th:first-child, .hours-table td:first-child { text-align: left; }
+.hours-table thead th { color: var(--text-muted); font-weight: 600; }
+.hours-table tbody tr.cur td, .hours-table tbody tr.cur th { background: var(--accent-soft); }
+details.tbl summary { cursor: pointer; font-weight: 600; font-size: var(--fs-sm); padding: var(--s2) 0; }
+.badge-prelim { background: var(--warn-soft); color: var(--warn); }
+.badge-est { background: var(--surface-2); color: var(--text-muted); border: 1px dashed var(--border-strong); }
+.mock-bar .btn { color: var(--text); }
+
+.chart-empty { position: absolute; inset: 26px 10px 40px 48px; display: grid; place-items: center; text-align: center; color: var(--text-muted); font-size: var(--fs-sm); pointer-events: none; padding: var(--s3); }
+.chart-empty b { color: var(--text); }
+.rover-switch { margin-top: var(--s3); }
+
+</style>
+</head>
+<body>
+<header class="site-header">
+  <div class="container">
+    <a class="brand" href="index.html" aria-label="Sol Index home"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="8" fill="var(--accent)"/><ellipse cx="13" cy="13" rx="12" ry="4.5" fill="none" stroke="var(--text-muted)" stroke-width="1.4" transform="rotate(-20 13 13)"/></svg> Sol Index <small>unofficial</small></a>
+    <nav class="nav" aria-label="Main">
+      <a href="index.html">Rovers</a>
+      <a href="photos.html?rover=perseverance" title="Latest sol">Photos</a>
+      <a href="search.html">Search</a>
+      <a href="manifest.html">Timeline</a>
+      <a href="map.html">Route map</a>
+      <a href="flights.html">Flights</a>
+      <a href="data.html" aria-current="page">Data</a>
+      <a href="stats.html">Stats</a>
+      <a href="index.html#api">API</a>
+    </nav>
+    <button class="theme-toggle" type="button" aria-label="Toggle colour theme">Theme</button>
+  </div>
+</header>
+
+<!-- MOCK DATA, not connected to the API. Generated in the shape of GET /api/v2/rovers/curiosity/radiation (RadiationSol): the numbers are plausible, not real. -->
+
+<main>
+  <div class="container">
+
+    <div class="mock-bar" role="group" aria-label="Mockup controls (not part of the product)">
+      <strong>Mockup</strong>
+      <span>Range:</span>
+      <button class="btn btn-sm" type="button" data-act="zoom">Zoom to 120 sols</button>
+      <button class="btn btn-sm" type="button" data-act="year">Default: last Mars year</button>
+      <button class="btn btn-sm" type="button" data-act="past">Range past the newest published sol</button>
+      <span>State:</span>
+      <button class="btn btn-sm" type="button" data-state="ok" aria-pressed="true">Data</button>
+      <button class="btn btn-sm" type="button" data-state="loading" aria-pressed="false">Loading</button>
+      <button class="btn btn-sm" type="button" data-state="error" aria-pressed="false">Error 503</button>
+      <span>Data is generated in the page, not fetched from the API.</span>
+    </div>
+
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="data.html">Data</a> / <span aria-current="page">Radiation (RAD)</span></nav>
+    <h1>Radiation (RAD)</h1>
+    <p class="lead">Daily absorbed dose and count rate measured by the RAD instrument on Curiosity. Pick a range of sols with the slider under the chart: the chart and the table below follow it.</p>
+
+    
+
+    <div id="stateBox" hidden></div>
+    <div id="mainArea">
+
+      <dl class="facts" id="facts" aria-label="Dataset summary"></dl>
+      <p class="credit" style="margin-top:var(--s2)">Credit: MSL RAD (SwRI) / NASA PDS Planetary Plasma Interactions Node, MSL-M-RAD-3-RDR-V1.0. Absorbed dose in the detectors, in microgray per sol; not an equivalent dose.</p>
+
+      <section class="card chart-box" style="margin-top:var(--s4)" aria-labelledby="chartH">
+        <div class="sec-head">
+          <h2 id="chartH">Daily values</h2>
+          <div class="field" style="min-width:12rem"><label for="yMode">Vertical scale</label>
+            <select id="yMode"><option value="auto">Auto (from zero for long ranges)</option><option value="zero">From zero</option><option value="fit">Fit to the range</option></select></div>
+        </div>
+        <div class="chips" id="chips" role="group" aria-label="Parameter"></div>
+        <div class="chart-title" style="margin-top:var(--s3)"><div id="legend"></div></div>
+        <div class="chart-host wx-chartwrap" id="chartHost"></div>
+        <p class="chart-cap" id="chartCap"></p>
+
+        <div class="rs" aria-labelledby="rsH">
+          <div class="rs-title"><h3 id="rsH">Range of sols</h3><div class="rs-sum" id="rsSum" role="status"></div></div>
+          <div id="rsRoot"></div>
+          <div class="rs-inputs">
+            <div class="field"><label for="fromSol">From sol</label><input type="number" id="fromSol" inputmode="numeric" min="1" step="1"></div>
+            <div class="field"><label for="toSol">To sol</label><input type="number" id="toSol" inputmode="numeric" min="1" step="1"></div>
+            <div class="rs-presets" id="presets" role="group" aria-label="Range presets"></div>
+          </div>
+          <p class="rs-err" id="rsErr" role="alert"></p>
+          <p class="hint rs-hint">The track shows every sol; the shaded hatched part on the right is not published yet. Drag a handle, drag the highlighted span to move it, or focus a handle: arrow keys move it by 1 sol, PageUp and PageDown by 10, Home and End to the limit. The default range ends at the newest published sol, not at the rover&rsquo;s latest sol.</p>
+        </div>
+      </section>
+
+      <section class="card panel" style="margin-top:var(--s4)" aria-labelledby="tblH">
+        <div class="tbl-head">
+          <div><h2 id="tblH">Sols in the selected range</h2><p class="hint" id="tblSub" style="margin:0"></p></div>
+          <div class="tbl-tools">
+            <div class="sort-mobile">
+              <div class="field"><label for="sortSel">Sort by</label><select id="sortSel"></select></div>
+              <button class="btn" type="button" id="sortDir">Descending</button>
+            </div>
+            <form class="jump" id="jumpForm" autocomplete="off">
+              <div class="field"><label for="jumpIn">Jump to sol</label><input type="number" id="jumpIn" inputmode="numeric" min="0" step="1" placeholder="e.g. 4800"></div>
+              <button class="btn" type="submit">Go</button>
+            </form>
+          </div>
+        </div>
+        <p class="jump-msg" id="jumpMsg" role="status"></p>
+        <div class="table-scroll"><table class="sol-table" id="tbl"></table></div>
+        <div class="tbl-foot">
+          <span class="hint" id="tblInfo" aria-live="polite"></span>
+          <nav class="pager" id="pager" aria-label="Table pages"></nav>
+        </div>
+        <p class="credit" style="margin-top:var(--s3)">Credit: MSL RAD (SwRI) / NASA PDS Planetary Plasma Interactions Node, MSL-M-RAD-3-RDR-V1.0. Absorbed dose in the detectors, in microgray per sol; not an equivalent dose.</p>
+      </section>
+
+    </div>
+  </div>
+</main>
+
+
+<footer class="site-footer">
+  <div class="container">Sol Index is an independent, unofficial project, not affiliated with or endorsed by NASA or JPL. Science data comes from the public archives of the mission teams and is linked to its source; credit is shown with every dataset.</div>
+</footer>
+
+<script>
+'use strict';
+/* ---- shared helpers (mockup only; all data below is generated, not fetched) ---- */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const nf = new Intl.NumberFormat('en-US');
+const MINUS = '−';
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+function rng(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function gauss(R) { return Math.sqrt(-2 * Math.log(1 - R())) * Math.cos(2 * Math.PI * R()); }
+
+/** Number with a real minus sign; null -> em dash. */
+function num(v, d = 1) {
+  if (v == null || Number.isNaN(v)) return '—';
+  const s = Math.abs(v).toFixed(d);
+  return (v < 0 && Number(s) !== 0 ? MINUS : '') + s;
+}
+function numG(v, d = 1) { // with thousands separators
+  if (v == null) return '—';
+  const s = nf.format(Math.abs(+v.toFixed(d)));
+  const t = d > 0 ? Math.abs(v).toFixed(d).split('.')[1] : '';
+  const body = d > 0 ? s.split('.')[0] + '.' + t : s;
+  return (v < 0 && Number(Math.abs(v).toFixed(d)) !== 0 ? MINUS : '') + body;
+}
+
+function niceTicks(lo, hi, n) {
+  if (!(hi > lo)) hi = lo + 1;
+  const raw = (hi - lo) / Math.max(1, n);
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const f = raw / mag;
+  const step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * mag;
+  const a = Math.floor(lo / step + 1e-9) * step;
+  const b = Math.ceil(hi / step - 1e-9) * step;
+  const t = [];
+  for (let v = a; v <= b + step * 1e-6; v += step) t.push(+v.toFixed(10));
+  return t;
+}
+
+/* ---- rovers (landing time, position, anchor used to tie Ls to the examples in the brief) ---- */
+const SOL_MS = 88775244;
+const ROVERS = {
+  curiosity: { name: 'Curiosity', landing: Date.UTC(2012, 7, 6, 5, 17), anchor: [344, 178], lat: -4.59, hemi: 'S', maxSol: 5066 },
+  perseverance: { name: 'Perseverance', landing: Date.UTC(2021, 1, 18, 20, 55), anchor: [100, 52.4], lat: 18.44, hemi: 'N', maxSol: 2031 },
+};
+function earthDate(rover, sol) { return new Date(ROVERS[rover].landing + sol * SOL_MS).toISOString().slice(0, 10); }
+/* Ls is linear in the mockup (668.6 sols per Mars year), anchored to the example values; the real curve is slightly uneven. */
+function lsOf(rover, sol) {
+  const [s0, l0] = ROVERS[rover].anchor;
+  let v = (l0 + ((sol - s0) * 360) / 668.6) % 360;
+  if (v < 0) v += 360;
+  return Math.round(v * 10) / 10;
+}
+function season(rover, ls, short) {
+  const q = Math.floor(ls / 90) % 4;
+  const names = ROVERS[rover].hemi === 'N' ? ['spring', 'summer', 'autumn', 'winter'] : ['autumn', 'winter', 'spring', 'summer'];
+  const w = ls % 90;
+  const part = w < 30 ? 'early' : w >= 60 ? 'late' : 'mid';
+  return short ? `${part} ${names[q]}` : `${part[0].toUpperCase() + part.slice(1)} ${names[q]}`;
+}
+/** Approximate sunrise/sunset in LMST hours (flat-horizon formula; optional, computed on the client). */
+function sunTimes(rover, ls) {
+  const lat = (ROVERS[rover].lat * Math.PI) / 180;
+  const dec = Math.asin(Math.sin((25.19 * Math.PI) / 180) * Math.sin((ls * Math.PI) / 180));
+  const c = clamp(-Math.tan(lat) * Math.tan(dec), -1, 1);
+  const h = (Math.acos(c) * 12) / Math.PI;
+  return [12 - h, 12 + h];
+}
+const hhmm = (h) => { const m = Math.round(h * 60); return String(Math.floor(m / 60) % 24).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); };
+
+/* ---- theme toggle (same behaviour as the other mockups) ---- */
+(function () {
+  const b = document.querySelector('.theme-toggle');
+  if (!b) return;
+  b.onclick = () => {
+    const r = document.documentElement;
+    const dark = r.dataset.theme ? r.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+    r.dataset.theme = dark ? 'light' : 'dark';
+    window.dispatchEvent(new Event('themechange'));
+  };
+})();
+
+/* ---- range components: long chart, two-handle slider, sortable paged table ---- */
+let UID = 0;
+
+/**
+ * Long per-sol chart. cfg: { x0, x1, pts:[{sol, lo, hi, mean, mean2, partial, marks:[code]}], mode:'band'|'gust'|'dual'|'line',
+ *   zeroBased, unit, digits, zoneFrom, label, ref100, dateOf(sol), tipHtml(pt), onPick(sol) }
+ * The grey "not published yet" zone is clipped to the plot area (it never leaves the card).
+ */
+function drawRangeChart(host, cfg) {
+  host._cfg = cfg;
+  const W = Math.max(Math.round(host.clientWidth || 640), 280);
+  const H = W < 480 ? 250 : 290;
+  const L = 48, R = 10, T = 26, B = W < 480 ? 34 : 40;
+  const { x0, x1 } = cfg;
+  const pw = W - L - R, ph = H - T - B;
+  const uid = ++UID;
+  const pts = cfg.pts.filter((p) => p.sol >= x0 - 1 && p.sol <= x1 + 1);
+  const empty = pts.length === 0;
+
+  let lo = Infinity, hi = -Infinity;
+  for (const p of pts) {
+    for (const v of [p.lo, p.hi, p.mean, p.mean2]) if (v != null) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  }
+  if (empty) { lo = 0; hi = 1; }
+  if (cfg.zeroBased) lo = Math.min(0, lo);
+  if (cfg.ref100 && hi > 100) hi = Math.max(hi, 110);
+  const ticks = cfg.ref100 && hi > 100 ? niceTicks(0, Math.ceil(hi / 10) * 10, 4) : niceTicks(lo, hi, 4);
+  const ymin = ticks[0], ymax = ticks[ticks.length - 1];
+  const X = (s) => L + ((s - x0) / (x1 - x0 || 1)) * pw;
+  const Y = (v) => T + (1 - (v - ymin) / (ymax - ymin || 1)) * ph;
+  const f = (n) => n.toFixed(1);
+  const px = pw / (x1 - x0 || 1);
+  const bw = Math.max(1.4, Math.min(px * 0.8, 9));
+  const gap = (a, b) => b.sol - a.sol > 1.5;
+
+  let band = '', part = '', solid = '', dashed = '', gust = '', two = '';
+  let run = [];
+  const flush = () => {
+    const first = run[0];
+    if (first && first.lo != null) {
+      if (run.length > 1) {
+        band += run.map((q, i) => `${i ? 'L' : 'M'}${f(X(q.sol))} ${f(Y(q.hi))}`).join('') +
+          run.slice().reverse().map((q) => `L${f(X(q.sol))} ${f(Y(q.lo))}`).join('') + 'Z';
+      } else {
+        band += `M${f(X(first.sol) - bw / 2)} ${f(Y(first.hi))}h${f(bw)}v${f(Math.max(1, Y(first.lo) - Y(first.hi)))}h${f(-bw)}z`;
+      }
+    }
+    run = [];
+  };
+  for (const q of pts) {
+    if (q.partial) {
+      flush();
+      if (q.lo != null) part += `M${f(X(q.sol) - bw / 2)} ${f(Y(q.hi))}h${f(bw)}v${f(Math.max(1.5, Y(q.lo) - Y(q.hi)))}h${f(-bw)}z`;
+      continue;
+    }
+    const last = run[run.length - 1];
+    if (last && gap(last, q)) flush();
+    run.push(q);
+  }
+  flush();
+  let style = null;
+  pts.forEach((q, i) => {
+    const prev = pts[i - 1];
+    if (!prev || gap(prev, q)) { style = null; return; }
+    if (cfg.mode === 'gust') gust += `${style === null ? 'M' + f(X(prev.sol)) + ' ' + f(Y(prev.hi)) : ''}L${f(X(q.sol))} ${f(Y(q.hi))}`;
+    if (cfg.mode === 'dual' && prev.mean2 != null && q.mean2 != null) two += `M${f(X(prev.sol))} ${f(Y(prev.mean2))}L${f(X(q.sol))} ${f(Y(q.mean2))}`;
+    const dash = q.partial || prev.partial;
+    const seg = `${style === dash ? '' : `M${f(X(prev.sol))} ${f(Y(prev.mean))}`}L${f(X(q.sol))} ${f(Y(q.mean))}`;
+    if (dash) dashed += seg; else solid += seg;
+    style = dash;
+  });
+
+  const showDots = px > 4.5 && pts.length < 400;
+  let dots = '';
+  if (showDots) {
+    for (const q of pts) dots += `<circle class="${q.partial ? 'wx-pdot' : 'dot-m'}" cx="${f(X(q.sol))}" cy="${f(Y(q.mean))}" r="${q.partial ? 2.6 : 2.1}"/>`;
+  }
+  let marks = '';
+  for (const q of pts) for (const c of q.marks || []) {
+    const x = X(q.sol);
+    marks += c === 'humidity_over_100'
+      ? `<path class="wx-mk-h" d="M${f(x)} 4l6 6-6 6-6-6z"/>`
+      : `<path class="wx-mk-o" d="M${f(x - 4.5)} 5.5l9 9m-9 0l9-9"/>`;
+  }
+  // x axis: sol ticks + month labels under them
+  const xt = niceTicks(x0, x1, W < 480 ? 3 : 6).filter((t) => t >= x0 && t <= x1);
+  let xs = '';
+  xt.forEach((t, i) => {
+    const anc = i === 0 && X(t) - L < 24 ? 'start' : i === xt.length - 1 && W - R - X(t) < 24 ? 'end' : 'middle';
+    xs += `<line class="grid" x1="${f(X(t))}" x2="${f(X(t))}" y1="${T}" y2="${T + ph}" opacity=".5"/>` +
+      `<text x="${f(X(t))}" y="${H - B + 15}" text-anchor="${anc}">${nf.format(Math.round(t))}</text>`;
+    if (W >= 480 && cfg.dateOf) xs += `<text class="sub" x="${f(X(t))}" y="${H - B + 29}" text-anchor="${anc}">${cfg.dateOf(Math.round(t)).slice(0, 7)}</text>`;
+  });
+  let ys = '';
+  for (const t of ticks) ys += `<line class="grid" x1="${L}" x2="${W - R}" y1="${f(Y(t))}" y2="${f(Y(t))}"/><text x="${L - 6}" y="${f(Y(t) + 4)}" text-anchor="end">${numG(t, t % 1 ? 1 : 0)}</text>`;
+
+  let zone = '';
+  if (cfg.zoneFrom != null && cfg.zoneFrom < x1) {
+    const gx = Math.max(L, X(cfg.zoneFrom + 0.5));
+    zone = `<rect class="gap" x="${f(gx)}" y="${T}" width="${f(Math.max(W - R - gx, 0))}" height="${ph}"/>`;
+    if (W - R - gx > 110) zone += `<text class="zone-label" x="${f(W - R - 6)}" y="${T + 14}" text-anchor="end">not published yet</text>`;
+  }
+  const ref = cfg.ref100 && ymax > 100 ? `<line class="wx-ref" x1="${L}" x2="${W - R}" y1="${f(Y(100))}" y2="${f(Y(100))}"/><text class="wx-reft" x="${L + 4}" y="${f(Y(100) - 4)}">100 %: above it is impossible</text>` : '';
+
+  host.innerHTML = `<svg class="chart wxc" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(empty ? cfg.label + ' No data in this range.' : cfg.label)}">
+    <defs><clipPath id="clp${uid}"><rect x="${L}" y="${T}" width="${pw}" height="${ph}"/></clipPath></defs>
+    ${ys}${xs}
+    <line class="axis" x1="${L}" x2="${W - R}" y1="${T + ph}" y2="${T + ph}"/>
+    <g clip-path="url(#clp${uid})">
+      ${zone}${ref}
+      ${band ? `<path class="wx-band" d="${band}"/>` : ''}${part ? `<path class="wx-band-p" d="${part}"/>` : ''}
+      ${gust ? `<path class="ln wx-gust" d="${gust}"/>` : ''}
+      ${two ? `<path class="ln ln-b" d="${two}"/>` : ''}
+      ${dashed ? `<path class="ln wx-mean-d" d="${dashed}"/>` : ''}${solid ? `<path class="ln wx-mean" d="${solid}"/>` : ''}
+      ${dots}
+    </g>
+    ${marks}
+    <g class="cur" visibility="hidden"><line class="cursor" y1="${T}" y2="${T + ph}"/><circle class="dot-e" r="4.5"/></g>
+  </svg>
+  <div class="wx-tip" hidden aria-hidden="true"></div>`;
+  const svg = host.firstElementChild, cur = $('.cur', svg), tip = $('.wx-tip', host);
+  const sols = pts.map((q) => q.sol);
+  const nearest = (ev) => {
+    const rc = svg.getBoundingClientRect();
+    const s = x0 + ((((ev.clientX - rc.left) * W) / (rc.width || W) - L) / pw) * (x1 - x0);
+    let best = 0, bd = Infinity;
+    sols.forEach((v, i) => { const d = Math.abs(v - s); if (d < bd) { bd = d; best = i; } });
+    return best;
+  };
+  svg.onpointermove = (ev) => {
+    if (ev.pointerType !== 'mouse' || !pts.length) return;
+    const q = pts[nearest(ev)], x = X(q.sol);
+    cur.setAttribute('visibility', 'visible');
+    $('line', cur).setAttribute('x1', x); $('line', cur).setAttribute('x2', x);
+    const dot = $('circle', cur); dot.setAttribute('cx', x); dot.setAttribute('cy', Y(q.mean));
+    tip.hidden = false; tip.innerHTML = cfg.tipHtml(q);
+    const hr = host.getBoundingClientRect();
+    tip.style.left = Math.max(4, Math.min(ev.clientX - hr.left + 12, W - 230)) + 'px';
+  };
+  svg.onpointerleave = () => { cur.setAttribute('visibility', 'hidden'); tip.hidden = true; };
+  svg.onclick = (ev) => { if (pts.length && cfg.onPick) cfg.onPick(pts[nearest(ev)].sol); };
+}
+if (typeof ResizeObserver !== 'undefined') {
+  const ro = new ResizeObserver((es) => {
+    for (const e of es) {
+      const h = e.target, w = Math.round(h.clientWidth);
+      if (h._cfg && w && w !== h._w) { h._w = w; drawRangeChart(h, h._cfg); }
+    }
+  });
+  window.observeChart = (h) => ro.observe(h);
+} else window.observeChart = () => {};
+
+/**
+ * Two-handle range slider with a full-extent track.
+ * o: { min, max, pubMax, from, to, minSpan, overview:[0..1 values], onChange(from, to) }
+ * Keyboard: arrows 1 sol, PageUp/PageDown 10 sols, Home/End to the limit.
+ */
+class RangeSlider {
+  constructor(root, o) {
+    this.o = o; this.root = root;
+    this.min = o.min; this.max = o.max; this.from = o.from; this.to = o.to;
+    root.innerHTML = `<div class="rs-wrap"><div class="rs-track">
+      <svg class="rs-ov" viewBox="0 0 1000 100" preserveAspectRatio="none" aria-hidden="true"><path/></svg>
+      <div class="rs-unpub" title="Not published yet"></div>
+      <div class="rs-dim rs-dim-l"></div><div class="rs-dim rs-dim-r"></div>
+      <div class="rs-sel" title="Drag to move the whole range"></div>
+      <div class="rs-h rs-h-l" role="slider" tabindex="0" aria-label="Range start, sol"><span class="rs-hv"></span></div>
+      <div class="rs-h rs-h-r" role="slider" tabindex="0" aria-label="Range end, sol"><span class="rs-hv"></span></div>
+    </div><div class="rs-axis" aria-hidden="true"></div></div>`;
+    this.track = $('.rs-track', root);
+    this.hl = $('.rs-h-l', root); this.hr = $('.rs-h-r', root); this.sel = $('.rs-sel', root);
+    this.setOverview(o.overview);
+    this.buildAxis();
+    for (const [h, w] of [[this.hl, 'l'], [this.hr, 'r']]) {
+      h.onkeydown = (e) => {
+        const k = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1, PageUp: 10, PageDown: -10 }[e.key];
+        let v = w === 'l' ? this.from : this.to;
+        if (k) v += k; else if (e.key === 'Home') v = w === 'l' ? this.min : this.from + this.o.minSpan; else if (e.key === 'End') v = w === 'l' ? this.to - this.o.minSpan : this.max; else return;
+        e.preventDefault(); this.move(w, v);
+      };
+      h.onpointerdown = (e) => { e.preventDefault(); e.stopPropagation(); h.setPointerCapture(e.pointerId); h.classList.add('drag'); h.focus(); h._drag = true; };
+      h.onpointermove = (e) => { if (h._drag) this.move(w, this.fromX(e.clientX)); };
+      h.onpointerup = h.onpointercancel = () => { h._drag = false; h.classList.remove('drag'); };
+    }
+    this.sel.onpointerdown = (e) => {
+      if (e.target !== this.sel) return;
+      e.preventDefault(); this.sel.setPointerCapture(e.pointerId);
+      this.pan = { x: e.clientX, f: this.from, t: this.to };
+    };
+    this.sel.onpointermove = (e) => {
+      if (!this.pan) return;
+      const r = this.track.getBoundingClientRect();
+      const d = Math.round(((e.clientX - this.pan.x) / r.width) * (this.max - this.min));
+      const span = this.pan.t - this.pan.f;
+      const f = clamp(this.pan.f + d, this.min, this.max - span);
+      this.set(f, f + span, true);
+    };
+    this.sel.onpointerup = this.sel.onpointercancel = () => { this.pan = null; };
+    this.track.onpointerdown = (e) => {
+      if (e.target.closest('.rs-h') || e.target === this.sel) return;
+      const v = this.fromX(e.clientX);
+      this.move(Math.abs(v - this.from) <= Math.abs(v - this.to) ? 'l' : 'r', v);
+    };
+    this.render();
+  }
+  fromX(x) { const r = this.track.getBoundingClientRect(); return Math.round(this.min + clamp((x - r.left) / r.width, 0, 1) * (this.max - this.min)); }
+  move(w, v) {
+    if (w === 'l') this.set(clamp(v, this.min, this.to - this.o.minSpan), this.to, true);
+    else this.set(this.from, clamp(v, this.from + this.o.minSpan, this.max), true);
+  }
+  set(from, to, emit) {
+    this.from = from; this.to = to; this.render();
+    if (emit && this.o.onChange) this.o.onChange(from, to);
+  }
+  pct(v) { return ((v - this.min) / (this.max - this.min)) * 100; }
+  render() {
+    const a = this.pct(this.from), b = this.pct(this.to);
+    this.hl.style.left = a + '%'; this.hr.style.left = b + '%';
+    this.sel.style.left = a + '%'; this.sel.style.width = b - a + '%';
+    $('.rs-dim-l', this.root).style.width = a + '%';
+    $('.rs-dim-r', this.root).style.width = 100 - b + '%';
+    $('.rs-unpub', this.root).style.width = Math.max(0, 100 - this.pct(this.o.pubMax)) + '%';
+    for (const [h, v, lo, hi, nm] of [[this.hl, this.from, this.min, this.to - this.o.minSpan, 'Start'], [this.hr, this.to, this.from + this.o.minSpan, this.max, 'End']]) {
+      h.setAttribute('aria-valuemin', lo); h.setAttribute('aria-valuemax', hi); h.setAttribute('aria-valuenow', v);
+      h.setAttribute('aria-valuetext', `${nm} sol ${nf.format(v)}${v > this.o.pubMax ? ' (not published yet)' : ''}`);
+      $('.rs-hv', h).textContent = nf.format(v);
+    }
+  }
+  setOverview(vals) {
+    if (!vals) return;
+    let d = '', pen = false;
+    vals.forEach((v, i) => {
+      if (v == null) { pen = false; return; }
+      d += `${pen ? 'L' : 'M'}${((i / (vals.length - 1)) * 1000).toFixed(1)} ${(92 - v * 80).toFixed(1)}`; pen = true;
+    });
+    $('.rs-ov path', this.root).setAttribute('d', d);
+  }
+  buildAxis() {
+    const ax = $('.rs-axis', this.root);
+    ax.innerHTML = niceTicks(this.min, this.max, 6).filter((t) => t >= this.min && t <= this.max)
+      .map((t) => `<span style="left:${this.pct(t)}%">${nf.format(t)}</span>`).join('');
+  }
+}
+
+/**
+ * Sortable, paged sol table with "jump to sol".
+ * o: { cols:[{key,label,unit,num,sortKey(r),cell(r),nosort,mobile}], pageSize, linkHref(r), els:{table,pager,info,jump,jumpBtn,jumpMsg,sortSel,sortDir}, onOutside(sol) }
+ */
+class SolTable {
+  constructor(o) {
+    this.o = o; this.rows = []; this.sort = { key: 'sol', dir: -1 }; this.page = 1; this.hl = null;
+    const e = o.els;
+    e.sortSel.innerHTML = o.cols.filter((c) => !c.nosort).map((c) => `<option value="${c.key}">${esc(c.label)}${c.unit ? ', ' + esc(c.unit) : ''}</option>`).join('');
+    e.sortSel.onchange = () => { this.setSort(e.sortSel.value, this.sort.dir); };
+    e.sortDir.onclick = () => this.setSort(this.sort.key, -this.sort.dir);
+    e.jumpForm.onsubmit = (ev) => { ev.preventDefault(); this.jump(parseInt(e.jump.value, 10)); };
+    e.table.addEventListener('click', (ev) => {
+      const b = ev.target.closest('button.sort');
+      if (b) this.setSort(b.dataset.key, this.sort.key === b.dataset.key ? -this.sort.dir : (b.dataset.key === 'sol' || b.dataset.key === 'date' ? -1 : 1));
+    });
+  }
+  setRows(rows) { this.rows = rows; this.page = 1; this.hl = null; this.resort(); this.render(); }
+  resort() {
+    const c = this.o.cols.find((x) => x.key === this.sort.key), d = this.sort.dir;
+    this.sorted = this.rows.slice().sort((a, b) => {
+      const va = c.sortKey(a), vb = c.sortKey(b);
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1; // empty values always last
+      if (vb == null) return -1;
+      return (va < vb ? -1 : va > vb ? 1 : 0) * d;
+    });
+  }
+  setSort(key, dir) { this.sort = { key, dir }; this.page = 1; this.resort(); this.render(); }
+  pages() { return Math.max(1, Math.ceil(this.sorted.length / this.o.pageSize)); }
+  go(p) { this.page = clamp(p, 1, this.pages()); this.render(); }
+  jump(sol) {
+    const e = this.o.els, msg = e.jumpMsg;
+    msg.className = 'hint';
+    if (!Number.isFinite(sol)) { msg.textContent = 'Enter a sol number.'; return; }
+    const hit = this.sorted.findIndex((r) => r.sol === sol);
+    if (hit >= 0) { this.page = Math.floor(hit / this.o.pageSize) + 1; this.hl = sol; this.render(true); msg.textContent = `Sol ${nf.format(sol)} is on page ${this.page}; the row is highlighted.`; return; }
+    const lo = Math.min(...this.rows.map((r) => r.sol)), hi = Math.max(...this.rows.map((r) => r.sol));
+    if (this.rows.length && sol >= lo && sol <= hi) {
+      let best = this.sorted[0];
+      for (const r of this.sorted) if (Math.abs(r.sol - sol) < Math.abs(best.sol - sol)) best = r;
+      const i = this.sorted.indexOf(best);
+      this.page = Math.floor(i / this.o.pageSize) + 1; this.hl = best.sol; this.render(true);
+      msg.textContent = `No data for sol ${nf.format(sol)}. Showing the nearest sol with data, ${nf.format(best.sol)}.`;
+      return;
+    }
+    msg.innerHTML = this.o.outsideText(sol) + ' ';
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'btn btn-sm'; b.textContent = 'Widen the range to include it';
+    b.onclick = () => { this.o.onOutside(sol); this.jump(sol); };
+    if (this.o.canWiden(sol)) msg.append(b);
+  }
+  render(scroll) {
+    const { cols, pageSize, els: e } = this.o, n = this.sorted.length, pg = this.pages();
+    this.page = clamp(this.page, 1, pg);
+    const a = (this.page - 1) * pageSize, slice = this.sorted.slice(a, a + pageSize);
+    const th = cols.map((c) => {
+      const cur = this.sort.key === c.key, aria = cur ? (this.sort.dir > 0 ? 'ascending' : 'descending') : 'none';
+      const lab = esc(c.label) + (c.unit ? `<small>${esc(c.unit)}</small>` : '');
+      return `<th scope="col" class="${c.num ? 'n' : ''}" ${c.nosort ? '' : `aria-sort="${aria}"`}>${c.nosort ? `<span class="th-l">${lab}</span>` : `<button type="button" class="sort" data-key="${c.key}"><span class="th-l">${lab}</span><span class="arr" aria-hidden="true"></span></button>`}</th>`;
+    }).join('');
+    const body = slice.map((r) => `<tr${r.sol === this.hl ? ' class="hl" id="row-hl"' : ''}>` + cols.map((c, i) => {
+      const lbl = esc(c.label + (c.unit ? ', ' + c.unit : ''));
+      return i === 0 ? `<th scope="row" data-label="${lbl}" class="n">${c.cell(r)}</th>` : `<td data-label="${lbl}" class="${c.num ? 'n' : ''}${c.cls ? ' ' + c.cls : ''}">${c.cell(r)}</td>`;
+    }).join('') + '</tr>').join('');
+    e.table.innerHTML = `<thead><tr>${th}</tr></thead><tbody>${body || `<tr><td colspan="${cols.length}" class="n-empty">No sols with data in this range.</td></tr>`}</tbody>`;
+    e.sortSel.value = this.sort.key;
+    e.sortDir.textContent = this.sort.dir > 0 ? 'Ascending' : 'Descending';
+    e.sortDir.setAttribute('aria-label', `Sort direction: ${this.sort.dir > 0 ? 'ascending' : 'descending'}. Activate to reverse.`);
+    e.info.textContent = n ? `Rows ${a + 1}–${a + slice.length} of ${nf.format(n)} · page ${this.page} of ${pg}` : 'No rows';
+    // pager
+    const set = new Set([1, pg, this.page - 1, this.page, this.page + 1]);
+    const list = [...set].filter((p) => p >= 1 && p <= pg).sort((x, y) => x - y);
+    let h = `<button class="btn btn-sm" type="button" data-p="${this.page - 1}" ${this.page === 1 ? 'disabled' : ''}>← Prev</button>`;
+    let last = 0;
+    for (const p of list) {
+      if (p - last > 1) h += '<span class="muted" aria-hidden="true">…</span>';
+      h += `<button class="btn btn-sm${p === this.page ? ' btn-primary' : ''}" type="button" data-p="${p}" aria-label="Page ${p}"${p === this.page ? ' aria-current="page"' : ''}>${p}</button>`;
+      last = p;
+    }
+    h += `<button class="btn btn-sm" type="button" data-p="${this.page + 1}" ${this.page === pg ? 'disabled' : ''}>Next →</button>`;
+    e.pager.innerHTML = h;
+    $$('button[data-p]', e.pager).forEach((b) => { b.onclick = () => { this.go(+b.dataset.p); }; });
+    e.jump.max = ''; // no hard cap: out-of-range values get an explanation, not a browser tooltip
+    if (scroll) { const r = $('#row-hl'); if (r) r.scrollIntoView({ block: 'nearest' }); }
+  }
+}
+
+/* ---- Radiation page spec: generated data in the shape of GET /api/v2/rovers/curiosity/radiation (RadiationSol) ---- */
+const RAD = {
+  curiosity: {
+    name: 'Curiosity', pub: 4843, maxSol: 5066, updated: '2026-11-24', release: '2026-08-03',
+    credit: 'MSL RAD (SwRI) / NASA PDS Planetary Plasma Interactions Node, MSL-M-RAD-3-RDR-V1.0',
+    url: 'https://pds-ppi.igpp.ucla.edu/data/MSL-M-RAD-3-RDR-V1.0/',
+  },
+};
+const r2 = (v) => Math.round(v * 100) / 100;
+
+function genRadiation() {
+  const R = rng(77), out = [];
+  const spikes = { 1819: 2.2, 1820: 1.35, 3128: 1.6 };            // solar events (invented positions)
+  const forb = [[600, 0.07], [1840, 0.06], [3540, 0.05]];          // Forbush decreases
+  let n = 0;
+  for (let sol = 15; sol <= RAD.curiosity.pub; sol++) {
+    n = 0.8 * n + gauss(R) * 0.004;
+    if ((sol >= 3005 && sol <= 3016) || R() < 0.025) continue;
+    const ls = lsOf('curiosity', sol);
+    let e = 212 + 22 * Math.cos((2 * Math.PI * (sol - 2650)) / 4000);
+    e *= 1 - 0.018 * Math.cos(((ls - 265) * Math.PI) / 180) + n;
+    for (const [s, d] of forb) e *= 1 - d * Math.exp(-Math.pow((sol - s - 2) / 3.5, 2));
+    const sp = spikes[sol] || 1;
+    e *= sp;
+    const b = e * (1.065 + 0.004 * gauss(R));
+    const mk = (m) => ({ mean: r2(m), min: r2(m * (0.915 - 0.02 * R())), max: r2(m * (1.085 + 0.03 * R() + (sp > 1 ? 0.5 * (sp - 1) : 0))) });
+    out.push({ sol, earth_date: earthDate('curiosity', sol), dose_e_ugy_day: mk(e), dose_b_ugy_day: mk(b),
+      count_rate_b_per_s: Math.round((b / 24) * (1 + 0.006 * gauss(R)) * 1000) / 1000,
+      coverage: Math.round(clamp(0.3 + sol / 700, 0.3, 0.92) * 100) / 100, timing_caveat: R() < 0.04 ? true : false, ls });
+  }
+  return out;
+}
+const ugy = (v) => num(v, 1);
+
+window.SPEC = {
+  title: 'Radiation', defaultRover: 'curiosity', meta: RAD,
+  gen: genRadiation,
+  roverName: () => 'Curiosity',
+  paramLabel: (k) => (k === 'dose' ? 'Absorbed dose rate' : 'Count rate, detector B'),
+  chips: () => [{ key: 'dose', label: 'Absorbed dose (E and B)' }, { key: 'count', label: 'Count rate, detector B' }],
+  pt: (it, k) => k === 'dose'
+    ? { sol: it.sol, lo: it.dose_e_ugy_day.min, hi: it.dose_e_ugy_day.max, mean: it.dose_e_ugy_day.mean, mean2: it.dose_b_ugy_day.mean, partial: it.coverage < 0.5, item: it, marks: [] }
+    : { sol: it.sol, lo: null, hi: null, mean: it.count_rate_b_per_s, partial: it.coverage < 0.5, item: it, marks: [] },
+  zeroAuto: (k, span) => span >= 400,
+  chartCfg: (k) => (k === 'dose' ? { mode: 'dual', unit: 'µGy/day', digits: 0 } : { mode: 'line', unit: 'events/s', digits: 1 }),
+  tip: (q, k) => {
+    const it = q.item;
+    return `<b>Sol ${nf.format(it.sol)}</b> · ${it.earth_date}<br>dose E ${ugy(it.dose_e_ugy_day.mean)} (${ugy(it.dose_e_ugy_day.min)} to ${ugy(it.dose_e_ugy_day.max)}) µGy/day<br>dose B ${ugy(it.dose_b_ugy_day.mean)} µGy/day<br>count rate ${num(it.count_rate_b_per_s, 3)} /s<br>coverage ${Math.round(it.coverage * 100)} %` +
+      (it.timing_caveat ? '<br><span class="tip-f">timing caveat</span>' : '');
+  },
+  emptyHint: () => 'Choose another range.',
+  legend: (k) => k === 'dose'
+    ? '<span class="legend"><span><i aria-hidden="true"></i>dose E, daily mean</span><span><i class="b" aria-hidden="true"></i>dose B, daily mean</span><span><i class="sw" aria-hidden="true"></i>dose E, lowest to highest observation</span><span><i class="sw sw-part" aria-hidden="true"></i>coverage under 50 %</span></span>'
+    : '<span class="legend"><span><i aria-hidden="true"></i>count rate B, daily mean (raw events per second; not a calibrated flux)</span></span>',
+  caption: (r, a, b) => `Sols ${nf.format(a)}–${nf.format(b)} · ${earthDate(r, a)} to ${earthDate(r, b)}. Absorbed dose in the instrument detectors, not equivalent dose. Solar events are not smoothed out.`,
+  facts: () => {
+    const m = RAD.curiosity;
+    return `<div><dt>Instrument</dt><dd>RAD</dd></div><div><dt>Newest published sol</dt><dd>${nf.format(m.pub)}</dd></div><div><dt>Curiosity is at sol</dt><dd>${nf.format(m.maxSol)}</dd></div><div><dt>Behind</dt><dd class="lag">${nf.format(m.maxSol - m.pub)} sols</dd></div><div><dt>Archive release</dt><dd>${m.release}</dd></div><div><dt>Updated</dt><dd>${m.updated}</dd></div>`;
+  },
+  cols: (r) => [
+    { key: 'sol', label: 'Sol', num: true, sortKey: (x) => x.sol, cell: (x) => nf.format(x.sol) },
+    { key: 'date', label: 'Earth date', sortKey: (x) => x.earth_date, cell: (x) => x.earth_date },
+    { key: 'e', label: 'Dose E', unit: 'µGy/day', num: true, sortKey: (x) => x.dose_e_ugy_day.mean, cell: (x) => ugy(x.dose_e_ugy_day.mean) },
+    { key: 'b', label: 'Dose B', unit: 'µGy/day', num: true, sortKey: (x) => x.dose_b_ugy_day.mean, cell: (x) => ugy(x.dose_b_ugy_day.mean) },
+    { key: 'c', label: 'Count rate B', unit: 'events/s', num: true, sortKey: (x) => x.count_rate_b_per_s, cell: (x) => num(x.count_rate_b_per_s, 3) },
+    { key: 'link', label: 'Report', nosort: true, cls: 'link', cell: (x) => `<a href="sol-report-curiosity.html?sol=${x.sol}#radiation" aria-label="Sol report for sol ${x.sol}">Sol report →</a>` },
+  ],
+};
+
+/* ---- page controller shared by weather-range.html and radiation-range.html (SPEC comes from the page) ---- */
+(function () {
+  const SP = window.SPEC;
+  const S = { rover: SP.defaultRover, key: null, from: 0, to: 0, state: 'ok', yMode: 'auto' };
+  const DATA = {};
+  const items = () => DATA[S.rover] || (DATA[S.rover] = SP.gen(S.rover));
+  const meta = () => SP.meta[S.rover];
+  const MIN_SPAN = 5;
+  let slider = null, table = null, raf = 0, overviewKey = '';
+
+  const clampRange = (a, b) => {
+    const m = meta();
+    a = clamp(a, 1, m.maxSol - MIN_SPAN); b = clamp(b, a + MIN_SPAN, m.maxSol);
+    return [a, b];
+  };
+  const lastN = (n) => clampRange(meta().pub - n + 1, meta().pub);
+  const presets = () => [
+    { id: 'year', label: 'Last Mars year (default)', range: lastN(669) },
+    { id: 'zoom', label: 'Last 120 sols', range: lastN(120) },
+    { id: 'all', label: 'Whole published data', range: clampRange(items()[0].sol, meta().pub) },
+  ];
+
+  function setRange(a, b, fromUi) {
+    [a, b] = clampRange(a, b);
+    S.from = a; S.to = b;
+    if (slider && (slider.from !== a || slider.to !== b)) slider.set(a, b, false);
+    $('#fromSol').value = a; $('#toSol').value = b;
+    $('#fromSol').removeAttribute('aria-invalid'); $('#toSol').removeAttribute('aria-invalid');
+    $('#rsErr').textContent = '';
+    schedule();
+  }
+  function schedule() { cancelAnimationFrame(raf); raf = requestAnimationFrame(refresh); }
+
+  function ptsAll() { return items().map((it) => SP.pt(it, S.key, S.rover)).filter(Boolean); }
+
+  function buildOverview() {
+    const k = S.rover + S.key;
+    if (k === overviewKey) return;
+    overviewKey = k;
+    const its = items(), m = meta(), N = 260, buckets = [];
+    for (let i = 0; i < N; i++) {
+      const a = 1 + (i / N) * (m.maxSol - 1), b = 1 + ((i + 1) / N) * (m.maxSol - 1);
+      let s = 0, c = 0;
+      for (const it of its) { if (it.sol >= a && it.sol < b) { const p = SP.pt(it, S.key, S.rover); if (p) { s += p.mean; c++; } } }
+      buckets.push(c ? s / c : null);
+    }
+    const v = buckets.filter((x) => x != null), lo = Math.min(...v), hi = Math.max(...v);
+    slider.setOverview(buckets.map((x) => (x == null ? null : hi > lo ? (x - lo) / (hi - lo) : 0.5)));
+  }
+
+  function buildSlider() {
+    const m = meta();
+    slider = new RangeSlider($('#rsRoot'), { min: 1, max: m.maxSol, pubMax: m.pub, from: S.from, to: S.to, minSpan: MIN_SPAN, overview: null,
+      onChange: (a, b) => { S.from = a; S.to = b; $('#fromSol').value = a; $('#toSol').value = b; $('#rsErr').textContent = ''; schedule(); } });
+    overviewKey = '';
+  }
+
+  function rowsInRange() { return items().filter((it) => it.sol >= S.from && it.sol <= S.to); }
+
+  function refresh() {
+    if (S.state !== 'ok') return;
+    const m = meta(), its = rowsInRange();
+    buildOverview();
+    // summary
+    const span = S.to - S.from + 1, after = Math.max(0, S.to - m.pub);
+    $('#rsSum').innerHTML = `Showing sols <b>${nf.format(S.from)}–${nf.format(S.to)}</b> · ${nf.format(span)} sols · ${earthDate(S.rover, S.from)} to ${earthDate(S.rover, S.to)} · ${nf.format(its.length)} with data` +
+      (after ? ` · <span class="lag">${nf.format(after)} after the newest published sol</span>` : '');
+    $$('#presets button').forEach((b) => { const p = presets().find((x) => x.id === b.dataset.id); b.setAttribute('aria-pressed', String(!!p && p.range[0] === S.from && p.range[1] === S.to)); });
+    // chart
+    const pts = ptsAll();
+    const inRange = pts.filter((p) => p.sol >= S.from && p.sol <= S.to);
+    const zeroBased = S.yMode === 'zero' || (S.yMode === 'auto' && SP.zeroAuto(S.key, span));
+    const cfg = Object.assign({ x0: S.from, x1: S.to, pts, zeroBased, zoneFrom: m.pub < S.to ? m.pub : null,
+      dateOf: (s) => earthDate(S.rover, s), onPick: (sol) => { $('#jumpIn').value = sol; table.jump(sol); $('#tblH').scrollIntoView({ block: 'nearest' }); } }, SP.chartCfg(S.key, S.rover));
+    cfg.tipHtml = (q) => SP.tip(q, S.key, S.rover);
+    const lo = inRange.length ? Math.min(...inRange.map((p) => p.lo ?? p.mean)) : 0, hi = inRange.length ? Math.max(...inRange.map((p) => p.hi ?? p.mean)) : 0;
+    cfg.label = `${SP.paramLabel(S.key)}, daily values, ${SP.roverName(S.rover)}, sols ${nf.format(S.from)} to ${nf.format(S.to)}. ` +
+      (inRange.length ? `Overall ${num(lo, cfg.digits)} to ${num(hi, cfg.digits)} ${cfg.unit}.` : '');
+    const host = $('#chartHost'), old = $('.chart-empty', host.parentElement);
+    drawRangeChart(host, cfg); host._w = Math.round(host.clientWidth);
+    if (old) old.remove();
+    if (!inRange.length) {
+      const d = document.createElement('div'); d.className = 'chart-empty';
+      d.innerHTML = `<div><b>No ${esc(SP.paramLabel(S.key).toLowerCase())} data in this range</b><br>${esc(SP.emptyHint(S.key, S.rover))}</div>`;
+      host.append(d);
+    }
+    $('#legend').innerHTML = SP.legend(S.key);
+    $('#chartCap').innerHTML = SP.caption(S.rover, S.from, S.to);
+    // table
+    $('#tblSub').textContent = `${nf.format(its.length)} sols with data between sol ${nf.format(S.from)} and sol ${nf.format(S.to)}. Follows the range above.`;
+    table.setRows(its);
+  }
+
+  function buildChips() {
+    $('#chips').innerHTML = SP.chips(S.rover).map((c) => `<button type="button" class="chip" data-key="${c.key}" aria-pressed="${c.key === S.key}">${esc(c.label)}${c.badge ? ` <span class="badge no-dot ${c.badge === 'estimate' ? 'badge-est' : 'badge-prelim'}">${c.badge}</span>` : ''}</button>`).join('');
+    $$('#chips .chip').forEach((b) => { b.onclick = () => { S.key = b.dataset.key; $$('#chips .chip').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); refresh(); }; });
+  }
+
+  function buildTable() {
+    const cols = SP.cols(S.rover);
+    table = new SolTable({ cols, pageSize: 50,
+      els: { table: $('#tbl'), pager: $('#pager'), info: $('#tblInfo'), jump: $('#jumpIn'), jumpForm: $('#jumpForm'), jumpMsg: $('#jumpMsg'), sortSel: $('#sortSel'), sortDir: $('#sortDir') },
+      canWiden: (sol) => sol >= 1 && sol <= meta().pub,
+      outsideText: (sol) => sol > meta().maxSol ? `${SP.roverName(S.rover)} has not reached sol ${nf.format(sol)} yet (latest sol ${nf.format(meta().maxSol)}).`
+        : sol > meta().pub ? `Sol ${nf.format(sol)} is not published yet (newest published sol: ${nf.format(meta().pub)}).`
+        : `Sol ${nf.format(sol)} is outside the selected range (${nf.format(S.from)}–${nf.format(S.to)}).`,
+      onOutside: (sol) => { setRange(Math.min(S.from, sol), Math.max(S.to, sol)); cancelAnimationFrame(raf); refresh(); } });
+  }
+
+  function validateInputs() {
+    const a = parseInt($('#fromSol').value, 10), b = parseInt($('#toSol').value, 10), m = meta();
+    const err = (msg, ids) => {
+      $('#rsErr').textContent = msg;
+      ['#fromSol', '#toSol'].forEach((i) => { if (ids.includes(i)) $(i).setAttribute('aria-invalid', 'true'); else $(i).removeAttribute('aria-invalid'); });
+    };
+    if (!Number.isInteger(a) || !Number.isInteger(b)) return err('Enter whole sol numbers in both fields.', ['#fromSol', '#toSol']);
+    if (a < 1) return err('From sol must be at least 1.', ['#fromSol']);
+    if (b > m.maxSol) return err(`${SP.roverName(S.rover)} is at sol ${nf.format(m.maxSol)}; To sol cannot be larger.`, ['#toSol']);
+    if (a > b) return err('From sol must not be greater than To sol.', ['#fromSol', '#toSol']);
+    if (b - a < MIN_SPAN) return err(`Select at least ${MIN_SPAN + 1} sols.`, ['#toSol']);
+    setRange(a, b);
+  }
+
+  function setState(st) {
+    S.state = st;
+    $$('[data-state]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.state === st)));
+    const box = $('#stateBox'), main = $('#mainArea');
+    main.hidden = st !== 'ok'; box.hidden = st === 'ok';
+    if (st === 'loading') box.innerHTML = `<div class="card panel" aria-busy="true" role="status"><span class="visually-hidden">Loading ${esc(SP.title)}…</span><div class="skeleton skel-h" style="width:40%"></div><div class="skeleton" style="height:260px"></div><div class="skeleton skel-h" style="width:100%;margin-top:12px;height:64px"></div></div><div class="card panel" style="margin-top:16px" aria-hidden="true">${'<div class="skeleton skel-h"></div>'.repeat(7)}</div>`;
+    if (st === 'error') {
+      box.innerHTML = `<div class="alert alert-error" role="alert"><div><div class="alert-title">${esc(SP.title)} could not be loaded</div><div>The service is temporarily unavailable. Your range selection is kept; try again in a moment.</div><pre class="raw">HTTP 503\n{"error":{"code":"db_unavailable","message":"Database is unavailable","details":null}}</pre><div class="row"><button class="btn btn-primary btn-sm" type="button" id="retry">Try again</button></div></div></div>`;
+      $('#retry').onclick = () => setState('ok');
+    }
+    if (st === 'ok') refresh();
+  }
+
+  function setRover(r) {
+    S.rover = r; S.key = SP.chips(r)[0].key; overviewKey = '';
+    $('#facts').innerHTML = SP.facts(r);
+    buildChips(); buildTable();
+    const z = lastN(120); S.from = z[0]; S.to = z[1];
+    buildSlider(); setRange(S.from, S.to);
+    $('#presets').innerHTML = presets().map((p) => `<button class="btn btn-sm" type="button" data-id="${p.id}" aria-pressed="false">${p.label}</button>`).join('');
+    $$('#presets button').forEach((b) => { b.onclick = () => { const p = presets().find((x) => x.id === b.dataset.id); setRange(p.range[0], p.range[1]); }; });
+    if (SP.onRover) SP.onRover(r);
+  }
+
+  // events
+  $('#fromSol').onchange = $('#toSol').onchange = validateInputs;
+  $$('[data-act]').forEach((b) => {
+    b.onclick = () => {
+      const m = meta(), a = b.dataset.act;
+      if (S.state !== 'ok') setState('ok');
+      if (a === 'zoom') setRange(...lastN(120));
+      if (a === 'year') setRange(...lastN(669));
+      if (a === 'past') setRange(m.pub - 70, m.pub + 50);
+    };
+  });
+  $$('[data-state]').forEach((b) => { b.onclick = () => setState(b.dataset.state); });
+  const rs = $('#roverSwitch');
+  if (rs) $$('input[name=rover]', rs).forEach((i) => { i.onchange = () => { if (i.checked) setRover(i.value); }; });
+  const ym = $('#yMode');
+  if (ym) ym.onchange = () => { S.yMode = ym.value; refresh(); };
+  observeChart($('#chartHost'));
+  setRover(S.rover);
+  S.state = 'ok'; refresh();
+})();
+
+</script>
+</body>
+</html>

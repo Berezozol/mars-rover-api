@@ -40,12 +40,26 @@ export function openWeather(
 
 export const panelOf = () => screen.findByRole("main");
 
-/** Wait for the daily chart and the inspector slider: the section has its data. */
+/** Wait for the sol table: the section has its data (loading, error and empty states have no table). */
 export async function readyPanel() {
   const panel = await panelOf();
-  await within(panel).findByRole("slider");
+  await within(panel).findByRole("table");
   return panel;
 }
+
+/**
+ * The inspector slider (a native range input that picks one loaded sol). Since stage 22 the section has
+ * more sliders: the two handles of the sol range ("Range start" / "Range end").
+ */
+export const inspectorSlider = (panel: HTMLElement) =>
+  within(panel)
+    .getAllByRole("slider")
+    .find(
+      (el) =>
+        el instanceof HTMLInputElement &&
+        el.type === "range" &&
+        !/^range (start|end)/i.test(el.getAttribute("aria-label") ?? ""),
+    ) as HTMLInputElement;
 
 /** The section with the rover card loaded too: the lag in words appears once Rover.max_sol is known. */
 export async function readyPanelWithRover() {
@@ -59,11 +73,14 @@ export const dailyChart = (panel: HTMLElement) =>
     .queryAllByRole("img")
     .find((c) => /daily/i.test(c.getAttribute("aria-label") ?? ""));
 
+// Parameter chips live in the "Parameter" group; the sort headers of the table are buttons too.
+const params = (panel: HTMLElement) => within(panel).getByRole("group", { name: /Parameter/ });
+
 export const chip = (panel: HTMLElement, name: RegExp | string) =>
-  within(panel).getByRole("button", { name });
+  within(params(panel)).getByRole("button", { name });
 
 export const hasChip = (panel: HTMLElement, name: RegExp | string) =>
-  within(panel).queryByRole("button", { name }) !== null;
+  within(params(panel)).queryByRole("button", { name }) !== null;
 
 export const callsTo = (m: ReturnType<typeof mockApi>, path: string) =>
   m.calls.filter((c) => c.pathname === path);
@@ -79,7 +96,7 @@ export async function pickSol(
   sol: number,
   rows: number[],
 ) {
-  const slider = within(panel).getByRole("slider") as HTMLInputElement;
+  const slider = inspectorSlider(panel);
   const path = `${WX(rover)}/${sol}`;
   for (const value of [sol, rows.indexOf(sol)]) {
     fireEvent.input(slider, { target: { value: String(value) } });
@@ -93,7 +110,8 @@ export async function pickSol(
   throw new Error(`could not move the inspector to sol ${sol}`);
 }
 
+/** The row of a sol in the table (the sol may be written with a thousands separator). */
 export const rowOf = (panel: HTMLElement, sol: number) =>
   within(within(panel).getByRole("table"))
     .getAllByRole("row")
-    .find((r) => r.firstElementChild?.textContent?.trim() === String(sol));
+    .find((r) => (r.firstElementChild?.textContent ?? "").replace(/[^\d]/g, "") === String(sol));

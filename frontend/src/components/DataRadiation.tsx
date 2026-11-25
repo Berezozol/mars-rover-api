@@ -1,22 +1,25 @@
-import { useState } from "preact/hooks";
+import { useEffect, useMemo, useState } from "preact/hooks";
 import { api } from "../api/client";
 import type { RadiationResponse, RadiationSol } from "../api/types";
 import { fmt } from "../lib/format";
 import { useAsync, useMedia, useRovers } from "../lib/hooks";
+import { cover, dose, num, lagMonths, lagText, RAD_ROVER, rate, viewOf } from "../lib/radiation";
 import {
-  cover,
-  dose,
-  num,
-  lagMonths,
-  lagText,
-  niceScale,
-  RAD_ROVER,
-  rate,
-  solTicks,
-  viewOf,
-} from "../lib/radiation";
+  clampRange,
+  defaultRange,
+  overviewOf,
+  parseRangeQuery,
+  rangeTicks,
+  type ScaleMode,
+  type SolRange,
+  valueScale,
+  writeRangeQuery,
+  zeroBasedScale,
+} from "../lib/solRange";
 import { About, dateOnly, Facts } from "./DataAbout";
 import { LineChart } from "./LineChart";
+import { SolRangeSlider } from "./SolRangeSlider";
+import { SolTable, type SolColumn } from "./SolTable";
 import { EmptyState, ErrorAlert } from "./States";
 
 const SOURCE_NAME = "NASA PDS Planetary Plasma Interactions Node, set MSL-M-RAD-3-RDR-V1.0";
@@ -76,19 +79,75 @@ function RadiationView({
   const v = viewOf(data.items);
   const narrow = useMedia("(max-width: 479px)", false);
   const [sol, setSol] = useState(v.last);
-  const cur = v.bySol.get(sol);
+  const [jump, setJump] = useState<{ sol: number; n: number } | null>(null);
+  const [mode, setMode] = useState<ScaleMode>("auto");
   const source = data.source_max_sol ?? v.last;
-  const xmax = Math.max(maxSol ?? 0, source, v.last);
-  const zone = xmax > source ? { from: source, to: xmax, label: "not published yet" } : null;
-  const dScale = niceScale(v.maxDose);
-  const rScale = niceScale(v.maxRate);
-  const xticks = solTicks(xmax, narrow ? 3 : 5);
+  const now = Math.max(maxSol ?? 0, source, v.last);
+  const bounds = { first: v.first, max: now };
+
+  // The range the visitor chose (or the address gave); null = the default, which follows the data.
+  const [chosen, setChosen] = useState<SolRange | null>(() =>
+    parseRangeQuery(window.location.search, {
+      first: v.first,
+      max: Math.max(maxSol ?? 0, source, v.last),
+    }),
+  );
+  const dflt = defaultRange({ first: v.first, sourceMax: source });
+  const range = clampRange(chosen ?? dflt, bounds);
+  const isDefault = range[0] === dflt[0] && range[1] === dflt[1];
+  useEffect(() => {
+    if (chosen !== null) writeRangeQuery(isDefault ? null : range);
+  }, [range[0], range[1]]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const inRange = useMemo(
+    () => data.items.filter((x) => x.sol >= range[0] && x.sol <= range[1]),
+    [data.items, range[0], range[1]], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  // The inspected sol stays inside the range: it snaps to the nearest sol with data in it.
+  const lo = Math.max(range[0], v.first);
+  const hi = Math.max(lo, Math.min(range[1], v.last));
+  const shown = Math.min(Math.max(sol, lo), hi);
+  const cur = v.bySol.get(shown);
+  const overview = useMemo(
+    () =>
+      overviewOf(
+        data.items.flatMap((x): [number, number][] =>
+          num(x.dose_e_ugy_day?.mean) ? [[x.sol, x.dose_e_ugy_day.mean]] : [],
+        ),
+        { first: v.first, max: now },
+      ),
+    [data.items, v.first, now],
+  );
+  const zero = zeroBasedScale(mode, range);
+  const doses = inRange
+    .flatMap((x) => [x.dose_e_ugy_day?.mean, x.dose_b_ugy_day?.mean])
+    .filter(num);
+  const rates = inRange.map((x) => x.count_rate_b_per_s).filter(num);
+  const dScale = valueScale(doses, zero);
+  const rScale = valueScale(rates, zero);
+  const xticks = rangeTicks(range, narrow ? 2 : 4);
+  const zone =
+    source < range[1] ? { from: source + 0.5, to: range[1], label: "not published yet" } : null;
+  const scaleText = zero ? "The scale starts from 0 (zero)." : "The scale is fitted to the range.";
   const pts = (pick: (x: RadiationSol) => number | undefined): [number, number][] =>
-    data.items.flatMap((x) => {
+    inRange.flatMap((x) => {
       const y = pick(x);
       return num(y) ? [[x.sol, y] as [number, number]] : [];
     });
-  const newest = data.items.slice(-3);
+  const pick = (s: number) => {
+    // The nearest sol that has data.
+    let best: RadiationSol | undefined;
+    for (const x of inRange) {
+      if (!best || Math.abs(x.sol - s) < Math.abs(best.sol - s)) best = x;
+    }
+    if (!best) return;
+    setSol(best.sol);
+    setJump((j) => ({ sol: best.sol, n: (j?.n ?? 0) + 1 }));
+  };
+  const columns = useMemo(() => radiationColumns(), []);
+  const span = range[1] - range[0] + 1;
+  const firstRow = inRange[0];
+  const lastRow = inRange[inRange.length - 1];
 
   return (
     <>
@@ -118,7 +177,21 @@ function RadiationView({
       />
 
       <div class="card chart-box">
-        <div class="chart-title">
+        <div class="wx-controls">
+          <div class="field" style={{ minWidth: "12rem" }}>
+            <label for="rad-scale">Vertical scale</label>
+            <select
+              id="rad-scale"
+              value={mode}
+              onChange={(e) => setMode(e.currentTarget.value as ScaleMode)}
+            >
+              <option value="auto">Auto (long ranges start at zero)</option>
+              <option value="zero">From zero</option>
+              <option value="fit">Fit to the range</option>
+            </select>
+          </div>
+        </div>
+        <div class="chart-title chart-title-2">
           <h3>Dose rate per sol, µGy/day</h3>
           <span class="legend">
             <span>
@@ -127,19 +200,22 @@ function RadiationView({
             <span>
               <i class="b" aria-hidden="true" /> B
             </span>
-            <span>scale from 0</span>
+            <span>{zero ? "scale from 0" : "scale fitted to the range"}</span>
           </span>
         </div>
         <LineChart
           testId="radiation-chart"
-          label={`Daily absorbed dose rate at Curiosity, micrograys per day, sols ${v.first} to ${v.last}. Detector E is solid, detector B dashed. The scale starts from 0 (zero).${zone ? ` Sols ${source + 1} to ${xmax} are not published yet.` : ""}`}
+          label={`Daily absorbed dose rate at Curiosity, micrograys per day, sols ${range[0]} to ${range[1]}. Detector E is solid, detector B dashed. ${scaleText}${zone ? ` Sols ${source + 1} to ${range[1]} are not published yet.` : ""}`}
           height={narrow ? 200 : 230}
-          xmax={xmax}
+          xmin={range[0]}
+          xmax={range[1]}
+          ymin={dScale.bottom}
           ymax={dScale.top}
           yticks={dScale.ticks}
           xticks={xticks}
           fy={(t) => fmt(t)}
           zone={zone}
+          onPick={pick}
           cursor={
             cur
               ? {
@@ -153,7 +229,7 @@ function RadiationView({
                       : []),
                   ],
                 }
-              : { x: sol, dots: [] }
+              : { x: shown, dots: [] }
           }
           lines={[
             { cls: "ln-b", pts: pts((x) => x.dose_b_ugy_day?.mean), breakAfter: 10 },
@@ -164,18 +240,21 @@ function RadiationView({
         <div class="chart-title chart-title-2">
           <h3>Detector B count rate (raw), events/s</h3>
           <span class="legend">
-            <span>scale from 0</span>
+            <span>{zero ? "scale from 0" : "scale fitted to the range"}</span>
           </span>
         </div>
         <LineChart
           testId="count-rate-chart"
-          label={`Raw count rate of detector B, events per second, sols ${v.first} to ${v.last}. The scale starts from 0 (zero).`}
+          label={`Raw count rate of detector B, events per second, sols ${range[0]} to ${range[1]}. ${scaleText}`}
           height={150}
-          xmax={xmax}
+          xmin={range[0]}
+          xmax={range[1]}
+          ymin={rScale.bottom}
           ymax={rScale.top}
           yticks={rScale.ticks}
           xticks={xticks}
           zone={zone ? { ...zone, label: "" } : null}
+          onPick={pick}
           cursor={
             cur
               ? {
@@ -184,9 +263,34 @@ function RadiationView({
                     ? [{ y: cur.count_rate_b_per_s, cls: "dot-e" }]
                     : [],
                 }
-              : { x: sol, dots: [] }
+              : { x: shown, dots: [] }
           }
           lines={[{ cls: "ln-s", pts: pts((x) => x.count_rate_b_per_s), breakAfter: 10 }]}
+        />
+
+        <SolRangeSlider
+          bounds={bounds}
+          published={source}
+          range={range}
+          onChange={setChosen}
+          overview={overview}
+          summary={
+            <>
+              Showing sols{" "}
+              <b>
+                {fmt(range[0])}–{fmt(range[1])}
+              </b>{" "}
+              · {fmt(span)} sols
+              {firstRow && lastRow && ` · ${firstRow.earth_date} to ${lastRow.earth_date}`} ·{" "}
+              {fmt(inRange.length)} with data
+              {range[1] > source && (
+                <>
+                  {" "}
+                  · <span class="lag">{fmt(range[1] - source)} after the newest published sol</span>
+                </>
+              )}
+            </>
+          }
         />
 
         <div class="inspect">
@@ -196,10 +300,10 @@ function RadiationView({
           <input
             type="range"
             id="rad-sol"
-            min={v.first}
-            max={v.last}
+            min={lo}
+            max={hi}
             step={1}
-            value={sol}
+            value={shown}
             aria-describedby="rad-readout"
             onInput={(e) => setSol(Number((e.currentTarget as HTMLInputElement).value))}
           />
@@ -211,48 +315,89 @@ function RadiationView({
                 <b>{rate(cur.count_rate_b_per_s)}</b> events/s
               </>
             ) : (
-              <b>No data for sol {sol}</b>
+              <b>No data for sol {shown}</b>
             )}
           </div>
         </div>
         <p class="chart-note">
           Absorbed dose rate, not equivalent dose (sieverts): the source has none. Solar events are
           not smoothed. The count rate is a raw detector counter, useful for comparing sols with
-          each other, not a calibrated particle flux.
+          each other, not a calibrated particle flux. Click a chart to find a sol in the table
+          below.
         </p>
       </div>
 
-      <div class="table-scroll">
-        <table class="last">
-          <caption>Newest published sols (daily means)</caption>
-          <thead>
-            <tr>
-              <th scope="col">Sol</th>
-              <th scope="col">Date (UTC)</th>
-              <th scope="col">E, µGy/day</th>
-              <th scope="col">B, µGy/day</th>
-              <th scope="col">B count rate, events/s</th>
-              <th scope="col">Coverage</th>
-            </tr>
-          </thead>
-          <tbody>
-            {newest.map((x) => (
-              <tr key={x.sol}>
-                <td>{x.sol}</td>
-                <td>{x.earth_date}</td>
-                <td>{dose(x.dose_e_ugy_day?.mean)}</td>
-                <td>{dose(x.dose_b_ugy_day?.mean)}</td>
-                <td>{rate(x.count_rate_b_per_s)}</td>
-                <td>{cover(x.coverage)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <SolTable
+        rows={data.items}
+        columns={columns}
+        range={range}
+        first={v.first}
+        published={source}
+        latest={now}
+        roverName="Curiosity"
+        onJump={(s) => setChosen([Math.min(range[0], s), Math.max(range[1], s)])}
+        rowLink={(x) => ({
+          href: `/rovers/${RAD_ROVER}?sol=${x.sol}`,
+          label: "Photos",
+          aria: `Photos of sol ${x.sol}`,
+        })}
+        focus={jump}
+      />
 
       <RadAbout data={data} lag={lag} />
     </>
   );
+}
+
+function radiationColumns(): SolColumn<RadiationSol>[] {
+  return [
+    {
+      key: "sol",
+      label: "Sol",
+      numeric: true,
+      firstDir: "desc",
+      sortValue: (x) => x.sol,
+      cell: (x) => x.sol,
+    },
+    {
+      key: "date",
+      label: "Date (UTC)",
+      firstDir: "desc",
+      sortValue: (x) => x.earth_date,
+      cell: (x) => x.earth_date,
+    },
+    {
+      key: "e",
+      label: "E",
+      unit: "µGy/day",
+      numeric: true,
+      sortValue: (x) => x.dose_e_ugy_day?.mean,
+      cell: (x) => dose(x.dose_e_ugy_day?.mean),
+    },
+    {
+      key: "b",
+      label: "B",
+      unit: "µGy/day",
+      numeric: true,
+      sortValue: (x) => x.dose_b_ugy_day?.mean,
+      cell: (x) => dose(x.dose_b_ugy_day?.mean),
+    },
+    {
+      key: "rate",
+      label: "B count rate",
+      unit: "events/s",
+      numeric: true,
+      sortValue: (x) => x.count_rate_b_per_s,
+      cell: (x) => rate(x.count_rate_b_per_s),
+    },
+    {
+      key: "coverage",
+      label: "Coverage",
+      numeric: true,
+      sortValue: (x) => x.coverage,
+      cell: (x) => cover(x.coverage),
+    },
+  ];
 }
 
 function RadAbout({ data, lag }: { data?: RadiationResponse; lag: number }) {

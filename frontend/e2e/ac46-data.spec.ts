@@ -40,6 +40,30 @@ function body(list: unknown[]) {
 }
 
 async function mockRadiation(page: Page, list: unknown[] = items) {
+  const card = (id: string, max: number) => ({
+    id,
+    name: id,
+    mission: "x",
+    launch_date: "2011-11-26",
+    landing_date: "2012-08-06",
+    end_date: null,
+    status: "active",
+    max_sol: max,
+    max_date: "2026-11-06",
+    total_photos: 1,
+    cameras_count: 1,
+    last_synced_at: "2026-11-17T06:00:12Z",
+    data_source: "sync",
+  });
+  const ok = (body: unknown) => ({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify(body),
+  });
+  await page.route("**/api/v2/rovers", (r) =>
+    r.fulfill(ok({ items: [card("perseverance", 2031), card("curiosity", 5066)] })),
+  );
+  await page.route("**/api/v2/rovers/curiosity", (r) => r.fulfill(ok(card("curiosity", 5066))));
   await page.route("**/api/v2/rovers/curiosity/radiation*", (route) =>
     route.fulfill({
       status: 200,
@@ -49,37 +73,29 @@ async function mockRadiation(page: Page, list: unknown[] = items) {
   );
 }
 
-test("header 'Data' leads to the Data page and #radiation opens the section", async ({ page }) => {
+test("header 'Data' -> 'Radiation' opens the radiation page with the range slider and the table", async ({
+  page,
+}) => {
   await mockRadiation(page);
   const w = watchPage(page);
   await page.goto("/");
   const nav = page.getByRole("navigation", { name: "Main" });
-  await expect(nav.getByRole("link", { name: "Samples" })).toHaveCount(0);
-  await nav.getByRole("link", { name: "Data" }).click();
-  await expect(page).toHaveURL(/\/data$/);
-  await expect(page.getByRole("heading", { level: 1, name: "Data" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Rock samples/ })).toHaveAttribute(
-    "aria-expanded",
-    "true",
-  );
-  await expect(page.getByRole("button", { name: /Weather by sol/ })).toHaveAttribute(
-    "aria-expanded",
-    "false",
-  );
-
-  await page.getByRole("button", { name: /Radiation/ }).click();
-  await expect(page).toHaveURL(/\/data#radiation$/);
-  await expect(page.getByRole("slider", { name: /Inspect a sol/ })).toBeVisible();
+  await nav.getByRole("button", { name: /^Data/ }).click();
+  await nav.getByRole("link", { name: "Radiation" }).click();
+  await expect(page).toHaveURL(/\/data\/radiation$/);
+  await expect(page.getByRole("heading", { level: 1, name: /Radiation/ })).toBeVisible();
+  await expect(page.getByRole("table")).toBeVisible();
+  await expect(page.getByRole("slider", { name: /range start/i })).toBeVisible();
   expect(w.consoleErrors).toEqual([]);
 });
 
 test("the slider moves with the arrow keys, one sol at a time", async ({ page }) => {
   await mockRadiation(page);
-  await page.goto("/data#radiation");
+  await page.goto("/data/radiation");
   const slider = page.getByRole("slider", { name: /Inspect a sol/ });
   await expect(slider).toBeVisible();
   await expect(slider).toHaveValue("200");
-  const panel = page.getByRole("region", { name: /Radiation/ });
+  const panel = page.getByRole("main");
   await expect(panel).toContainText("Sol 200");
   await slider.focus();
   await page.keyboard.press("ArrowLeft");
@@ -92,9 +108,10 @@ test("the slider moves with the arrow keys, one sol at a time", async ({ page })
 
 test("'not loaded yet' when the API has no data", async ({ page }) => {
   await mockRadiation(page, []);
-  await page.goto("/data#radiation");
+  await page.goto("/data/radiation");
   await expect(page.getByText("Radiation data not loaded yet")).toBeVisible();
   await expect(page.getByRole("slider")).toHaveCount(0);
+  await expect(page.getByRole("table")).toHaveCount(0);
 });
 
 test("an API error shows 'Try again', which loads the data", async ({ page }) => {
@@ -116,10 +133,10 @@ test("an API error shows 'Try again', which loads the data", async ({ page }) =>
       body: JSON.stringify(body(items)),
     });
   });
-  await page.goto("/data#radiation");
+  await page.goto("/data/radiation");
   await expect(page.getByRole("alert")).toBeVisible();
   await page.getByRole("button", { name: "Try again" }).click();
-  await expect(page.getByRole("slider", { name: /Inspect a sol/ })).toBeVisible();
+  await expect(page.getByRole("table")).toBeVisible();
 });
 
 test.describe("AC-46 narrow screen and dark theme", () => {
@@ -129,12 +146,12 @@ test.describe("AC-46 narrow screen and dark theme", () => {
     page,
   }) => {
     await mockRadiation(page);
-    await page.goto("/data#radiation");
-    await expect(page.getByRole("slider", { name: /Inspect a sol/ })).toBeVisible();
+    await page.goto("/data/radiation");
+    await expect(page.getByRole("table")).toBeVisible();
     await settle(page);
     const { scrollWidth, innerWidth } = await horizontalOverflow(page);
     expect(scrollWidth).toBeLessThanOrEqual(innerWidth);
-    const panel = page.getByRole("region", { name: /Radiation/ });
+    const panel = page.getByRole("main");
     await expect(panel).toContainText(CREDIT);
     const chart = panel.getByRole("img").first();
     const box = await chart.boundingBox();
@@ -159,8 +176,8 @@ test("the Data page at the project's mobile width (375 px) does not scroll sidew
 }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await mockRadiation(page);
-  await page.goto("/data#radiation");
-  await expect(page.getByRole("slider", { name: /Inspect a sol/ })).toBeVisible();
+  await page.goto("/data/radiation");
+  await expect(page.getByRole("table")).toBeVisible();
   await settle(page);
   const { scrollWidth, innerWidth } = await horizontalOverflow(page);
   expect(scrollWidth).toBeLessThanOrEqual(innerWidth);

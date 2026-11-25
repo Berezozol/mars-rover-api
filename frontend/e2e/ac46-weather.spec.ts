@@ -77,33 +77,43 @@ async function mockWeather(page: Page, hits: string[] = []) {
   });
 }
 
-test("AC-46 header -> Data -> #weather -> Curiosity -> pick a sol -> hourly charts", async ({
+test("AC-46 header -> Data -> Weather -> Curiosity: the parameters follow the rover", async ({
   page,
 }) => {
   const hits: string[] = [];
   await mockWeather(page, hits);
   const w = watchPage(page);
   await page.goto("/");
-  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Data" }).click();
-  await expect(page).toHaveURL(/\/data$/);
-  await page.getByRole("button", { name: /Weather by sol/ }).click();
-  await expect(page).toHaveURL(/\/data#weather$/);
-  const panel = page.getByRole("region", { name: /Weather by sol/ });
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("button", { name: /^Data/ })
+    .click();
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("link", { name: "Weather" })
+    .click();
+  await expect(page).toHaveURL(/\/data\/weather/);
+  const panel = page.getByRole("main");
   await expect(panel.getByRole("img", { name: /daily/i })).toBeVisible();
   expect(hits.filter((h) => h === "/api/v2/rovers/perseverance/weather")).toHaveLength(1);
-  await expect(panel).toContainText(/not published yet/i);
-  await expect(panel.getByRole("button", { name: /^Wind/ })).toBeVisible();
+  await expect(
+    panel.getByRole("group", { name: /Parameter/ }).getByRole("button", { name: /^Wind/ }),
+  ).toBeVisible();
 
   // switch the rover
   // the native radio is visually hidden (pointer-events: none): a user clicks its label
   await panel.locator("label", { hasText: /^Curiosity / }).click();
   await expect(panel.getByRole("radio", { name: /Curiosity/ })).toBeChecked();
-  await expect(panel.getByRole("button", { name: /^UV/ })).toBeVisible();
-  await expect(panel.getByRole("button", { name: /^Wind/ })).toHaveCount(0);
+  await expect(
+    panel.getByRole("group", { name: /Parameter/ }).getByRole("button", { name: /^UV/ }),
+  ).toBeVisible();
+  await expect(
+    panel.getByRole("group", { name: /Parameter/ }).getByRole("button", { name: /^Wind/ }),
+  ).toHaveCount(0);
   expect(hits).toContain("/api/v2/rovers/curiosity/weather");
 
-  // the slider moves with the keyboard, one loaded sol at a time
-  const slider = panel.getByRole("slider");
+  // the inspector slider moves with the keyboard, one loaded sol at a time
+  const slider = panel.getByRole("slider", { name: /next loaded sol/i });
   await slider.focus();
   const before = await slider.getAttribute("aria-valuetext");
   await page.keyboard.press("ArrowLeft");
@@ -114,12 +124,15 @@ test("AC-46 header -> Data -> #weather -> Curiosity -> pick a sol -> hourly char
   await expect(panel.getByRole("img", { name: /by local hour/i })).toHaveCount(5);
   await expect(panel).toContainText(/LMST hours/i);
 
-  // a click on the daily chart picks a sol too
-  const asked = hits.length;
+  // a click on the daily chart asks for that sol's hours too
+  const asked = hits.filter((h) => /\/curiosity\/weather\/\d+$/.test(h)).length;
   const chart = panel.getByRole("img", { name: /daily/i });
+  await chart.scrollIntoViewIfNeeded();
   const box = (await chart.boundingBox())!;
-  await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
-  await expect.poll(() => hits.length).toBeGreaterThan(asked);
+  await page.mouse.click(box.x + box.width * 0.3, box.y + box.height * 0.5);
+  await expect
+    .poll(() => hits.filter((h) => /\/curiosity\/weather\/\d+$/.test(h)).length)
+    .toBeGreaterThan(asked);
   await expect(panel.getByRole("img", { name: /by local hour/i })).toHaveCount(5);
   expect(w.consoleErrors).toEqual([]);
 });
@@ -128,9 +141,12 @@ test("AC-46 a flagged sol has a marker, and hovering it shows the flag in words"
   page,
 }) => {
   await mockWeather(page);
-  await page.goto("/data#weather");
-  const panel = page.getByRole("region", { name: /Weather by sol/ });
-  await panel.getByRole("button", { name: /^Humidity/ }).click();
+  await page.goto("/data/weather");
+  const panel = page.getByRole("main");
+  await panel
+    .getByRole("group", { name: /Parameter/ })
+    .getByRole("button", { name: /^Humidity/ })
+    .click();
   const marker = panel.getByTestId("weather-flag-marker").first();
   await expect(marker).toHaveAttribute("data-sol", "140");
   await marker.hover();
@@ -139,9 +155,9 @@ test("AC-46 a flagged sol has a marker, and hovering it shows the flag in words"
 
 test("AC-46 Previous / Next anomaly move the inspector by keyboard", async ({ page }) => {
   await mockWeather(page);
-  await page.goto("/data#weather");
-  const panel = page.getByRole("region", { name: /Weather by sol/ });
-  await expect(panel.getByRole("slider")).toBeVisible();
+  await page.goto("/data/weather");
+  const panel = page.getByRole("main");
+  await expect(panel.getByRole("slider").first()).toBeVisible();
   const prev = panel.getByRole("button", { name: /Previous anomaly/ });
   await prev.focus();
   await page.keyboard.press("Enter");
@@ -151,31 +167,37 @@ test("AC-46 Previous / Next anomaly move the inspector by keyboard", async ({ pa
   );
 });
 
+test("AC-46 the lag follows the rover's current sol", async ({ page }) => {
+  await mockWeather(page);
+  await page.goto("/data/weather");
+  const panel = page.getByRole("main");
+  await expect(panel).toContainText(new RegExp(`${PER_NOW - 159} sols`));
+});
+
 for (const scheme of ["light", "dark"] as const) {
-  test.describe(`AC-46 360 px, ${scheme} theme`, () => {
+  test.describe(`AC-46 360 px, ${scheme} theme, hourly charts open`, () => {
     test.use({ viewport: { width: 360, height: 800 }, colorScheme: scheme });
 
-    test(`AC-46 /data#weather at 360 px (${scheme}): no horizontal scroll, no nested scroll areas, credit visible`, async ({
+    test(`AC-46 /data/weather at 360 px (${scheme}): hourly charts open, no horizontal scroll, no nested scroll areas, credit visible`, async ({
       page,
     }) => {
       await mockWeather(page);
-      await page.goto("/data#weather");
-      const panel = page.getByRole("region", { name: /Weather by sol/ });
-      await expect(panel.getByRole("slider")).toBeVisible();
-      // the hourly charts appear once a sol is picked (here: by keyboard on the slider)
-      await panel.getByRole("slider").focus();
+      await page.goto("/data/weather");
+      const panel = page.getByRole("main");
+      const slider = panel.getByRole("slider", { name: /next loaded sol/i });
+      await expect(slider).toBeVisible();
+      await slider.focus();
       await page.keyboard.press("ArrowLeft");
       await expect(panel.getByRole("img", { name: /by local hour/i }).first()).toBeVisible();
       await settle(page);
       for (const r of ["Perseverance", "Curiosity"]) {
         await panel.locator("label", { hasText: new RegExp(`^${r} `) }).click();
         await expect(panel.getByRole("radio", { name: new RegExp(r) })).toBeChecked();
-        await expect(panel.getByRole("slider")).toBeVisible();
+        await expect(panel.getByRole("table")).toBeVisible();
         await settle(page);
         const { scrollWidth, innerWidth } = await horizontalOverflow(page);
         expect(scrollWidth, `${r}: page width`).toBeLessThanOrEqual(innerWidth);
-        const chart = panel.getByRole("img", { name: /daily/i });
-        const box = (await chart.boundingBox())!;
+        const box = (await panel.getByRole("img", { name: /daily/i }).boundingBox())!;
         expect(box.x).toBeGreaterThanOrEqual(0);
         expect(box.x + box.width).toBeLessThanOrEqual(innerWidth);
         await expect(panel).toContainText(/MEDA|REMS/);
@@ -192,16 +214,7 @@ for (const scheme of ["light", "dark"] as const) {
         );
         expect(nested, `${r}: nested scroll areas`).toBe(0);
       }
-      // below 680 px the table rows become cards: still no sideways scroll
-      await expect(panel.getByRole("table")).toBeVisible();
       await page.screenshot({ path: `test-results/weather-360-${scheme}.png`, fullPage: true });
     });
   });
 }
-
-test("AC-46 the grey zone and the lag follow the rover's current sol", async ({ page }) => {
-  await mockWeather(page);
-  await page.goto("/data#weather");
-  const panel = page.getByRole("region", { name: /Weather by sol/ });
-  await expect(panel).toContainText(new RegExp(`${PER_NOW - 159} sols`));
-});

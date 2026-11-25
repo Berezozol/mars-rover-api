@@ -235,7 +235,7 @@ describe("Data: dataset page content (AC-46)", () => {
   it("AC-46 radiation facts: rover, coverage, newest sol, last update and the lag", async () => {
     routes();
     open("/data/radiation");
-    await screen.findByRole("slider", { name: /Inspect a sol/ });
+    await screen.findByRole("table");
     const dl = mainEl().querySelector("dl")!;
     const text = dl.textContent ?? "";
     expect(text).toMatch(/Curiosity/);
@@ -247,7 +247,7 @@ describe("Data: dataset page content (AC-46)", () => {
   it("AC-46 the credit, the citation and the archive link are visible on the radiation page", async () => {
     routes();
     open("/data/radiation");
-    await screen.findByRole("slider", { name: /Inspect a sol/ });
+    await screen.findByRole("table");
     expect(mainEl().textContent).toContain(RAD_CREDIT);
     expect(mainEl().textContent).toContain(RAD_CITATION);
     expect(
@@ -299,7 +299,7 @@ describe("Data: Radiation section (AC-42)", () => {
 
   it("AC-42 asks the radiation API once, without parameters", async () => {
     const { m } = await openRadiation();
-    await screen.findByRole("slider", { name: /Inspect a sol/ });
+    await screen.findByRole("table");
     const calls = m.calls.filter((c) => c.pathname === RAD);
     expect(calls).toHaveLength(1);
     expect(calls[0]!.search).toBe("");
@@ -307,7 +307,7 @@ describe("Data: Radiation section (AC-42)", () => {
 
   it("AC-42 the summary card shows coverage, update date, lag in text, credit and source", async () => {
     const { panel } = await openRadiation();
-    await screen.findByRole("slider", { name: /Inspect a sol/ });
+    await screen.findByRole("table");
     const text = panel.textContent ?? "";
     expect(text).toContain(RAD_CREDIT);
     expect(text).toMatch(/2026-12-01/);
@@ -325,7 +325,7 @@ describe("Data: Radiation section (AC-42)", () => {
 
   it("AC-42 the citation text is on the card and the archive is linked", async () => {
     const { panel } = await openRadiation();
-    await screen.findByRole("slider", { name: /Inspect a sol/ });
+    await screen.findByRole("table");
     expect(panel.textContent).toContain(RAD_CITATION);
     const link = within(panel)
       .getAllByRole("link")
@@ -333,16 +333,13 @@ describe("Data: Radiation section (AC-42)", () => {
     expect(link, "link to the archive (source_url)").toBeTruthy();
   });
 
-  it("AC-42 has a dose chart with E and B, a 'not published yet' zone and no 'Open full view'", async () => {
+  it("AC-42 has a dose chart with E and B in µGy/day and no 'Open full view'", async () => {
     const { panel } = await openRadiation();
-    await screen.findByRole("slider", { name: /Inspect a sol/ });
+    await screen.findByRole("table");
     const charts = within(panel).getAllByRole("img");
-    expect(charts.length).toBeGreaterThanOrEqual(2); // doses + count rate
     const dose = charts.find((c) => /dose/i.test(c.getAttribute("aria-label") ?? ""))!;
     expect(dose, "dose chart with a text alternative").toBeTruthy();
-    expect(dose.getAttribute("aria-label")).toMatch(/zero|from 0|starts at 0/i);
     expect(panel.textContent).toMatch(/E\b/);
-    expect(panel.textContent).toMatch(/not published yet/);
     expect(panel.textContent).toMatch(/µGy\/day|μGy\/day|micrograys? per day/);
     expect(within(panel).queryByText(/Open full view/i)).toBeNull();
     expect(screen.queryByRole("link", { name: /Open full view/i })).toBeNull();
@@ -350,7 +347,7 @@ describe("Data: Radiation section (AC-42)", () => {
 
   it("AC-42 shows a small count-rate chart for detector B, raw, in events/s", async () => {
     const { panel } = await openRadiation();
-    await screen.findByRole("slider", { name: /Inspect a sol/ });
+    await screen.findByRole("table");
     expect(
       within(panel).getByRole("heading", { name: /Detector B count rate \(raw\), events\/s/ }),
     ).toBeTruthy();
@@ -360,49 +357,47 @@ describe("Data: Radiation section (AC-42)", () => {
     expect(rate, "count-rate chart with a text alternative").toBeTruthy();
   });
 
-  it("AC-42 the table lists the newest published sols with E, B, rate and coverage", async () => {
+  it("AC-42 the table lists the sols of the range with E, B and the count rate", async () => {
     const { panel } = await openRadiation();
     const table = await within(panel).findByRole("table");
     const heads = within(table)
       .getAllByRole("columnheader")
       .map((h) => h.textContent ?? "");
-    expect(heads.some((h) => /^Sol$/i.test(h))).toBe(true);
+    expect(heads.some((h) => /^Sol/i.test(h))).toBe(true);
     expect(heads.some((h) => /^E\b/.test(h))).toBe(true);
     expect(heads.some((h) => /^B\b/.test(h))).toBe(true);
     expect(heads.some((h) => /Coverage/i.test(h))).toBe(true);
     expect(heads.some((h) => /events\/s|count rate/i.test(h))).toBe(true);
     const rows = within(table).getAllByRole("row").slice(1);
-    expect(rows).toHaveLength(3);
-    // newest first or oldest first, both fine: the three sols are all there, 12 (a gap) is not
-    const sols = rows.map((r) => within(r).getAllByRole("cell")[0]!.textContent?.trim());
-    expect([...sols].sort()).toEqual(["10", "11", "13"]);
+    expect(rows).toHaveLength(3); // sols 10, 11 and 13 (12 is a gap): the range is the whole series
+    const sols = rows.map((r) => (r.firstElementChild?.textContent ?? "").replace(/\D/g, ""));
+    expect(sols).toEqual(["13", "11", "10"]); // newest first
     expect(table.textContent).toMatch(/160\.4/);
     expect(table.textContent).toMatch(/9\.437|9\.44/);
     expect(table.textContent).toMatch(/0\.86|86 ?%/);
   });
 
-  it("AC-42 shows only the last 3 sols of a longer series", async () => {
+  it("AC-42 a longer series is listed in full (stage 22: no 'last 3 sols' cut)", async () => {
     const many = [1, 2, 3, 4, 5].map((s) => radSol(s));
     const { panel } = await openRadiation({ [RAD]: radiationResponse(many) });
     const table = await within(panel).findByRole("table");
-    expect(within(table).getAllByRole("row")).toHaveLength(4); // header + 3
     const sols = within(table)
       .getAllByRole("row")
       .slice(1)
-      .map((r) => within(r).getAllByRole("cell")[0]!.textContent?.trim());
-    expect([...sols].sort()).toEqual(["3", "4", "5"]);
+      .map((r) => (r.firstElementChild?.textContent ?? "").replace(/\D/g, ""));
+    expect(sols).toEqual(["5", "4", "3", "2", "1"]);
   });
 
-  it("AC-42 the table has a count-rate column and states are not only colour: lag is text", async () => {
+  it("AC-42 the count rate is named and the lag is written in words, not only in colour", async () => {
     const { panel } = await openRadiation();
-    await screen.findByRole("slider", { name: /Inspect a sol/ });
+    await screen.findByRole("table");
     expect(panel.textContent).toMatch(/Detector B count rate/);
     expect(panel.textContent).toMatch(/behind/i);
   });
 
   it("AC-42 absorbed dose, not equivalent dose: no sieverts and no safety verdicts", async () => {
     const { panel } = await openRadiation();
-    await screen.findByRole("slider", { name: /Inspect a sol/ });
+    await screen.findByRole("table");
     // the note may say "not equivalent dose (sieverts)", but no value is given in Sv
     expect(panel.textContent).not.toMatch(/\d\s*(m|µ)?Sv\b/);
     expect(panel.textContent).not.toMatch(/\b(dangerous|safe|harmful)\b/i);
@@ -496,7 +491,7 @@ describe("Data: states (AC-44)", () => {
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toMatch(/temporarily unavailable|could not be loaded/i);
     fireEvent.click(within(alert).getByRole("button", { name: "Try again" }));
-    expect(await screen.findByRole("slider", { name: /Inspect a sol/ })).toBeTruthy();
+    expect(await screen.findByRole("table")).toBeTruthy();
   });
 
   it("AC-44 a failing radiation request does not break the samples page", async () => {
@@ -525,7 +520,7 @@ describe("Data: states (AC-44)", () => {
     });
     routes({ [RAD]: radiationResponse([radItems[0], odd]) });
     open("/data/radiation");
-    expect(await screen.findByRole("slider", { name: /Inspect a sol/ })).toBeTruthy();
+    expect(await screen.findByRole("table")).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
   });
 });

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "preact/hooks";
+import { useId, useMemo, useRef, useState } from "preact/hooks";
 import type { WeatherParameter, WeatherSol } from "../api/types";
 import {
   bandOf,
@@ -59,7 +59,7 @@ export function WeatherChart(p: Props) {
   const g = useMemo(() => {
     const pts: Pt[] = [];
     for (const r of p.items) {
-      if (r.sol < x0 - 1 || r.sol > x1) continue;
+      if (r.sol < x0 || r.sol > x1) continue;
       const b = bandOf(r, p.k);
       if (b) pts.push({ r, b, partial: isPartial(r) });
     }
@@ -74,9 +74,9 @@ export function WeatherChart(p: Props) {
     const ymin = ticks[0] ?? 0;
     const ymax = ticks[ticks.length - 1] ?? 1;
     const pw = w - L - R;
-    const X = (s: number) => L + ((s - x0) / (x1 - x0)) * pw;
+    const X = (s: number) => L + ((s - x0) / (x1 - x0 || 1)) * pw;
     const Y = (v: number) => T + (1 - (v - ymin) / (ymax - ymin || 1)) * (h - T - B);
-    const px = pw / (x1 - x0);
+    const px = pw / (x1 - x0 || 1);
     const bw = Math.max(1.4, px);
     const f = (n: number) => n.toFixed(1);
     const gap = (a: Pt, b: Pt) => b.r.sol - a.r.sol > 1.5;
@@ -149,7 +149,13 @@ export function WeatherChart(p: Props) {
         }
       }
     }
-    const xt = niceTicks(x0, x1, w < 480 ? 3 : 5).filter((t) => t >= x0 && t <= x1);
+    // The axis ends exactly at the ends of the range; round ticks in between keep their distance from them.
+    const keep = (x1 - x0) * 0.1;
+    const xt = [
+      x0,
+      ...niceTicks(x0, x1, w < 480 ? 2 : 4).filter((t) => t > x0 + keep && t < x1 - keep),
+      x1,
+    ];
     return {
       pts,
       ticks,
@@ -174,7 +180,12 @@ export function WeatherChart(p: Props) {
   const sel = g.pts.find((q) => q.r.sol === p.selected);
   const sols = g.pts.map((q) => q.r.sol);
   const hum = p.k === "humidity_pct" && (g.ticks[g.ticks.length - 1] ?? 0) > 100;
-  const gx = p.zoneFrom !== null && p.zoneFrom < x1 ? g.X(p.zoneFrom + 0.5) : null;
+  const clipId = useId();
+  // The grey "not published yet" zone starts after the newest published sol and never leaves the plot.
+  const gx =
+    p.zoneFrom !== null && p.zoneFrom < x1
+      ? Math.max(L, Math.min(g.X(p.zoneFrom + 0.5), w - R))
+      : null;
   const label = g.empty
     ? `${paramLabel(p.k)}, daily values, ${p.roverName}, sols ${Math.round(x0)} to ${Math.round(x1)}. No data in this range.`
     : `${paramLabel(p.k)}, daily ${gustMode ? "mean and gust" : "minimum to maximum band and mean"}, ${p.roverName}, sols ${Math.round(x0)} to ${Math.round(x1)}. Overall ${fmtV(g.lo, d)} to ${fmtV(g.hi, d)} ${unit}.`;
@@ -228,16 +239,30 @@ export function WeatherChart(p: Props) {
           </text>
         ))}
         <line class="axis" x1={L} x2={w - R} y1={g.Y(g.ymin)} y2={g.Y(g.ymin)} />
-        {gx !== null && (
-          <>
-            <rect class="gap" x={gx} y={T} width={Math.max(w - R - gx, 0)} height={h - T - B} />
-            {w - R - gx > 90 && (
-              <text class="zone-label" x={w - R - 6} y={T + 14} text-anchor="end">
-                not published yet
-              </text>
-            )}
-          </>
-        )}
+        <defs>
+          <clipPath id={clipId}>
+            <rect x={L} y={T} width={Math.max(w - L - R, 0)} height={Math.max(h - T - B, 0)} />
+          </clipPath>
+        </defs>
+        <g clip-path={`url(#${clipId})`}>
+          {gx !== null && (
+            <>
+              <rect
+                class="gap"
+                data-testid="not-published-zone"
+                x={gx}
+                y={T}
+                width={Math.max(w - R - gx, 0)}
+                height={h - T - B}
+              />
+              {w - R - gx > 90 && (
+                <text class="zone-label" x={w - R - 6} y={T + 14} text-anchor="end">
+                  not published yet
+                </text>
+              )}
+            </>
+          )}
+        </g>
         {hum && (
           <>
             <line class="wx-ref" x1={L} x2={w - R} y1={g.Y(100)} y2={g.Y(100)} />
@@ -246,11 +271,13 @@ export function WeatherChart(p: Props) {
             </text>
           </>
         )}
-        {g.band && <path class="wx-band" d={g.band} />}
-        {g.part && <path class="wx-band-p" d={g.part} />}
-        {gustMode && g.gust && <path class="ln wx-gust" d={g.gust} />}
-        {g.dashed && <path class="ln wx-mean-d" d={g.dashed} />}
-        {g.solid && <path class="ln wx-mean" d={g.solid} />}
+        <g clip-path={`url(#${clipId})`}>
+          {g.band && <path class="wx-band" d={g.band} />}
+          {g.part && <path class="wx-band-p" d={g.part} />}
+          {gustMode && g.gust && <path class="ln wx-gust" d={g.gust} />}
+          {g.dashed && <path class="ln wx-mean-d" d={g.dashed} />}
+          {g.solid && <path class="ln wx-mean" d={g.solid} />}
+        </g>
         {g.dots.map((q) => (
           <circle
             key={q.r.sol}

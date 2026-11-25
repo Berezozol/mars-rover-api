@@ -1,0 +1,1790 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Perseverance sol report · Sol Index</title>
+<style>
+/* Sol Index — shared design tokens and components for the static mockups.
+   Working name, unofficial project. No NASA/JPL marks anywhere. */
+
+/* ---------- Tokens: light (default) ---------- */
+:root {
+  color-scheme: light;
+
+  /* surfaces */
+  --bg: #f6f4f1;
+  --surface: #ffffff;
+  --surface-2: #efebe6;
+  --border: #d9d2c9;
+  --border-strong: #a99f93;
+
+  /* text (AA on --surface and --bg) */
+  --text: #1d1a17;
+  --text-muted: #5a534b;      /* 7.1:1 on #fff */
+  --text-faint: #6e665d;      /* 5.5:1 on #fff — captions only */
+
+  /* accent: muted rust */
+  --accent: #a83c17;          /* 5.9:1 on #fff */
+  --accent-hover: #8a3011;
+  --accent-soft: #f7e4da;
+  --on-accent: #ffffff;
+
+  /* status (always paired with a text label) */
+  --ok: #1d6b38;   --ok-soft: #dcefe2;
+  --done: #4b5563; --done-soft: #e6e7ea;
+  --warn: #8a5a00; --warn-soft: #fbefd5;
+  --err: #a8201a;  --err-soft: #fbe2df;
+
+  /* sequential ramp for the manifest chart (one hue, light -> dark) */
+  --seq-0: #ece6df;  /* no photos */
+  --seq-1: #f2c9b1;
+  --seq-2: #e3946b;
+  --seq-3: #c25e33;
+  --seq-4: #8c3613;
+
+  /* route map (plain background, no imagery); graphics >= 3:1 on --map-bg */
+  --map-bg: #efebe6;
+  --map-grid: #d6cec4;
+  --map-route: #857a6e;       /* whole route, muted */
+  --map-route-hi: #a83c17;    /* selected sol range */
+  --map-stop: #6b6157;        /* stop dots */
+  --map-latest: #1f5fbf;      /* latest position */
+  --map-sample: #6a3da8;      /* sample marker (triangle), 6.2:1 on --map-bg */
+
+  /* charts (stage 19): one hue; bars >= 3:1 on --surface, grid is decorative */
+  --chart-bar: #a83c17;
+  --chart-bar-hi: #1d1a17;
+  --chart-grid: #e4ded6;
+  --chart-axis: #5a534b;
+  --map-pin: #1f5fbf;         /* search point, 5.8:1 on --map-bg */
+  --map-radius: #1f5fbf;
+
+  --focus: #1f5fbf;
+  --skeleton: #e6e0d8;
+  --skeleton-hi: #f3efea;
+
+  /* typography — system fonts only */
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --fs-xs: 0.75rem;
+  --fs-sm: 0.875rem;
+  --fs-md: 1rem;
+  --fs-lg: 1.25rem;
+  --fs-xl: 1.625rem;
+  --fs-2xl: 2.125rem;
+
+  /* spacing scale (4px base) */
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px;
+
+  --radius: 10px;
+  --radius-sm: 6px;
+  --shadow: 0 1px 2px rgb(0 0 0 / .06), 0 2px 8px rgb(0 0 0 / .05);
+  --maxw: 1200px;
+}
+
+/* ---------- Tokens: dark ---------- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #12100e;
+    --surface: #1c1916;
+    --surface-2: #26221e;
+    --border: #3a342e;
+    --border-strong: #5c544b;
+    --text: #eee8e1;
+    --text-muted: #b3aaa0;
+    --text-faint: #9d948a;
+    --accent: #f08f62;
+    --accent-hover: #f6a882;
+    --accent-soft: #3a2419;
+    --on-accent: #1a0d06;
+    --ok: #74d394;   --ok-soft: #173322;
+    --done: #b8bec8; --done-soft: #2a2d33;
+    --warn: #f0c062; --warn-soft: #3a2d10;
+    --err: #ff8f86;  --err-soft: #3d1715;
+    --seq-0: #2b2621;
+    --seq-1: #5a3424;
+    --seq-2: #9a4e2c;
+    --seq-3: #d9764a;
+    --seq-4: #f7b08c;
+    --map-bg: #1a1714; --map-grid: #2e2924; --map-route: #8f857a; --map-route-hi: #f08f62;
+    --map-stop: #b3aaa0; --map-latest: #7fb2ff; --map-sample: #c8aaff;
+    --chart-bar: #f08f62; --chart-bar-hi: #eee8e1; --chart-grid: #2e2924; --chart-axis: #b3aaa0;
+    --map-pin: #7fb2ff; --map-radius: #7fb2ff;
+    --focus: #7fb2ff;
+    --skeleton: #2a2621;
+    --skeleton-hi: #36312b;
+    --shadow: 0 1px 2px rgb(0 0 0 / .4);
+  }
+}
+/* manual override used by the header toggle in the mockups */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #12100e; --surface: #1c1916; --surface-2: #26221e;
+  --border: #3a342e; --border-strong: #5c544b;
+  --text: #eee8e1; --text-muted: #b3aaa0; --text-faint: #9d948a;
+  --accent: #f08f62; --accent-hover: #f6a882; --accent-soft: #3a2419; --on-accent: #1a0d06;
+  --ok: #74d394; --ok-soft: #173322; --done: #b8bec8; --done-soft: #2a2d33;
+  --warn: #f0c062; --warn-soft: #3a2d10; --err: #ff8f86; --err-soft: #3d1715;
+  --seq-0: #2b2621; --seq-1: #5a3424; --seq-2: #9a4e2c; --seq-3: #d9764a; --seq-4: #f7b08c;
+  --map-bg: #1a1714; --map-grid: #2e2924; --map-route: #8f857a; --map-route-hi: #f08f62;
+  --map-stop: #b3aaa0; --map-latest: #7fb2ff; --map-sample: #c8aaff;
+  --chart-bar: #f08f62; --chart-bar-hi: #eee8e1; --chart-grid: #2e2924; --chart-axis: #b3aaa0;
+  --map-pin: #7fb2ff; --map-radius: #7fb2ff;
+  --focus: #7fb2ff; --skeleton: #2a2621; --skeleton-hi: #36312b;
+  --shadow: 0 1px 2px rgb(0 0 0 / .4);
+}
+
+/* ---------- Base ---------- */
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 400 var(--fs-md)/1.5 var(--font);
+}
+h1, h2, h3 { line-height: 1.2; margin: 0 0 var(--s3); }
+h1 { font-size: var(--fs-xl); }
+h2 { font-size: var(--fs-lg); }
+h3 { font-size: var(--fs-md); }
+p { margin: 0 0 var(--s3); }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:hover { color: var(--accent-hover); }
+code, .mono { font-family: var(--mono); font-size: .92em; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+.visually-hidden {
+  position: absolute !important; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+.muted { color: var(--text-muted); }
+.small { font-size: var(--fs-sm); }
+.xsmall { font-size: var(--fs-xs); }
+
+.container { max-width: var(--maxw); margin: 0 auto; padding: 0 var(--s4); }
+main { padding: var(--s5) 0 var(--s7); }
+
+/* ---------- Header ---------- */
+.site-header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 10;
+}
+.site-header .container {
+  display: flex; align-items: center; gap: var(--s4);
+  min-height: 56px; flex-wrap: wrap;
+}
+.brand {
+  display: flex; align-items: center; gap: var(--s2);
+  font-weight: 700; color: var(--text); text-decoration: none; letter-spacing: .01em;
+}
+.brand svg { flex: none; }
+.brand small { font-weight: 500; color: var(--text-muted); font-size: var(--fs-xs); }
+.nav { display: flex; gap: var(--s1); flex-wrap: wrap; margin-left: auto; }
+.nav a {
+  color: var(--text-muted); text-decoration: none; padding: var(--s2) var(--s3);
+  border-radius: var(--radius-sm); font-size: var(--fs-sm); font-weight: 500; white-space: nowrap;
+}
+.nav a:hover { background: var(--surface-2); color: var(--text); }
+.nav a[aria-current="page"] { color: var(--text); background: var(--surface-2); }
+.theme-toggle {
+  border: 1px solid var(--border); background: transparent; color: var(--text-muted);
+  border-radius: var(--radius-sm); padding: 6px 10px; font: inherit; font-size: var(--fs-sm); cursor: pointer;
+}
+
+.site-footer {
+  border-top: 1px solid var(--border); padding: var(--s5) 0; color: var(--text-muted); font-size: var(--fs-sm);
+}
+
+/* mockup-only control bar (clearly not product UI) */
+.mock-bar {
+  border: 1px dashed var(--border-strong); border-radius: var(--radius-sm);
+  padding: var(--s2) var(--s3); margin-bottom: var(--s4);
+  display: flex; gap: var(--s2); flex-wrap: wrap; align-items: center;
+  font-size: var(--fs-xs); color: var(--text-muted);
+}
+.mock-bar strong { text-transform: uppercase; letter-spacing: .06em; }
+
+/* ---------- Components ---------- */
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.panel { padding: var(--s4); }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--s2);
+  min-height: 40px; padding: 0 var(--s4);
+  border-radius: var(--radius-sm); border: 1px solid var(--border-strong);
+  background: var(--surface); color: var(--text);
+  font: 500 var(--fs-sm)/1 var(--font); text-decoration: none; cursor: pointer;
+}
+.btn:hover { background: var(--surface-2); color: var(--text); }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: var(--on-accent); }
+.btn[disabled], .btn[aria-disabled="true"] { opacity: .5; cursor: not-allowed; }
+.btn-sm { min-height: 32px; padding: 0 var(--s3); }
+
+.badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 2px 8px; border-radius: 999px; font-size: var(--fs-xs); font-weight: 600;
+  background: var(--surface-2); color: var(--text-muted); white-space: nowrap;
+}
+.badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.badge.no-dot::before { display: none; }
+.badge-active { background: var(--ok-soft); color: var(--ok); }
+.badge-complete { background: var(--done-soft); color: var(--done); }
+.badge-warn { background: var(--warn-soft); color: var(--warn); }
+
+.field { display: flex; flex-direction: column; gap: var(--s1); }
+.field label, .field .label { font-size: var(--fs-xs); font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+input[type="number"], input[type="date"], input[type="time"], select {
+  min-height: 40px; padding: 0 var(--s3);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--text); font: inherit; font-size: var(--fs-sm);
+}
+input:disabled, select:disabled { opacity: .55; }
+.hint { font-size: var(--fs-xs); color: var(--text-faint); }
+
+/* segmented control (radio group) */
+.segmented {
+  display: inline-flex; border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  overflow: hidden; background: var(--surface);
+}
+.segmented input { position: absolute; opacity: 0; pointer-events: none; }
+.segmented label {
+  padding: 8px 12px; font-size: var(--fs-sm); cursor: pointer; color: var(--text-muted);
+  border-right: 1px solid var(--border); text-transform: none; letter-spacing: 0; font-weight: 500;
+}
+.segmented label:last-of-type { border-right: 0; }
+.segmented input:checked + label { background: var(--accent); color: var(--on-accent); }
+.segmented input:focus-visible + label { outline: 3px solid var(--focus); outline-offset: -3px; }
+.segmented input:disabled + label { opacity: .45; cursor: not-allowed; text-decoration: line-through; }
+
+/* chips (filters) */
+.chips { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px;
+  border: 1px solid var(--border-strong); border-radius: 999px; background: var(--surface);
+  color: var(--text); font: 500 var(--fs-sm)/1 var(--font); cursor: pointer;
+}
+.chip .count { color: var(--text-muted); font-weight: 400; font-size: var(--fs-xs); }
+.chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
+.chip.dim { opacity: .55; }
+
+/* alerts */
+.alert {
+  border-radius: var(--radius); padding: var(--s4); border: 1px solid;
+  display: flex; gap: var(--s3); align-items: flex-start;
+}
+.alert-error { background: var(--err-soft); border-color: var(--err); }
+.alert-error .alert-title { color: var(--err); }
+.alert-title { font-weight: 700; margin-bottom: var(--s1); }
+
+/* stat list */
+.stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s3) var(--s4); margin: 0; }
+.stats div { min-width: 0; }
+.stats dt { font-size: var(--fs-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+.stats dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* breadcrumbs */
+.crumbs { font-size: var(--fs-sm); color: var(--text-muted); margin-bottom: var(--s3); }
+.crumbs a { color: var(--text-muted); }
+.crumbs span[aria-current] { color: var(--text); }
+
+/* ---------- Image placeholders (no external images) ---------- */
+.ph {
+  position: relative; width: 100%; aspect-ratio: 4 / 3; overflow: hidden; border-radius: var(--radius-sm);
+  background:
+    linear-gradient(180deg, #d8b99a 0 38%, transparent 38%),
+    radial-gradient(120% 60% at 30% 100%, #8a5a3c 0 40%, transparent 41%),
+    linear-gradient(180deg, #b98762 38%, #7d5034 100%);
+}
+.ph::after { /* subtle horizon line */
+  content: ""; position: absolute; left: 0; right: 0; top: 38%; height: 2px; background: rgb(0 0 0 / .12);
+}
+.ph-gray { filter: grayscale(1) contrast(1.05); }                    /* Navcam / Hazcam style */
+.ph-haz { border-radius: var(--radius-sm); background:
+    radial-gradient(70% 55% at 50% 110%, #6e6e6e 0 50%, transparent 51%),
+    radial-gradient(140% 120% at 50% 0%, #c9c9c9 0 35%, #8d8d8d 60%, #2b2b2b 100%); }
+.ph-haz::after { display: none; }
+.ph-rmi { background: radial-gradient(circle at 50% 50%, #c7a27f 0 22%, #9a6d4b 34%, #3d2a1d 46%, #000 47%); }
+.ph-rmi::after { display: none; }
+.ph-sky { background: linear-gradient(180deg, #e9c9a6, #c99a72); }
+.ph-sky::after { display: none; }
+.ph-close { background:
+    radial-gradient(14% 18% at 30% 40%, #6a4a35 0 60%, transparent 62%),
+    radial-gradient(10% 12% at 70% 65%, #4f3626 0 60%, transparent 62%),
+    radial-gradient(18% 14% at 60% 25%, #8a6248 0 60%, transparent 62%),
+    linear-gradient(135deg, #b48a68, #8d6447); }
+.ph-close::after { display: none; }
+.ph-sub { aspect-ratio: 16 / 5; }                                   /* subframe strips */
+.ph-label {
+  position: absolute; left: 8px; bottom: 8px; z-index: 1;
+  font: 600 10px/1 var(--mono); letter-spacing: .04em;
+  color: #fff; background: rgb(0 0 0 / .55); padding: 3px 5px; border-radius: 4px;
+}
+
+/* skeleton */
+.skeleton {
+  background: linear-gradient(90deg, var(--skeleton) 25%, var(--skeleton-hi) 50%, var(--skeleton) 75%);
+  background-size: 200% 100%; animation: shimmer 1.4s infinite linear; border-radius: var(--radius-sm);
+}
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }
+
+/* ---------- Layout helpers ---------- */
+.grid-rovers { display: grid; gap: var(--s4); grid-template-columns: 1fr; }
+@media (min-width: 640px)  { .grid-rovers { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 960px)  { .grid-rovers { grid-template-columns: repeat(3, 1fr); } }
+/* only rovers with data are shown (3 with Ingenuity); 4 columns when Spirit and Opportunity are imported */
+
+.photo-grid { display: grid; gap: var(--s3); grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 640px)  { .photo-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 900px)  { .photo-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (min-width: 1200px) { .photo-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+
+.stack > * + * { margin-top: var(--s4); }
+.row { display: flex; gap: var(--s3); flex-wrap: wrap; align-items: flex-end; }
+.spacer { flex: 1; }
+
+/* ---------- Small screens ---------- */
+@media (max-width: 640px) {
+  .site-header .container { gap: 0 var(--s3); padding-top: var(--s2); }
+  .nav { order: 3; margin-left: 0; width: 100%; flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; }
+  .theme-toggle { margin-left: auto; }
+}
+.card, .filters > *, .when > * { min-width: 0; }
+.chip { max-width: 100%; }
+.chip .mono { overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 400px) { .segmented label { padding: 8px 9px; } }
+
+[hidden] { display: none !important; }
+
+/* ---------- Stage 19: search, near-a-point, stats (shared by search.html, near.html, stats.html) ---------- */
+.alert-warn { background: var(--warn-soft); border-color: var(--warn); }
+.alert-warn .alert-title { color: var(--warn); }
+.alert .row { margin-top: var(--s2); }
+
+/* photo tile (same look as photos.html, plus a rover line for multi-rover lists) */
+.tile { display: flex; flex-direction: column; gap: 6px; text-decoration: none; color: var(--text); min-width: 0; }
+.tile:hover .ph { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tile-meta { display: flex; justify-content: space-between; gap: var(--s1); font-size: var(--fs-xs); align-items: center; }
+.tile-meta .cam { font-family: var(--mono); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tile-credit { font-size: 11px; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st { font-size: 10px; padding: 1px 6px; border-radius: 4px; background: var(--surface-2); color: var(--text-muted); white-space: nowrap; }
+.st.other { background: var(--warn-soft); color: var(--warn); }
+
+.result-head { display: flex; gap: var(--s3); flex-wrap: wrap; align-items: baseline; margin: var(--s5) 0 var(--s3); }
+.result-head h2 { margin: 0; }
+.result-head .spacer { flex: 1; }
+.empty { text-align: center; padding: var(--s7) var(--s4); }
+.empty svg { color: var(--text-faint); }
+.empty .row { justify-content: center; margin-top: var(--s4); }
+pre.raw { margin: var(--s2) 0 0; padding: var(--s3); background: var(--surface-2); border-radius: var(--radius-sm); overflow-x: auto; overflow-y: hidden; font: var(--fs-xs)/1.5 var(--mono); }
+.api-line { font-size: var(--fs-xs); color: var(--text-muted); margin-top: var(--s4); word-break: break-all; font-family: var(--mono); }
+
+/* pager with "Go to page" (mirrors frontend/src/components/Pager.tsx) */
+.pager { display: flex; gap: var(--s2); align-items: center; justify-content: center; flex-wrap: wrap; margin-top: var(--s5); }
+.pager .btn[aria-current="page"] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.goto-page { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--s2); }
+.goto-page input { width: 6rem; min-height: 32px; }
+.goto-page input[aria-invalid="true"] { border-color: var(--err); box-shadow: 0 0 0 1px var(--err); }
+.goto-page-err { flex-basis: 100%; text-align: center; color: var(--err); font-size: var(--fs-sm); }
+
+/* collapsible filter panel: always open on wide screens, toggle on phones */
+.filters-bar { display: flex; gap: var(--s3); align-items: center; flex-wrap: wrap; padding: var(--s3) var(--s4); }
+.filters-bar .summary-text { flex: 1 1 200px; min-width: 0; font-size: var(--fs-sm); color: var(--text-muted); overflow-wrap: anywhere; }
+.filters-toggle { display: none; }
+.filters-panel { padding: 0 var(--s4) var(--s4); display: grid; gap: var(--s4); }
+@media (max-width: 759px) {
+  .filters-toggle { display: inline-flex; }
+  .filters-panel[data-collapsed="true"] { display: none; }
+}
+@media (min-width: 760px) {
+  .filters-panel { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  .filters-panel .wide { grid-column: 1 / -1; }
+  .filters-bar .summary-text { display: block; }
+}
+.fieldset { border: 0; margin: 0; padding: 0; min-width: 0; display: grid; gap: var(--s2); }
+.fieldset > legend { padding: 0; margin-bottom: var(--s2); font-size: var(--fs-xs); font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+.inline-fields { display: flex; gap: var(--s3); flex-wrap: wrap; align-items: flex-end; }
+.inline-fields .field { min-width: 0; }
+.inline-fields input[type="number"] { width: 7.5rem; }
+.inline-fields input[type="date"] { width: 11rem; }
+.inline-fields input[type="time"] { width: 7.5rem; }
+.field-err { color: var(--err); font-size: var(--fs-sm); font-weight: 600; }
+input[aria-invalid="true"] { border-color: var(--err); box-shadow: 0 0 0 1px var(--err); }
+.note { font-size: var(--fs-xs); color: var(--text-muted); border-left: 3px solid var(--border-strong); padding-left: var(--s3); }
+.note.warn { border-left-color: var(--warn); color: var(--text); }
+.note[hidden] { display: none; }
+details.more > summary { cursor: pointer; font-size: var(--fs-sm); color: var(--accent); }
+details.more .chips { margin-top: var(--s2); }
+.cam-group + .cam-group { margin-top: var(--s3); }
+.cam-group h4 { margin: 0 0 var(--s1); font-size: var(--fs-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+.chip[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
+.chip .mono { font-size: var(--fs-xs); }
+
+/* data table + inline bars */
+.table-wrap { overflow-x: auto; }
+table.data { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+table.data caption { text-align: left; padding: 0 0 var(--s2); font-size: var(--fs-xs); color: var(--text-muted); }
+table.data th, table.data td { text-align: left; padding: 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+table.data th { font-size: var(--fs-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; }
+table.data td.num, table.data th.num { text-align: right; }
+table.data th button { all: unset; cursor: pointer; text-transform: inherit; letter-spacing: inherit; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+table.data th button:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.bar-cell { min-width: 120px; }
+.bar { display: block; height: 10px; border-radius: 3px; background: var(--chart-bar); min-width: 2px; }
+.bar-track { display: block; background: var(--surface-2); border-radius: 3px; }
+.tile-line { justify-content: flex-start; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+.tile-line > * { white-space: nowrap; }
+
+/* ---------- Stage 20B: API key screens (keys.html, keys-confirm.html, keys-manage.html, keys-delete.html) ---------- */
+.narrow { max-width: 640px; margin: 0 auto; }
+input[type="email"], input[type="text"], input[type="password"] {
+  width: 100%; min-height: 44px; padding: 0 var(--s3);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--text); font: inherit; font-size: var(--fs-md);
+}
+input[type="password"].mono-in, input[type="text"].mono-in { font-family: var(--mono); font-size: var(--fs-sm); }
+.field label.plain { text-transform: none; letter-spacing: 0; font-size: var(--fs-sm); color: var(--text); }
+.btn-lg { min-height: 44px; font-size: var(--fs-md); }
+.btn-block { width: 100%; }
+.btn-danger { background: var(--err); border-color: var(--err); color: var(--on-accent); }
+.btn-danger:hover { background: var(--err); filter: brightness(.92); color: var(--on-accent); }
+.alert-ok { background: var(--ok-soft); border-color: var(--ok); }
+.alert-ok .alert-title { color: var(--ok); }
+.alert > div { min-width: 0; }
+.alert p:last-child { margin-bottom: 0; }
+.alert .row { align-items: center; }
+.stack-lg > * + * { margin-top: var(--s5); }
+
+/* honeypot: off-screen, not focusable, hidden from assistive tech (the real field is aria-hidden + tabindex -1) */
+.hp { position: absolute; left: -10000px; top: auto; width: 1px; height: 1px; overflow: hidden; }
+.hp.reveal { position: static; width: auto; height: auto; overflow: visible; border: 1px dashed var(--warn); padding: var(--s2); border-radius: var(--radius-sm); }
+
+/* one-time key display */
+.keybox { display: flex; gap: var(--s2); align-items: stretch; flex-wrap: wrap; }
+.keybox code {
+  flex: 1 1 260px; min-width: 0; padding: var(--s3); background: var(--surface-2);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  font-size: var(--fs-md); word-break: break-all; user-select: all;
+}
+.copy-status { font-size: var(--fs-sm); color: var(--ok); font-weight: 600; min-height: 1.5em; }
+
+/* key list */
+.keys { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s3); }
+.key-item { padding: var(--s3) var(--s4); display: grid; gap: var(--s2); }
+.key-item .head { display: flex; gap: var(--s2) var(--s3); align-items: center; flex-wrap: wrap; }
+.key-item .head code { font-weight: 600; font-size: var(--fs-md); }
+.key-item.revoked { opacity: .85; background: var(--surface-2); box-shadow: none; }
+.key-item dl { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--s2) var(--s4); }
+.key-item dt { font-size: var(--fs-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+.key-item dd { margin: 0; font-size: var(--fs-sm); }
+.confirm-box { border: 1px solid var(--err); background: var(--err-soft); border-radius: var(--radius-sm); padding: var(--s3); }
+.confirm-box p { margin-bottom: var(--s2); }
+.danger-zone { border-color: var(--err); }
+.danger-zone h2 { color: var(--err); }
+.check { display: flex; gap: var(--s2); align-items: flex-start; }
+.check input { width: 20px; height: 20px; margin: 2px 0 0; flex: none; accent-color: var(--accent); }
+.data-note { font-size: var(--fs-sm); color: var(--text-muted); border-top: 1px solid var(--border); padding-top: var(--s4); }
+.data-note h2 { font-size: var(--fs-md); color: var(--text); }
+.steps { margin: 0 0 var(--s3); padding-left: 1.25rem; color: var(--text-muted); font-size: var(--fs-sm); }
+.footer-links { display: flex; gap: var(--s2) var(--s4); flex-wrap: wrap; margin-bottom: var(--s3); }
+.mock-bar .btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.mock-bar label { display: inline-flex; gap: 6px; align-items: center; }
+.mock-addr { font: var(--fs-xs)/1.4 var(--mono); color: var(--text-muted); }
+.api-err { margin-top: var(--s2); }
+
+/* Data page (stage 21): line charts, inspect slider. */
+.lead {
+  max-width: 70ch;
+}
+.toolbar {
+  display: flex;
+  gap: var(--s2);
+  flex-wrap: wrap;
+  align-items: center;
+  margin: var(--s4) 0 var(--s3);
+}
+.toolbar .spacer {
+  flex: 1;
+}
+
+.lag {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+.chart-box {
+  padding: var(--s3) var(--s3) var(--s2);
+}
+.chart-title {
+  display: flex;
+  gap: var(--s2) var(--s4);
+  flex-wrap: wrap;
+  align-items: baseline;
+  margin-bottom: var(--s2);
+}
+.chart-title h3 {
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+.chart-title-2 {
+  margin-top: var(--s4);
+}
+.legend {
+  display: flex;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+.legend i {
+  display: inline-block;
+  width: 22px;
+  height: 0;
+  border-top: 3px solid var(--accent);
+  vertical-align: middle;
+  margin-right: 6px;
+}
+.legend i.b {
+  border-top-style: dashed;
+  border-top-color: var(--text-muted);
+}
+.chart-host {
+  min-width: 0;
+}
+svg.chart {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  overflow: visible;
+}
+svg.chart text {
+  fill: var(--chart-axis);
+  font: 11px var(--font);
+}
+@media (max-width: 479px) {
+  svg.chart .zone-label {
+    display: none;
+  }
+}
+svg.chart .grid {
+  stroke: var(--chart-grid);
+  stroke-width: 1;
+}
+svg.chart .axis {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+svg.chart .ln {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+svg.chart .ln-e,
+svg.chart .ln-s {
+  stroke: var(--accent);
+}
+svg.chart .ln-b {
+  stroke: var(--text-muted);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 3;
+}
+svg.chart .gap {
+  fill: var(--surface-2);
+  stroke: var(--border-strong);
+  stroke-dasharray: 3 3;
+}
+svg.chart .cursor {
+  stroke: var(--text);
+  stroke-width: 1;
+}
+svg.chart .dot-e {
+  fill: var(--accent);
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+svg.chart .dot-b {
+  fill: var(--text-muted);
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+.inspect {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s2);
+  margin-top: var(--s3);
+  font-size: var(--fs-sm);
+}
+.inspect input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+  min-height: 32px;
+}
+.inspect input[type="range"]:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.inspect .readout {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  min-height: 3em;
+  overflow-wrap: anywhere;
+}
+.inspect .readout b {
+  color: var(--text);
+}
+.chart-note {
+  margin: var(--s2) 0 0;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+table.last {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+table.last caption {
+  text-align: left;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  padding-bottom: var(--s1);
+}
+table.last th,
+table.last td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: right;
+}
+table.last th:first-child,
+table.last td:first-child {
+  text-align: left;
+}
+table.last thead th {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  vertical-align: bottom;
+}
+table.last tbody td:first-child {
+  font-weight: 600;
+}
+
+.panel-foot {
+  display: flex;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  align-items: center;
+}
+.panel-foot .hint {
+  flex: 1 1 220px;
+}
+
+/* Weather by sol (stage 17) */
+.rover-switch {
+  display: flex;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  align-items: center;
+}
+.rover-switch .label {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.segmented .seg {
+  display: contents;
+}
+.wx-controls {
+  display: flex;
+  gap: var(--s4);
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+.wx-controls .field {
+  min-width: 0;
+}
+.wx-chartwrap {
+  position: relative;
+  min-height: 120px;
+}
+.wx-tip {
+  position: absolute;
+  top: 8px;
+  z-index: 2;
+  max-width: min(320px, 90%);
+  padding: var(--s2) var(--s3);
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+  pointer-events: none;
+}
+.wx-tip .tip-f {
+  font-weight: 700;
+  color: var(--warn);
+}
+svg.chart .wx-band {
+  fill: var(--accent);
+  fill-opacity: 0.3;
+  stroke: none;
+}
+svg.chart .wx-band-p {
+  fill: var(--text-muted);
+  fill-opacity: 0.4;
+  stroke: none;
+}
+svg.chart .wx-mean {
+  stroke: var(--accent);
+}
+svg.chart .wx-mean-d {
+  stroke: var(--text-muted);
+  stroke-dasharray: 3 3;
+}
+svg.chart .wx-gust {
+  stroke: var(--text);
+  stroke-width: 1.2;
+  stroke-dasharray: 4 3;
+}
+svg.chart .wx-pdot {
+  fill: var(--surface);
+  stroke: var(--text-muted);
+  stroke-width: 1.5;
+}
+svg.chart .wx-ref {
+  stroke: var(--warn);
+  stroke-width: 1.2;
+  stroke-dasharray: 4 3;
+}
+svg.chart text.wx-reft {
+  fill: var(--warn);
+  font-weight: 600;
+}
+svg.chart .wx-mk-h,
+.legend .wx-mk-h {
+  fill: var(--warn);
+  stroke: var(--surface);
+  stroke-width: 1;
+}
+svg.chart .wx-mk-o,
+.legend .wx-mk-o {
+  fill: none;
+  stroke: var(--err);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+svg.chart.wxc {
+  cursor: crosshair;
+}
+.legend svg {
+  vertical-align: -2px;
+}
+.legend i.sw {
+  height: 10px;
+  width: 18px;
+  border: 0;
+  background: var(--accent);
+  opacity: 0.35;
+  vertical-align: -1px;
+}
+.legend i.sw-part {
+  background: var(--text-muted);
+  opacity: 0.5;
+}
+.flag {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  border: 1px solid;
+  white-space: nowrap;
+}
+.flag-partial_coverage,
+.flag-unknown {
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+  border-style: dashed;
+}
+.flag-humidity_over_100 {
+  color: var(--warn);
+  background: var(--warn-soft);
+  border-color: var(--warn);
+}
+.flag-out_of_range {
+  color: var(--err);
+  background: var(--err-soft);
+  border-color: var(--err);
+}
+.flag-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--s2);
+  font-size: var(--fs-sm);
+}
+.flag-list li {
+  display: flex;
+  gap: var(--s2);
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.flag-list li span:last-child {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.wx-nav {
+  display: flex;
+  gap: var(--s2);
+  flex-wrap: wrap;
+  align-items: center;
+}
+.wx-inspect-body {
+  margin-top: var(--s3);
+}
+.wx-inspect-body > * + * {
+  margin-top: var(--s3);
+}
+.hours-strip {
+  display: flex;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  align-items: center;
+}
+.hc-row {
+  display: inline-grid;
+  grid-template-columns: repeat(24, 9px);
+  gap: 2px;
+  max-width: 100%;
+}
+.hc {
+  height: 14px;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: calc(0.25 + var(--c) * 0.75);
+}
+.hc.hc-0 {
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+  opacity: 1;
+  box-sizing: border-box;
+}
+.wx-minis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--s3);
+}
+.mini {
+  padding: var(--s3);
+  min-width: 0;
+  box-shadow: none;
+}
+.mini .k {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.mini .k .badge {
+  text-transform: none;
+  letter-spacing: 0;
+  margin-left: 4px;
+}
+.mini .v {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.mini .v small {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+.mini-empty {
+  display: grid;
+  place-items: center;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+table.wx-table small {
+  color: var(--text-muted);
+}
+table.wx-table td.flags-cell {
+  text-align: right;
+}
+table.wx-table td.flags-cell .flag + .flag {
+  margin-left: 4px;
+}
+@media (max-width: 679px) {
+  table.wx-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  table.wx-table,
+  table.wx-table tbody,
+  table.wx-table tr,
+  table.wx-table th,
+  table.wx-table td {
+    display: block;
+  }
+  table.wx-table tr {
+    padding: var(--s2) 0;
+    border-bottom: 1px solid var(--border-strong);
+  }
+  table.wx-table th,
+  table.wx-table td {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--s3);
+    border: 0;
+    padding: 3px 4px;
+    text-align: right;
+  }
+  table.wx-table th:first-child,
+  table.wx-table td:first-child {
+    text-align: right;
+  }
+  table.wx-table th::before,
+  table.wx-table td::before {
+    content: attr(data-label);
+    color: var(--text-muted);
+    font-size: var(--fs-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    text-align: left;
+    flex: none;
+  }
+  table.wx-table th[scope="row"] {
+    font-size: var(--fs-md);
+  }
+  table.wx-table td.flags-cell {
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 420px) {
+  .hc-row {
+    grid-template-columns: repeat(24, minmax(0, 1fr));
+    width: 100%;
+  }
+  .hc {
+    height: 12px;
+  }
+}
+
+/* ---- Dataset pages: facts grid, about block, overview cards ---- */
+.ds-body > * + * {
+  margin-top: var(--s4);
+}
+.ds-rovers {
+  display: flex;
+  gap: var(--s2);
+  flex-wrap: wrap;
+  margin: var(--s2) 0;
+}
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
+  gap: var(--s3) var(--s4);
+  margin: 0;
+  padding: var(--s4);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.facts > div {
+  min-width: 0;
+}
+.facts dt {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+.facts dd {
+  margin: 2px 0 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+.facts-sm {
+  padding: var(--s3);
+  margin: var(--s3) 0;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 130px), 1fr));
+}
+.about {
+  padding: var(--s4);
+}
+.about h2 {
+  margin: 0 0 var(--s3);
+  font-size: var(--fs-lg);
+}
+.about-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px 0;
+  margin: 0;
+  max-width: 80ch;
+}
+.about-list dt {
+  margin-top: var(--s3);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.about-list dt:first-child {
+  margin-top: 0;
+}
+.about-list dd {
+  margin: 0;
+  overflow-wrap: break-word;
+}
+@media (min-width: 720px) {
+  .about-list {
+    grid-template-columns: 11rem minmax(0, 1fr);
+    gap: var(--s3) var(--s4);
+  }
+  .about-list dt {
+    margin-top: 0;
+    padding-top: 2px;
+  }
+}
+.ds-cards {
+  list-style: none;
+  padding: 0;
+  margin: var(--s4) 0 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: var(--s4);
+}
+.ds-card {
+  padding: var(--s4);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+.ds-card h2 {
+  margin: 0;
+  font-size: var(--fs-lg);
+}
+.ds-card .facts {
+  align-self: stretch;
+}
+.ds-card .btn {
+  margin-top: auto;
+}
+
+/* ---- "Data" menu in the header ---- */
+.nav-menu {
+  position: relative;
+}
+.nav-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--s2) var(--s3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  cursor: pointer;
+}
+.nav-menu-btn:hover,
+.nav-menu-btn[aria-expanded="true"],
+.nav-menu-btn[aria-current="page"] {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.nav-menu-btn[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+.nav-menu-list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 20;
+  min-width: 17rem;
+  margin: 4px 0 0;
+  padding: var(--s1);
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
+}
+.nav-menu-list[hidden] {
+  display: none;
+}
+.nav-menu-list a {
+  display: block;
+  white-space: nowrap;
+}
+.nav-menu-list a small {
+  display: block;
+  font-size: var(--fs-xs);
+  font-weight: 400;
+  color: var(--text-muted);
+}
+.nav-menu-all {
+  border-top: 1px solid var(--border);
+  margin-top: var(--s1);
+  padding-top: var(--s1);
+}
+@media (max-width: 640px) {
+  /* The nav row scrolls sideways here: the list drops from the header as a full-width stack of links. */
+  .nav-menu {
+    position: static;
+  }
+  .nav-menu-list {
+    left: 0;
+    right: 0;
+    min-width: 0;
+    margin: 0;
+    border-radius: 0 0 var(--radius) var(--radius);
+  }
+  .nav-menu-list a {
+    white-space: normal;
+    padding: var(--s3) var(--s4);
+  }
+}
+
+/* ---- Range pages and sol reports (this iteration) ---- */
+html, body { overflow-x: clip; }
+main > .container > * + * { margin-top: var(--s4); }
+.lead { max-width: 70ch; color: var(--text-muted); }
+.mock-bar .btn { min-height: 28px; font-size: var(--fs-xs); padding: 0 var(--s2); }
+.mock-bar .btn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
+.state-box { padding: var(--s5) var(--s4); text-align: center; }
+.state-box h3 { margin-bottom: var(--s2); }
+.state-box p { color: var(--text-muted); max-width: 60ch; margin: 0 auto var(--s3); }
+.sec-head { display: flex; gap: var(--s2) var(--s4); flex-wrap: wrap; align-items: baseline; justify-content: space-between; margin-bottom: var(--s2); }
+.sec-head h2 { margin: 0; font-size: var(--fs-lg); }
+.chart-box { padding: var(--s3) var(--s3) var(--s3); }
+.chart-cap { margin: var(--s2) 0 0; font-size: var(--fs-xs); color: var(--text-muted); }
+.credit { font-size: var(--fs-xs); color: var(--text-muted); margin: 0; }
+.lag { color: var(--warn); font-weight: 600; }
+svg.chart text.sub { fill: var(--text-faint); font-size: 10px; }
+svg.chart .dot-m { fill: var(--accent); }
+.wx-chartwrap { min-height: 120px; }
+.chart-host { min-height: 250px; position: relative; }
+
+/* range block */
+.rs { margin-top: var(--s4); padding-top: var(--s3); border-top: 1px solid var(--border); }
+.rs-title { display: flex; flex-wrap: wrap; gap: var(--s1) var(--s4); justify-content: space-between; align-items: baseline; margin-bottom: var(--s2); }
+.rs-title h3 { margin: 0; font-size: var(--fs-sm); }
+.rs-sum { font-size: var(--fs-sm); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.rs-sum b { color: var(--text); }
+.rs-wrap { padding: 0 12px 0; }
+.rs-track { position: relative; height: 64px; background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); touch-action: none; cursor: pointer; }
+.rs-ov { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.rs-ov path { fill: none; stroke: var(--text-muted); stroke-width: 1.2; vector-effect: non-scaling-stroke; }
+.rs-unpub { position: absolute; top: 0; bottom: 0; right: 0; width: 0; border-left: 1px dashed var(--border-strong); overflow: hidden;
+  background: repeating-linear-gradient(135deg, transparent 0 5px, var(--border-strong) 5px 6px); opacity: .6; pointer-events: none; }
+.rs-dim { position: absolute; top: 0; bottom: 0; background: var(--surface); opacity: .62; pointer-events: none; }
+.rs-dim-l { left: 0; } .rs-dim-r { right: 0; }
+.rs-sel { position: absolute; top: -1px; bottom: -1px; border-top: 3px solid var(--accent); border-bottom: 3px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent); cursor: grab; min-width: 2px; }
+.rs-sel:active { cursor: grabbing; }
+.rs-h { position: absolute; top: 50%; width: 20px; height: 48px; transform: translate(-50%, -50%); background: var(--accent); color: var(--on-accent);
+  border: 2px solid var(--surface); border-radius: 7px; cursor: ew-resize; touch-action: none; display: grid; place-items: center; box-shadow: 0 1px 4px rgb(0 0 0 / .35); z-index: 2; }
+.rs-h::before { content: ""; width: 6px; height: 18px; border-left: 2px solid currentColor; border-right: 2px solid currentColor; opacity: .9; }
+.rs-h::after { content: ""; position: absolute; inset: -4px -10px; } /* larger touch target */
+.rs-h:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.rs-hv { position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); display: none; padding: 2px 6px; font-size: var(--fs-xs);
+  font-weight: 600; background: var(--text); color: var(--bg); border-radius: 4px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rs-h:focus .rs-hv, .rs-h.drag .rs-hv { display: block; }
+.rs-axis { position: relative; height: 22px; font-size: var(--fs-xs); color: var(--text-muted); font-variant-numeric: tabular-nums; margin-top: 4px; }
+.rs-axis span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.rs-axis span:first-child { transform: none; margin-left: -12px; }
+.rs-inputs { display: flex; gap: var(--s3) var(--s4); flex-wrap: wrap; align-items: flex-end; margin-top: var(--s2); }
+.rs-inputs .field { flex: 0 0 auto; width: 9.5rem; }
+.rs-inputs input { width: 100%; font-variant-numeric: tabular-nums; }
+.rs-inputs input[aria-invalid="true"] { border-color: var(--err); box-shadow: 0 0 0 1px var(--err); }
+.rs-presets { display: flex; gap: var(--s2); flex-wrap: wrap; flex: 1 1 260px; justify-content: flex-end; }
+.rs-hint { margin: var(--s2) 0 0; }
+.rs-err { color: var(--err); font-weight: 600; font-size: var(--fs-sm); min-height: 1.4em; margin: var(--s1) 0 0; }
+@media (max-width: 640px) {
+  .rs-inputs .field { flex: 1 1 40%; width: auto; }
+  .rs-presets { justify-content: flex-start; flex-basis: 100%; }
+  .rs-axis span:nth-child(even) { display: none; }
+}
+
+/* table */
+.tbl-head { display: flex; gap: var(--s3) var(--s4); flex-wrap: wrap; align-items: flex-end; justify-content: space-between; margin-bottom: var(--s3); }
+.tbl-head h2 { margin: 0; font-size: var(--fs-lg); }
+.tbl-tools { display: flex; gap: var(--s3); flex-wrap: wrap; align-items: flex-end; }
+.sort-mobile { display: none; gap: var(--s2); align-items: flex-end; }
+.jump { display: flex; gap: var(--s2); align-items: flex-end; }
+.jump input { width: 8rem; }
+.jump-msg { min-height: 1.4em; margin: var(--s2) 0 0; font-size: var(--fs-sm); color: var(--text-muted); }
+.jump-msg .btn { margin-left: var(--s2); }
+table.sol-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+table.sol-table th, table.sol-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
+table.sol-table .n { text-align: right; }
+table.sol-table thead th { font-size: var(--fs-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; vertical-align: bottom; }
+table.sol-table th small { display: block; text-transform: none; letter-spacing: 0; font-weight: 400; }
+table.sol-table tbody th { font-weight: 600; }
+table.sol-table tbody tr:hover td, table.sol-table tbody tr:hover th { background: var(--surface-2); }
+table.sol-table tr.hl td, table.sol-table tr.hl th { background: var(--accent-soft); }
+table.sol-table tr.hl th { box-shadow: inset 3px 0 0 var(--accent); }
+table.sol-table button.sort { display: inline-flex; gap: 4px; align-items: flex-end; min-height: 32px; padding: 2px 4px; margin: -2px -4px; border: 0; background: none; color: inherit;
+  font: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer; border-radius: 4px; text-align: inherit; }
+table.sol-table th.n button.sort { flex-direction: row-reverse; }
+table.sol-table button.sort:hover { color: var(--text); }
+table.sol-table button.sort .arr::before { content: "\2195"; opacity: .45; }
+table.sol-table th[aria-sort="ascending"] .arr::before { content: "\25B2"; opacity: 1; color: var(--accent); }
+table.sol-table th[aria-sort="descending"] .arr::before { content: "\25BC"; opacity: 1; color: var(--accent); }
+table.sol-table td .flag + .flag { margin-left: 4px; }
+table.sol-table .n-empty { text-align: center; color: var(--text-muted); padding: var(--s5); }
+table.sol-table td.link { text-align: right; white-space: nowrap; }
+.tbl-foot { display: flex; gap: var(--s3); flex-wrap: wrap; align-items: center; justify-content: space-between; margin-top: var(--s3); }
+.tbl-foot .pager { margin: 0; justify-content: flex-end; }
+@media (max-width: 759px) {
+  .sort-mobile { display: flex; }
+  table.sol-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  table.sol-table, table.sol-table tbody, table.sol-table tr, table.sol-table th, table.sol-table td { display: block; }
+  table.sol-table tr { padding: var(--s2) var(--s2); border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: var(--s2); }
+  table.sol-table tr.hl { border-color: var(--accent); }
+  table.sol-table th, table.sol-table td { display: flex; justify-content: space-between; gap: var(--s3); border: 0; padding: 3px 4px; text-align: right; }
+  table.sol-table td::before, table.sol-table th[scope="row"]::before { content: attr(data-label); color: var(--text-muted); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .04em; text-align: left; flex: none; }
+  table.sol-table th[scope="row"] { font-size: var(--fs-md); }
+  table.sol-table td.link { justify-content: flex-end; padding-top: var(--s2); }
+  table.sol-table td.link::before { display: none; }
+  table.sol-table td.flags-cell { flex-wrap: wrap; }
+  table.sol-table tr:hover td, table.sol-table tr:hover th { background: transparent; }
+  .tbl-foot { justify-content: center; }
+  .tbl-foot .pager { justify-content: center; }
+  .jump input { width: 100%; }
+  .jump { flex: 1 1 100%; }
+  .jump .field { flex: 1; }
+}
+.table-scroll { overflow-x: auto; }
+
+/* ---- sol report ---- */
+.sr-head { padding: var(--s4); }
+.sr-top { display: flex; gap: var(--s3) var(--s4); flex-wrap: wrap; align-items: center; justify-content: space-between; }
+.sr-top h1 { margin: 0; }
+.sr-nav { display: flex; gap: var(--s2); flex-wrap: wrap; }
+.sr-facts { margin-top: var(--s3); }
+.opt { display: inline-block; margin-left: 6px; padding: 0 6px; border: 1px dashed var(--border-strong); border-radius: 999px; font-size: 10px; font-weight: 600; letter-spacing: .03em; color: var(--text-muted); text-transform: uppercase; vertical-align: 1px; }
+.sr-cov { display: flex; gap: var(--s3); flex-wrap: wrap; align-items: center; margin-top: var(--s3); font-size: var(--fs-sm); color: var(--text-muted); }
+.sr-links { display: flex; gap: var(--s2); flex-wrap: wrap; margin-top: var(--s3); }
+.hour-bar { position: sticky; top: 56px; z-index: 5; display: flex; gap: var(--s3) var(--s4); flex-wrap: wrap; align-items: center; padding: var(--s2) var(--s3);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
+.hour-bar input[type="range"] { flex: 1 1 200px; min-width: 0; accent-color: var(--accent); min-height: 32px; }
+.hour-bar input[type="range"]:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.hour-bar label { font-size: var(--fs-xs); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); }
+.hour-bar output { font-weight: 700; font-variant-numeric: tabular-nums; min-width: 9ch; }
+.hour-bar .chk { display: inline-flex; gap: 6px; align-items: center; font-size: var(--fs-sm); color: var(--text-muted); }
+.charts { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s4); }
+@media (min-width: 760px) { .charts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.pc { padding: var(--s3); min-width: 0; }
+.pc-head { display: flex; gap: var(--s1) var(--s2); flex-wrap: wrap; align-items: baseline; }
+.pc-head h3 { margin: 0; font-size: var(--fs-sm); }
+.pc-sum { font-size: var(--fs-xs); color: var(--text-muted); font-variant-numeric: tabular-nums; margin: 2px 0 var(--s1); }
+.pc-ro { min-height: 2.6em; margin-top: var(--s1); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; color: var(--text-muted); }
+.pc-ro b { color: var(--text); }
+.pc svg.chart { touch-action: pan-y; cursor: crosshair; }
+svg.chart .night { fill: var(--text-faint); fill-opacity: .13; }
+svg.chart .nodata { fill: var(--surface-2); stroke: var(--border-strong); stroke-dasharray: 2 3; stroke-width: 1; }
+svg.chart .hl-col { fill: var(--accent); fill-opacity: .13; }
+svg.chart .solband { fill: var(--accent); fill-opacity: .12; }
+svg.chart .solref { stroke: var(--text-muted); stroke-width: 1; stroke-dasharray: 4 3; }
+svg.chart .pt { fill: var(--accent); }
+svg.chart .pt-b { fill: var(--text-muted); }
+svg.chart .ln-hr { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
+svg.chart .ln-hr-b { fill: none; stroke: var(--text-muted); stroke-width: 1.6; stroke-dasharray: 5 3; }
+.concept { border-style: dashed; border-color: var(--border-strong); }
+.concept-note { padding: var(--s3) var(--s4); }
+.sr-sources { font-size: var(--fs-sm); color: var(--text-muted); }
+.sr-sources ul { margin: var(--s2) 0 0; padding-left: 1.2em; overflow-wrap: anywhere; }
+.skel-h { height: 1.4em; margin-bottom: var(--s2); }
+.skel-chart { height: 150px; }
+.hours-table { width: 100%; border-collapse: collapse; font-size: var(--fs-xs); font-variant-numeric: tabular-nums; min-width: 520px; }
+.hours-table th, .hours-table td { padding: 4px 8px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
+.hours-table th:first-child, .hours-table td:first-child { text-align: left; }
+.hours-table thead th { color: var(--text-muted); font-weight: 600; }
+.hours-table tbody tr.cur td, .hours-table tbody tr.cur th { background: var(--accent-soft); }
+details.tbl summary { cursor: pointer; font-weight: 600; font-size: var(--fs-sm); padding: var(--s2) 0; }
+.badge-prelim { background: var(--warn-soft); color: var(--warn); }
+.badge-est { background: var(--surface-2); color: var(--text-muted); border: 1px dashed var(--border-strong); }
+.mock-bar .btn { color: var(--text); }
+
+.chart-empty { position: absolute; inset: 26px 10px 40px 48px; display: grid; place-items: center; text-align: center; color: var(--text-muted); font-size: var(--fs-sm); pointer-events: none; padding: var(--s3); }
+.chart-empty b { color: var(--text); }
+.rover-switch { margin-top: var(--s3); }
+
+</style>
+</head>
+<body>
+<header class="site-header">
+  <div class="container">
+    <a class="brand" href="index.html" aria-label="Sol Index home"><svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="8" fill="var(--accent)"/><ellipse cx="13" cy="13" rx="12" ry="4.5" fill="none" stroke="var(--text-muted)" stroke-width="1.4" transform="rotate(-20 13 13)"/></svg> Sol Index <small>unofficial</small></a>
+    <nav class="nav" aria-label="Main">
+      <a href="index.html">Rovers</a>
+      <a href="photos.html?rover=perseverance" title="Latest sol">Photos</a>
+      <a href="search.html">Search</a>
+      <a href="manifest.html">Timeline</a>
+      <a href="map.html">Route map</a>
+      <a href="flights.html">Flights</a>
+      <a href="data.html" aria-current="page">Data</a>
+      <a href="stats.html">Stats</a>
+      <a href="index.html#api">API</a>
+    </nav>
+    <button class="theme-toggle" type="button" aria-label="Toggle colour theme">Theme</button>
+  </div>
+</header>
+
+<!-- MOCK DATA, not connected to the API. Hourly values are generated in the shape of GET /api/v2/rovers/{rover}/weather/{sol} (hours[]); hourly radiation is a PLANNED data source and does not exist in API v2 yet. -->
+
+<main>
+  <div class="container">
+    <div class="mock-bar" role="group" aria-label="Mockup controls (not part of the product)">
+      <strong>Mockup</strong>
+      <span>State:</span>
+      <button class="btn btn-sm" type="button" data-st="ok" aria-pressed="true">Data</button>
+      <button class="btn btn-sm" type="button" data-st="loading" aria-pressed="false">Loading</button>
+      <button class="btn btn-sm" type="button" data-st="nodata" aria-pressed="false">No data for this sol</button>
+      <button class="btn btn-sm" type="button" data-st="partial" aria-pressed="false">Partial coverage</button>
+      <button class="btn btn-sm" type="button" data-st="error" aria-pressed="false">Error 503</button>
+      <span>Also <code>?sol=N</code> and <code>?state=…</code>. Data is generated in the page, not fetched from the API.</span>
+    </div>
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="data.html">Data</a> / <a href="weather-range.html">Weather by sol</a> / Perseverance / <span aria-current="page">Sol <span id="crSol"></span></span></nav>
+    <div id="app"></div>
+  </div>
+</main>
+
+
+<footer class="site-footer">
+  <div class="container">Sol Index is an independent, unofficial project, not affiliated with or endorsed by NASA or JPL. Science data comes from the public archives of the mission teams and is linked to its source; credit is shown with every dataset.</div>
+</footer>
+
+<script>
+const ROVER = 'perseverance';
+'use strict';
+/* ---- shared helpers (mockup only; all data below is generated, not fetched) ---- */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const nf = new Intl.NumberFormat('en-US');
+const MINUS = '−';
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+function rng(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function gauss(R) { return Math.sqrt(-2 * Math.log(1 - R())) * Math.cos(2 * Math.PI * R()); }
+
+/** Number with a real minus sign; null -> em dash. */
+function num(v, d = 1) {
+  if (v == null || Number.isNaN(v)) return '—';
+  const s = Math.abs(v).toFixed(d);
+  return (v < 0 && Number(s) !== 0 ? MINUS : '') + s;
+}
+function numG(v, d = 1) { // with thousands separators
+  if (v == null) return '—';
+  const s = nf.format(Math.abs(+v.toFixed(d)));
+  const t = d > 0 ? Math.abs(v).toFixed(d).split('.')[1] : '';
+  const body = d > 0 ? s.split('.')[0] + '.' + t : s;
+  return (v < 0 && Number(Math.abs(v).toFixed(d)) !== 0 ? MINUS : '') + body;
+}
+
+function niceTicks(lo, hi, n) {
+  if (!(hi > lo)) hi = lo + 1;
+  const raw = (hi - lo) / Math.max(1, n);
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const f = raw / mag;
+  const step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * mag;
+  const a = Math.floor(lo / step + 1e-9) * step;
+  const b = Math.ceil(hi / step - 1e-9) * step;
+  const t = [];
+  for (let v = a; v <= b + step * 1e-6; v += step) t.push(+v.toFixed(10));
+  return t;
+}
+
+/* ---- rovers (landing time, position, anchor used to tie Ls to the examples in the brief) ---- */
+const SOL_MS = 88775244;
+const ROVERS = {
+  curiosity: { name: 'Curiosity', landing: Date.UTC(2012, 7, 6, 5, 17), anchor: [344, 178], lat: -4.59, hemi: 'S', maxSol: 5066 },
+  perseverance: { name: 'Perseverance', landing: Date.UTC(2021, 1, 18, 20, 55), anchor: [100, 52.4], lat: 18.44, hemi: 'N', maxSol: 2031 },
+};
+function earthDate(rover, sol) { return new Date(ROVERS[rover].landing + sol * SOL_MS).toISOString().slice(0, 10); }
+/* Ls is linear in the mockup (668.6 sols per Mars year), anchored to the example values; the real curve is slightly uneven. */
+function lsOf(rover, sol) {
+  const [s0, l0] = ROVERS[rover].anchor;
+  let v = (l0 + ((sol - s0) * 360) / 668.6) % 360;
+  if (v < 0) v += 360;
+  return Math.round(v * 10) / 10;
+}
+function season(rover, ls, short) {
+  const q = Math.floor(ls / 90) % 4;
+  const names = ROVERS[rover].hemi === 'N' ? ['spring', 'summer', 'autumn', 'winter'] : ['autumn', 'winter', 'spring', 'summer'];
+  const w = ls % 90;
+  const part = w < 30 ? 'early' : w >= 60 ? 'late' : 'mid';
+  return short ? `${part} ${names[q]}` : `${part[0].toUpperCase() + part.slice(1)} ${names[q]}`;
+}
+/** Approximate sunrise/sunset in LMST hours (flat-horizon formula; optional, computed on the client). */
+function sunTimes(rover, ls) {
+  const lat = (ROVERS[rover].lat * Math.PI) / 180;
+  const dec = Math.asin(Math.sin((25.19 * Math.PI) / 180) * Math.sin((ls * Math.PI) / 180));
+  const c = clamp(-Math.tan(lat) * Math.tan(dec), -1, 1);
+  const h = (Math.acos(c) * 12) / Math.PI;
+  return [12 - h, 12 + h];
+}
+const hhmm = (h) => { const m = Math.round(h * 60); return String(Math.floor(m / 60) % 24).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); };
+
+/* ---- theme toggle (same behaviour as the other mockups) ---- */
+(function () {
+  const b = document.querySelector('.theme-toggle');
+  if (!b) return;
+  b.onclick = () => {
+    const r = document.documentElement;
+    const dark = r.dataset.theme ? r.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+    r.dataset.theme = dark ? 'light' : 'dark';
+    window.dispatchEvent(new Event('themechange'));
+  };
+})();
+
+/* ---- Sol report: hourly charts for one sol (generated data; shape of GET /rovers/{rover}/weather/{sol}) ---- */
+const RV = ROVERS[ROVER], IS_C = ROVER === 'curiosity';
+const PUB = IS_C ? 4710 : 1859;
+const GAPS = IS_C ? [[2, 8], [2331, 2352], [3705, 3711]] : [[455, 470], [1203, 1207]];
+const ANCHOR = RV.anchor[0];
+const NODATA_DEMO = IS_C ? 5 : 1900;
+const q = new URLSearchParams(location.search);
+let sol = parseInt(q.get('sol'), 10) || ANCHOR;
+let state = ['ok', 'loading', 'nodata', 'partial', 'error'].includes(q.get('state')) ? q.get('state') : 'ok';
+if (state === 'nodata' && !q.get('sol')) sol = NODATA_DEMO;
+let hour = IS_C ? 13 : 13, active = false, night = true, DEF = [], DAY = null;
+
+const availability = (s) => (s < 1 ? 'gap' : GAPS.some((g) => s >= g[0] && s <= g[1]) ? 'gap' : s > PUB ? 'unpublished' : 'ok');
+const pad2 = (h) => String(h).padStart(2, '0');
+const r1 = (v) => Math.round(v * 10) / 10;
+const bell = (t, c, w) => { let x = ((((t - c + 12) % 24) + 24) % 24) - 12; x /= 24; return Math.exp(-(x * x) / (2 * w * w)); };
+const normShape = (fn) => { const v = Array.from({ length: 24 }, (_, h) => fn(h + 0.5)); const lo = Math.min(...v), hi = Math.max(...v); return v.map((x) => (x - lo) / (hi - lo)); };
+const avg = (a) => { const v = a.filter((x) => x != null); return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null; };
+
+function makeDay(s, partial) {
+  const R = rng(s * 977 + (IS_C ? 1 : 2)), ls = lsOf(ROVER, s), ls0 = RV.anchor[1], isA = s === ANCHOR;
+  const d = (amp, ph) => amp * (Math.cos(((ls - ph) * Math.PI) / 180) - Math.cos(((ls0 - ph) * Math.PI) / 180));
+  const nz = (sd) => (isA ? 0 : gauss(R) * sd);
+  const [sr, ss] = sunTimes(ROVER, ls);
+  const covered = Array.from({ length: 24 }, (_, h) => (partial ? h >= 6 && h <= 18 : true));
+  // random holes for non-air parameters (anchor sols have fixed holes)
+  const holes = (fixed) => { const m = Array(24).fill(true); if (isA) { fixed.forEach((h) => (m[h] = false)); return m; } if (R() < 0.55) { const a = Math.floor(R() * 22), n = 1 + Math.floor(R() * 3); for (let h = a; h < a + n; h++) m[h] = false; } return m; };
+  const mask = (arr, ok) => arr.map((v, h) => (ok[h] && covered[h] ? v : null));
+  const out = { sol: s, ls, earth_date: earthDate(ROVER, s), sr, ss, partial, hours_covered: covered.filter(Boolean).length, flags: [] };
+  const wob = (sd) => (isA ? gauss(rng(s + 5)) * 0 : 0) + gauss(R) * sd;
+
+  // air temperature
+  const tmin = IS_C ? -71 + d(5, 290) + nz(1) : -82.4 + d(7, 330) + nz(1.2);
+  const tmax = IS_C ? -3 + d(8, 300) + nz(2.2) : -18.9 + d(14, 300) + nz(2.5);
+  const aS = normShape((t) => bell(t, 13.2, 0.2));
+  const air = mask(aS.map((x) => r1(tmin + 1.6 + (tmax - tmin - 3.6) * x + wob(0.5))), Array(24).fill(true));
+  // ground temperature (Perseverance: estimate, noisier)
+  const gmin = IS_C ? -84.5 + d(5, 290) + nz(1) : -88 + d(7, 330) + nz(1.2), gmax = IS_C ? 1.8 + d(8, 300) + nz(2) : -9.5 + d(14, 300) + nz(2.5);
+  const gS = normShape((t) => bell(t, 12.8, 0.17));
+  const ground = mask(gS.map((x) => r1(gmin + 2 + (gmax - gmin - 4.5) * x + wob(IS_C ? 0.5 : 1.3))), holes(IS_C ? [15] : [22, 23]));
+  // pressure (thermal tide: high before dawn, low in the afternoon; plus a semidiurnal wave)
+  const pm = IS_C ? 760 + d(85, 265) + nz(4) : 726 + d(110, 260) + nz(5);
+  let pr = Array.from({ length: 24 }, (_, h) => pm + 9 * Math.cos((2 * Math.PI * (h + 0.5 - 5)) / 24) + 3.5 * Math.cos((4 * Math.PI * (h + 0.5 - 9.5)) / 24) + gauss(R) * 0.5);
+  const pmean = avg(pr); pr = pr.map((x) => r1(x - pmean + pm));
+  const pressure = mask(pr, holes([]));
+  // humidity (preliminary): high at night
+  const hmax = IS_C ? 54.3 + d(22, 150) + nz(5) : 14.6 + nz(2), hmin = IS_C ? 3.1 : 0, target = IS_C ? 24 + nz(3) : 2.3 + nz(0.5);
+  const hS = normShape((t) => 1 - bell(t, 13.5, 0.18));
+  let lo = 0.2, hi = 14;
+  for (let i = 0; i < 24; i++) { const k = (lo + hi) / 2; const m = avg(hS.map((x) => hmin + (hmax - hmin) * Math.pow(x, k))); if (m > target) lo = k; else hi = k; }
+  const hum = mask(hS.map((x) => r1(Math.max(0, hmin + (hmax * 0.96 - hmin) * Math.pow(x, (lo + hi) / 2) + gauss(R) * 0.4))), holes(IS_C ? [10, 11] : [14]));
+  out.air = air; out.ground = ground; out.pressure = pressure; out.humidity = hum;
+  const stat = (arr, gMin, gMax, dg) => { const v = arr.filter((x) => x != null); if (!v.length) return null; return { min: r1(partial ? Math.min(...v) - 1 : gMin), max: r1(partial ? Math.max(...v) + 1 : gMax), mean: Math.round(avg(arr) * Math.pow(10, dg)) / Math.pow(10, dg) }; };
+  out.s = {
+    air_temp_c: stat(air, tmin, tmax, 1), ground_temp_c: stat(ground, gmin, gmax, 1),
+    pressure_pa: stat(pressure, IS_C ? pm - 11.6 : pm - 17.7, IS_C ? pm + 12.4 : pm + 19.1, 1),
+    humidity_pct: stat(hum, hmin, hmax, 1),
+  };
+  if (IS_C) {
+    const umax = Math.max(0.5, 14.8 + d(6, 270) + nz(0.8));
+    const uv = Array.from({ length: 24 }, (_, h) => { const t = h + 0.5; if (t < sr || t > ss) return 0; return r1(umax * Math.pow(Math.sin((Math.PI * (t - sr)) / (ss - sr)), 1.3) * 100) / 100; });
+    out.uv = mask(uv, Array(24).fill(true));
+    const um = out.uv.filter((x) => x != null);
+    out.s.uv_wm2 = { max: Math.round(Math.max(...um, 0) * 1.04 * 100) / 100, mean: Math.round(avg(out.uv) * 100) / 100 };
+  } else {
+    const inWind = s >= 36 && s <= 313;
+    const base = 2.1;
+    const wm = 3.4 + (isA ? 0 : gauss(R) * 0.6);
+    let w = Array.from({ length: 24 }, (_, h) => base + 3.2 * bell(h + 0.5, 14, 0.2) + (h + 0.5 > 22 || h + 0.5 < 3 ? 0.4 : 0) + gauss(R) * 0.35);
+    const k = wm / avg(w); w = w.map((x) => r1(x * k));
+    const dir = Array.from({ length: 24 }, (_, h) => ((112.5 + Math.round((70 * Math.sin((2 * Math.PI * (h + 0.5 - 8)) / 24)) / 22.5) * 22.5 + 360) % 360));
+    const okw = holes([2, 3]);
+    out.wind = inWind ? mask(w, okw) : null; out.winddir = inWind ? mask(dir, okw) : null;
+    out.s.wind = inWind ? { speed_mean_ms: r1(avg(out.wind)), gust_ms: isA ? 11.8 : r1(Math.max(...out.wind.filter((x) => x != null)) * 2.3), direction_mode_deg: 112.5 } : null;
+  }
+  // coverage of air-temperature readings per hour
+  const target2 = isA ? (IS_C ? 0.52 : 0.61) : 0.3 + 0.4 * R();
+  let cv = covered.map((c) => (c ? 0.3 + 0.7 * R() : 0)); const sc = (target2 * 24) / cv.reduce((a, b) => a + b, 0);
+  out.cov = cv.map((x) => Math.round(Math.min(1, x * sc) * 100) / 100);
+  out.coverage = Math.round((out.cov.reduce((a, b) => a + b, 0) / 24) * 100) / 100;
+  if (partial) out.flags.push({ code: 'partial_coverage', parameter: null, count: null });
+  // hourly radiation: a PLANNED data source (not in API v2)
+  if (IS_C) {
+    const ed = 192.3 + (isA ? 0 : gauss(R) * 4), bd = ed * 1.065;
+    const rad = (day) => pressure.map((p, h) => { const dev = p == null ? 0 : p - pm; return r1((day / 24) * (1 - 0.0016 * dev) * (1 + 0.012 * gauss(R)) * 100) / 100; });
+    const e = rad(ed), b = rad(bd), ok = Array(24).fill(true); if (isA) ok[20] = false; else if (R() < 0.5) ok[Math.floor(R() * 24)] = false;
+    out.dose_e = e.map((v, h) => (ok[h] ? Math.round(v * 100) / 100 : null)); out.dose_b = b.map((v, h) => (ok[h] ? Math.round(v * 100) / 100 : null));
+    out.count = b.map((v, h) => (ok[h] ? Math.round(v * (1 + 0.006 * gauss(R)) * 1000) / 1000 : null));
+    out.s.dose_e_ugy_day = r1(ed * 100) / 100; out.s.dose_b_ugy_day = r1(bd * 100) / 100;
+  }
+  return out;
+}
+
+function defs(day) {
+  const S = day.s, u = (a) => a;
+  const L = [
+    { id: 'air', title: 'Air temperature', unit: '°C', d: 1, band: S.air_temp_c && [S.air_temp_c.min, S.air_temp_c.max], bandLab: 'sol min to max', series: [{ name: 'hourly mean', v: day.air }], sum: S.air_temp_c && `min ${num(S.air_temp_c.min)} · mean ${num(S.air_temp_c.mean)} · max ${num(S.air_temp_c.max)}`, q: 'measured' },
+    { id: 'ground', title: 'Ground temperature', unit: '°C', d: 1, band: S.ground_temp_c && [S.ground_temp_c.min, S.ground_temp_c.max], bandLab: 'sol min to max', series: [{ name: 'hourly mean', v: day.ground }], sum: S.ground_temp_c && `min ${num(S.ground_temp_c.min)} · mean ${num(S.ground_temp_c.mean)} · max ${num(S.ground_temp_c.max)}`, q: IS_C ? 'measured' : 'estimate' },
+    { id: 'pressure', title: 'Pressure', unit: 'Pa', d: 1, band: S.pressure_pa && [S.pressure_pa.min, S.pressure_pa.max], bandLab: 'sol min to max', series: [{ name: 'hourly mean', v: day.pressure }], sum: S.pressure_pa && `min ${num(S.pressure_pa.min)} · mean ${num(S.pressure_pa.mean)} · max ${num(S.pressure_pa.max)}`, q: 'measured' },
+    { id: 'hum', title: 'Relative humidity', unit: '%', d: 1, zero: true, band: S.humidity_pct && [S.humidity_pct.min, S.humidity_pct.max], bandLab: 'sol min to max', series: [{ name: 'hourly mean', v: day.humidity }], sum: S.humidity_pct && `min ${num(S.humidity_pct.min)} · mean ${num(S.humidity_pct.mean)} · max ${num(S.humidity_pct.max)}`, q: 'preliminary' },
+  ];
+  if (IS_C) L.push({ id: 'uv', title: 'Ultraviolet flux (UV-A+B+C)', unit: 'W/m²', d: 2, zero: true, line: S.uv_wm2 && [S.uv_wm2.max, 'sol max'], series: [{ name: 'hourly mean', v: day.uv }], sum: S.uv_wm2 && `mean ${num(S.uv_wm2.mean, 2)} · max ${num(S.uv_wm2.max, 2)}`, q: 'measured' });
+  else L.push({ id: 'wind', title: 'Wind speed', unit: 'm/s', d: 1, zero: true, line: S.wind && [S.wind.gust_ms, 'sol gust (99th percentile)'], series: [{ name: 'hourly mean', v: day.wind }], dir: day.winddir, sum: S.wind && `mean ${num(S.wind.speed_mean_ms)} · gust ${num(S.wind.gust_ms)} · prevailing direction ${num(S.wind.direction_mode_deg)}°`, q: 'measured', nowind: !S.wind });
+  return L;
+}
+function radDefs(day) {
+  const S = day.s;
+  return [
+    { id: 'dose', title: 'Dose rate, detectors E and B', unit: 'µGy/h', d: 2, series: [{ name: 'E', v: day.dose_e }, { name: 'B', v: day.dose_b, dash: true }], sum: `daily mean E ${num(S.dose_e_ugy_day, 1)} µGy/day · B ${num(S.dose_b_ugy_day, 1)} µGy/day`, q: 'planned' },
+    { id: 'count', title: 'Count rate, detector B', unit: 'events/s', d: 3, series: [{ name: 'count rate', v: day.count }], sum: 'raw counts, not a calibrated flux', q: 'planned' },
+  ];
+}
+
+function drawHour(host, def, day) {
+  const W = Math.max(Math.round(host.clientWidth || 360), 240), H = W < 480 ? 175 : 195;
+  const L = 48, R = 10, T = 10, B = 26, pw = W - L - R, ph = H - T - B;
+  const vals = def.series.flatMap((s) => s.v).filter((x) => x != null);
+  let lo = Infinity, hi = -Infinity;
+  for (const v of vals) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  if (def.band) { lo = Math.min(lo, def.band[0]); hi = Math.max(hi, def.band[1]); }
+  if (def.line) hi = Math.max(hi, def.line[0]);
+  if (!vals.length) { lo = 0; hi = 1; }
+  if (def.zero) lo = Math.min(0, lo);
+  const ticks = niceTicks(lo, hi, 4), ymin = ticks[0], ymax = ticks[ticks.length - 1];
+  const X = (h) => L + (h / 24) * pw, Y = (v) => T + (1 - (v - ymin) / (ymax - ymin || 1)) * ph, f = (n) => n.toFixed(1);
+  let g = '';
+  const stp = ticks.length > 1 ? ticks[1] - ticks[0] : 1, dec = stp >= 1 ? 0 : stp >= 0.1 ? 1 : stp >= 0.01 ? 2 : 3;
+  for (const t of ticks) g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${f(Y(t))}" y2="${f(Y(t))}"/><text x="${L - 6}" y="${f(Y(t) + 4)}" text-anchor="end">${numG(t, dec)}</text>`;
+  const step = W < 480 ? 6 : 3;
+  for (let h = 0; h <= 24; h += step) g += `<line class="grid" x1="${f(X(h))}" x2="${f(X(h))}" y1="${T}" y2="${T + ph}" opacity=".45"/><text x="${f(X(h))}" y="${H - 8}" text-anchor="${h === 0 ? 'start' : h === 24 ? 'end' : 'middle'}">${h}</text>`;
+  let shade = '';
+  if (night && day.sr != null) shade = `<rect class="night" x="${L}" y="${T}" width="${f(X(day.sr) - L)}" height="${ph}"/><rect class="night" x="${f(X(day.ss))}" y="${T}" width="${f(W - R - X(day.ss))}" height="${ph}"/>`;
+  // columns where this chart has no reading at all: hatched, so a gap is visible (not interpolated)
+  let holes = '';
+  for (let h = 0; h < 24; h++) if (def.series.every((s) => s.v[h] == null)) holes += `<rect class="nodata" x="${f(X(h))}" y="${T}" width="${f(X(h + 1) - X(h))}" height="${ph}"/>`;
+  let ref = '';
+  if (def.band) ref += `<rect class="solband" x="${L}" y="${f(Y(def.band[1]))}" width="${pw}" height="${f(Math.max(1, Y(def.band[0]) - Y(def.band[1])))}"/><line class="solref" x1="${L}" x2="${W - R}" y1="${f(Y(def.band[0]))}" y2="${f(Y(def.band[0]))}"/><line class="solref" x1="${L}" x2="${W - R}" y1="${f(Y(def.band[1]))}" y2="${f(Y(def.band[1]))}"/>`;
+  if (def.line) ref += `<line class="solref" x1="${L}" x2="${W - R}" y1="${f(Y(def.line[0]))}" y2="${f(Y(def.line[0]))}"/><text x="${W - R - 4}" y="${f(Y(def.line[0]) - 4)}" text-anchor="end">${esc(def.line[1])} ${num(def.line[0], def.d)}</text>`;
+  let lines = '';
+  def.series.forEach((s, si) => {
+    let d = '', run = [];
+    const flush = () => { if (run.length > 1) d += run.map((p, i) => `${i ? 'L' : 'M'}${f(X(p[0] + 0.5))} ${f(Y(p[1]))}`).join(''); run = []; };
+    s.v.forEach((v, h) => { if (v == null) flush(); else run.push([h, v]); });
+    flush();
+    lines += `<path class="${si ? 'ln-hr-b' : 'ln-hr'}" d="${d}"/>`;
+    s.v.forEach((v, h) => { if (v != null) lines += `<circle class="${si ? 'pt-b' : 'pt'}" cx="${f(X(h + 0.5))}" cy="${f(Y(v))}" r="${si ? 2 : 2.4}"/>`; });
+  });
+  const ariaLab = `${def.title}, hourly means by local mean solar time, sol ${day.sol}. ${def.sum || ''}`;
+  host.innerHTML = `<svg class="chart" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(ariaLab)}">
+    ${g}${shade}${holes}${ref}
+    <line class="axis" x1="${L}" x2="${W - R}" y1="${T + ph}" y2="${T + ph}"/>
+    ${lines}
+    <g class="cur" visibility="hidden"><rect class="hl-col" x="0" y="${T}" width="${f(pw / 24)}" height="${ph}"/><line class="cursor" y1="${T}" y2="${T + ph}"/></g>
+  </svg>`;
+  const svg = host.firstElementChild;
+  const at = (ev) => { const r = svg.getBoundingClientRect(); return clamp(Math.floor((((ev.clientX - r.left) * W) / (r.width || W) - L) / pw * 24), 0, 23); };
+  svg._geo = { X, f };
+  const on = (ev) => { setHour(at(ev), true); };
+  svg.onpointermove = (ev) => { if (ev.pointerType === 'mouse' || ev.buttons) on(ev); };
+  svg.onpointerdown = on;
+  svg.onpointerleave = (ev) => { if (ev.pointerType === 'mouse') setHour(null, false); };
+}
+
+function readout(def, h) {
+  const lab = `${pad2(h)}:00–${pad2((h + 1) % 24)}:00 LMST`;
+  const parts = def.series.map((s) => { const v = s.v[h]; return v == null ? `${def.series.length > 1 ? s.name + ' ' : ''}<b>no reading</b>` : `${def.series.length > 1 ? s.name + ' ' : ''}<b>${num(v, def.d)}</b> ${def.unit}`; });
+  let extra = '';
+  if (def.dir) extra = def.dir[h] == null ? '' : ` · direction ${num(def.dir[h], 1)}°`;
+  return `${lab}<br>${parts.join(' · ')}${extra}`;
+}
+function setHour(h, act) {
+  active = act === undefined ? active : act;
+  if (h != null) { hour = h; $('#hourIn').value = h; }
+  $('#hourOut').textContent = active ? `${pad2(hour)}:00–${pad2((hour + 1) % 24)}:00` : 'none selected';
+  [...DEF].forEach((def) => {
+    const card = $('#pc-' + def.id); if (!card) return;
+    const svg = $('svg.chart', card), cur = svg && $('.cur', svg), ro = $('.pc-ro', card);
+    if (!svg) return;
+    if (active) {
+      const X = svg._geo.X, f = svg._geo.f;
+      cur.setAttribute('visibility', 'visible');
+      $('.hl-col', cur).setAttribute('x', f(X(hour)));
+      const ln = $('line', cur); ln.setAttribute('x1', f(X(hour + 0.5))); ln.setAttribute('x2', f(X(hour + 0.5)));
+      ro.innerHTML = readout(def, hour);
+    } else { cur.setAttribute('visibility', 'hidden'); ro.innerHTML = 'Hover or tap a chart, or use the hour slider.<br>&nbsp;'; }
+  });
+  $$('#hoursTable tbody tr').forEach((tr, i) => tr.classList.toggle('cur', active && i === hour));
+}
+
+const flagWords = { partial_coverage: ['partial coverage', 'Readings in fewer than 18 of 24 hours; the daily mean may lean to day or night'], humidity_over_100: ['RH > 100 %', 'Humidity above 100 % is impossible; shown as published'], out_of_range: ['out of range', 'Readings outside physical limits were left out'] };
+const flagChip = (f) => { const t = flagWords[f.code]; return `<span class="flag flag-${t ? f.code : 'unknown'}" title="${esc(t ? t[1] : 'Unknown flag code')}">${esc(t ? t[0] : f.code)}</span>`; };
+
+function headHtml(day, avail) {
+  const name = RV.name, dateTxt = day ? day.earth_date : null;
+  const prev = sol > 1 ? `<a class="btn" href="?sol=${sol - 1}" data-go="${sol - 1}" aria-label="Previous sol, ${sol - 1}">← Sol ${nf.format(sol - 1)}</a>` : '<span class="btn" aria-disabled="true">← Previous sol</span>';
+  const next = `<a class="btn" href="?sol=${sol + 1}" data-go="${sol + 1}" aria-label="Next sol, ${sol + 1}">Sol ${nf.format(sol + 1)} →</a>`;
+  let facts = '';
+  if (day) {
+    const strip = day.cov.map((c, h) => `<span class="hc ${c ? '' : 'hc-0'}" style="--c:${c}" title="${pad2(h)}:00 LMST, coverage ${Math.round(c * 100)} %"></span>`).join('');
+    facts = `<dl class="facts sr-facts" aria-label="Sol summary">
+      <div><dt>Earth date</dt><dd>${dateTxt}</dd></div>
+      <div><dt>Solar longitude, Ls</dt><dd>${num(day.ls, 1)}°</dd></div>
+      <div><dt>Season (${RV.hemi === 'N' ? 'northern' : 'southern'} hemisphere)</dt><dd>${season(ROVER, day.ls)}</dd></div>
+      <div><dt>Sunrise / sunset <span class="opt" title="Not in the API: computed in the browser from Ls and the rover latitude, about 10 minutes accuracy">optional</span></dt><dd>~${hhmm(day.sr)} / ~${hhmm(day.ss)} <small class="muted">LMST</small></dd></div>
+      <div><dt>Coverage</dt><dd>${Math.round(day.coverage * 100)} % of the sol</dd></div>
+      <div><dt>Hours with readings</dt><dd>${day.hours_covered} of 24</dd></div>
+      <div><dt>Flags</dt><dd>${day.flags.length ? day.flags.map(flagChip).join(' ') : '<span class="muted">none</span>'}</dd></div></dl>
+      <div class="sr-cov"><span id="hcl">Air-temperature readings by hour (LMST 0–23):</span><span class="hc-row" role="img" aria-labelledby="hcl" aria-describedby="hcd">${strip}</span><span class="hint" id="hcd">${day.hours_covered} of 24 hours have readings. Instruments work in sessions, so coverage of 30–60 % is normal.</span></div>`;
+  } else if (avail) {
+    facts = `<dl class="facts sr-facts"><div><dt>Earth date</dt><dd>—</dd></div><div><dt>Newest published sol</dt><dd>${nf.format(PUB)}</dd></div></dl>`;
+  }
+  return `<section class="card sr-head" aria-labelledby="srH"><div class="sr-top"><h1 id="srH">${name} · sol ${nf.format(sol)}</h1><div class="sr-nav" role="group" aria-label="Neighbouring sols">${prev}${next}</div></div>
+    ${facts}
+    <div class="sr-links"><a class="btn btn-primary" href="photos.html?rover=${ROVER}&amp;sol=${sol}">Photos of this sol →</a><a class="btn" href="weather-range.html">Weather by sol</a>${IS_C ? '<a class="btn" href="radiation-range.html">Radiation by sol</a>' : ''}</div></section>`;
+}
+
+function cardHtml(def, concept) {
+  const badge = def.q === 'preliminary' ? '<span class="badge no-dot badge-prelim">preliminary</span>' : def.q === 'estimate' ? '<span class="badge no-dot badge-est">estimate</span>' : def.q === 'planned' ? '<span class="badge no-dot badge-est">planned data</span>' : '';
+  if (def.nowind) return `<div class="card pc" id="pc-${def.id}"><div class="pc-head"><h3>${esc(def.title)}</h3></div><div class="state-box" style="padding:var(--s4) var(--s2)"><p style="margin:0">No wind data for sol ${nf.format(sol)}. The wind sensor has data only on sols 36–313 (<code>wind: null</code>).</p></div></div>`;
+  const legend = def.series.length > 1 ? `<span class="legend" style="margin-left:auto"><span><i aria-hidden="true"></i>E</span><span><i class="b" aria-hidden="true"></i>B</span></span>` : '';
+  return `<div class="card pc${concept ? ' concept' : ''}" id="pc-${def.id}"><div class="pc-head"><h3>${esc(def.title)}</h3><span class="muted xsmall">${esc(def.unit)}</span>${badge}${legend}</div>
+    <div class="pc-sum">${esc(def.sum || '')}</div><div class="pc-host"></div><div class="pc-ro" aria-live="off"></div></div>`;
+}
+
+function tableHtml(day) {
+  const cols = DEF.concat(IS_C ? radDefs(day) : []).filter((d) => !d.nowind);
+  const heads = [], series = [];
+  cols.forEach((d) => d.series.forEach((s) => { heads.push(`${d.title.replace(/,.*/, '')}${d.series.length > 1 ? ' ' + s.name : ''} (${d.unit})`); series.push([s, d]); }));
+  const rows = Array.from({ length: 24 }, (_, h) => `<tr><th scope="row">${pad2(h)}:00</th>${series.map(([s, d]) => `<td>${num(s.v[h], d.d)}</td>`).join('')}</tr>`).join('');
+  return `<details class="tbl card panel"><summary>Hourly values as a table</summary><div class="table-scroll" tabindex="0" role="region" aria-label="Hourly values table, scrolls sideways"><table class="hours-table" id="hoursTable"><thead><tr><th scope="col">LMST hour</th>${heads.map((x) => `<th scope="col">${esc(x)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div></details>`;
+}
+
+function sourcesHtml(day) {
+  const files = IS_C
+    ? [['RMD', 'P1', `data_calibrated/sol_${String(Math.floor(sol / 100) * 100).padStart(4, '0')}_${String(Math.floor(sol / 100) * 100 + 99).padStart(4, '0')}/(example path, sol ${sol})`]]
+    : [['CAL_ATS', 'P02', `data_calibrated_env/(example path, sol ${sol})`], ['CAL_WS', 'P03', `data_calibrated_env/(example path, sol ${sol})`], ['DER_PS', 'P01', `data_derived_env/(example path, sol ${sol})`]];
+  return `<section class="card panel sr-sources" aria-labelledby="srcH"><h2 id="srcH" style="font-size:var(--fs-md)">Credit and source files</h2>
+    <p class="credit">${IS_C ? 'Gomez-Elvira, J. (REMS, MSL) / NASA PDS Atmospheres Node, msl_rems (placeholder credit text)' : 'Rodriguez-Manfredi, J. A.; de la Torre Juarez, M. (MEDA, Mars 2020) / NASA PDS Atmospheres Node, urn:nasa:pds:mars2020_meda'}${IS_C ? '<br>Radiation: MSL RAD (SwRI) / NASA PDS Planetary Plasma Interactions Node, MSL-M-RAD-3-RDR-V1.0' : ''}</p>
+    <p>Hours are averages over local mean solar time (LMST). Gaps are hours without readings: lines are broken there, nothing is interpolated.</p>
+    <ul>${files.map((x) => `<li><code>${x[0]}</code> ${x[1]} — ${esc(x[2])}</li>`).join('')}</ul></section>`;
+}
+
+function render() {
+  const app = $('#app');
+  $$('[data-st]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.st === state)));
+  $('#crSol').textContent = nf.format(sol);
+  document.title = `${RV.name} sol ${sol} · Sol Index`;
+  const avail = availability(sol);
+  let st = state;
+  if (st === 'ok' || st === 'partial') { if (avail !== 'ok') st = 'nodata'; }
+  if (st === 'loading') {
+    app.innerHTML = `<section class="card sr-head" aria-busy="true" role="status"><span class="visually-hidden">Loading sol ${sol}…</span><div class="skeleton skel-h" style="width:55%;height:2em"></div><div class="skeleton skel-h" style="width:90%"></div><div class="skeleton skel-h" style="width:70%"></div></section>
+      <div class="charts" style="margin-top:var(--s4)" aria-hidden="true">${Array.from({ length: IS_C ? 5 : 5 }, () => '<div class="card pc"><div class="skeleton skel-h" style="width:45%"></div><div class="skeleton skel-chart"></div></div>').join('')}</div>`;
+    return;
+  }
+  if (st === 'error') {
+    app.innerHTML = headHtml(null, false) + `<div class="alert alert-error" role="alert" style="margin-top:var(--s4)"><div><div class="alert-title">Sol ${nf.format(sol)} could not be loaded</div><div>The service is temporarily unavailable. Try again in a moment.</div><pre class="raw">HTTP 503\n{"error":{"code":"db_unavailable","message":"Database is unavailable","details":null}}</pre><div class="row"><button class="btn btn-primary btn-sm" type="button" id="retry">Try again</button></div></div></div>`;
+    $('#retry').onclick = () => { state = 'ok'; render(); };
+    wireNav(); return;
+  }
+  if (st === 'nodata') {
+    const unp = avail === 'unpublished';
+    app.innerHTML = headHtml(null, true) + `<div class="card state-box" style="margin-top:var(--s4)"><h2 style="font-size:var(--fs-lg)">No ${IS_C ? 'weather or radiation' : 'weather'} data for sol ${nf.format(sol)}</h2>
+      <p>${unp ? `Sol ${nf.format(sol)} is not published yet. The newest published sol is ${nf.format(PUB)}; the archives are updated in batches, with a delay of ${IS_C ? 'several months' : '6–8 months'}.` : `The source archive has no files for this sol (${IS_C ? 'Curiosity has no data for sols 2–8, and a few other sols are missing' : 'the instrument was off or the sol is missing in the archive'}). Nothing is estimated or interpolated.`} Photos for the sol may still exist.</p>
+      <div class="row" style="justify-content:center">${unp ? `<a class="btn btn-primary" href="?sol=${PUB}" data-go="${PUB}">Newest published sol, ${nf.format(PUB)}</a>` : `<a class="btn btn-primary" href="?sol=${ANCHOR}" data-go="${ANCHOR}">Go to sol ${ANCHOR}</a>`}</div>
+      <pre class="raw" style="text-align:left;max-width:520px;margin:var(--s4) auto 0">HTTP 404\n{"error":{"code":"sol_not_found","message":"No weather data for sol ${sol}","details":null}}</pre></div>`;
+    wireNav(); return;
+  }
+  DAY = makeDay(sol, st === 'partial');
+  DEF = defs(DAY);
+  const warn = st === 'partial' ? `<div class="alert alert-warn" role="note" style="margin-top:var(--s4)"><div><div class="alert-title">Partial coverage</div><div>Readings exist in ${DAY.hours_covered} of 24 hours (flag <code>partial_coverage</code>). The daily means may lean towards day or night; hours without readings are hatched and the lines are broken there.</div></div></div>` : '';
+  app.innerHTML = headHtml(DAY, true) + warn + `<div class="hour-bar" style="margin-top:var(--s4)" role="group" aria-label="Shared hour cursor">
+      <label for="hourIn">Inspect hour (LMST)</label><input type="range" id="hourIn" min="0" max="23" step="1" value="${hour}"><output id="hourOut" for="hourIn" aria-live="polite">none selected</output>
+      <label class="chk"><input type="checkbox" id="nightChk" ${night ? 'checked' : ''}> Shade night <span class="opt">approx.</span></label></div>
+    <p class="hint" style="margin:var(--s2) 0 0">Horizontal axis of every chart: local mean solar time (LMST), hours 0–24. Dots are hourly means. Shaded band: the lowest to highest value of the whole sol (the API has no hourly min/max).</p>
+    <div class="charts" style="margin-top:var(--s3)">${DEF.map((d) => cardHtml(d)).join('')}</div>
+    ${IS_C ? `<section id="radiation" aria-labelledby="radH" style="margin-top:var(--s5)"><div class="sec-head"><h2 id="radH">Radiation (RAD), hourly</h2><span class="badge badge-warn no-dot">Concept: planned data source</span></div>
+      <div class="card concept-note concept" style="margin-bottom:var(--s4)"><p style="margin:0" class="small">Hourly RAD series are not in API v2 yet; the daily summary is. This block shows the intended layout and needs a new data stage (hourly observations from the RAD archive). Values below are generated.</p></div>
+      <div class="charts">${radDefs(DAY).map((d) => cardHtml(d, true)).join('')}</div></section>` : `<p class="hint" style="margin-top:var(--s4)">No radiation series for Perseverance: Sol Index has radiation data for Curiosity only.</p>`}
+    <div style="margin-top:var(--s4)">${tableHtml(DAY)}</div><div style="margin-top:var(--s4)">${sourcesHtml(DAY)}</div>`;
+  drawAll();
+  $('#hourIn').oninput = (e) => setHour(+e.target.value, true);
+  $('#nightChk').onchange = (e) => { night = e.target.checked; drawAll(); };
+  wireNav();
+}
+function drawAll() {
+  const all = defs(DAY).concat(IS_C ? radDefs(DAY) : []);
+  all.forEach((d) => { const h = $('#pc-' + d.id + ' .pc-host'); if (h) drawHour(h, d, DAY); });
+  DEF = all.filter((d) => !d.nowind);
+  setHour(null);
+}
+function wireNav() {
+  $$('[data-go]').forEach((a) => { a.onclick = (e) => { e.preventDefault(); sol = +a.dataset.go; history.replaceState(null, '', `?sol=${sol}`); active = false; render(); window.scrollTo(0, 0); }; });
+}
+$$('[data-st]').forEach((b) => {
+  b.onclick = () => {
+    state = b.dataset.st;
+    if (state === 'nodata') sol = NODATA_DEMO; else if (availability(sol) !== 'ok') sol = ANCHOR;
+    history.replaceState(null, '', `?sol=${sol}`); active = false; render();
+  };
+});
+let rt = 0;
+window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { if ($('#hourIn')) { drawAll(); } }, 120); });
+render();
+
+</script>
+</body>
+</html>
