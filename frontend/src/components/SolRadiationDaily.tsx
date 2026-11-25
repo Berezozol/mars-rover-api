@@ -17,13 +17,26 @@ interface Props {
  * Daily RAD summary of the sol with a small trend of the surrounding sols (Curiosity), in µGy per day.
  * The hourly charts are in `SolRadiationHourly`.
  */
-export function SolRadiationDaily({ rover, sol }: Props) {
+export function useDailyRadiation(rover: string, sol: number) {
   const lo = Math.max(0, sol - TREND_SOLS);
   const hi = Math.min(2147483647, sol + TREND_SOLS);
   const [state, retry] = useAsync(
     (signal) => api.radiationRange(rover, lo, hi, signal),
     [rover, sol],
   );
+  return { state, retry };
+}
+
+export function SolRadiationDaily({ rover, sol }: Props) {
+  const daily = useDailyRadiation(rover, sol);
+  return <SolRadiationDailyView sol={sol} {...daily} />;
+}
+
+type DailyState = ReturnType<typeof useDailyRadiation>;
+
+export function SolRadiationDailyView({ sol, state, retry }: { sol: number } & DailyState) {
+  const lo = Math.max(0, sol - TREND_SOLS);
+  const hi = Math.min(2147483647, sol + TREND_SOLS);
 
   let body;
   if (state.status === "loading") {

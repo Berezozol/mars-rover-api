@@ -3,7 +3,11 @@ import { api, ApiError } from "../api/client";
 import type { WeatherHour, WeatherSolDetail } from "../api/types";
 import { FlagPill } from "../components/WeatherInspector";
 import { HourChart } from "../components/HourChart";
-import { SolRadiationDaily } from "../components/SolRadiationDaily";
+import {
+  SolRadiationDaily,
+  SolRadiationDailyView,
+  useDailyRadiation,
+} from "../components/SolRadiationDaily";
 import { SolRadiationHourly, useHourlyRadiation } from "../components/SolRadiationHourly";
 import { EmptyState, ErrorAlert } from "../components/States";
 import { useAsync, useRovers, useTitle } from "../lib/hooks";
@@ -117,7 +121,9 @@ function Report({ rover, name, sol }: { rover: string; name: string; sol: number
   } else if (detail.status === "error") {
     const e = detail.error;
     body =
-      e instanceof ApiError && e.code === "sol_not_found" ? (
+      e instanceof ApiError && e.code === "sol_not_found" && rover === RAD_ROVER ? (
+        <NoWeatherRadiation rover={rover} name={name} sol={sol} head={head(null)} />
+      ) : e instanceof ApiError && e.code === "sol_not_found" ? (
         <>
           {head(null)}
           <div style={{ marginTop: 16 }}>
@@ -169,6 +175,127 @@ function Report({ rover, name, sol }: { rover: string; name: string; sol: number
     <>
       <Crumbs rover={rover} name={name} sol={sol} />
       {body}
+    </>
+  );
+}
+
+/** Curiosity, no weather for the sol: the radiation blocks stay; with no radiation either, one empty state. */
+function NoWeatherRadiation({
+  rover,
+  name,
+  sol,
+  head,
+}: {
+  rover: string;
+  name: string;
+  sol: number;
+  head: preact.ComponentChild;
+}) {
+  void name;
+  const rad = useHourlyRadiation(rover, sol);
+  const daily = useDailyRadiation(rover, sol);
+  const [cur, setCur] = useState<{ hour: number; active: boolean; live: boolean }>({
+    hour: 13,
+    active: false,
+    live: false,
+  });
+  const onHour = (h: number | null) =>
+    setCur((c) => {
+      if (h === null) return c.active ? { ...c, active: false, live: false } : c;
+      return c.active && c.hour === h && !c.live ? c : { hour: h, active: true, live: false };
+    });
+
+  const isMissing = (e: unknown) =>
+    e instanceof ApiError && (e.code === "sol_not_found" || e.status === 404);
+  const hourlyGone =
+    (rad.state.status === "error" && isMissing(rad.state.error)) ||
+    (rad.state.status === "ok" && !rad.state.data?.hours);
+  const dailyGone =
+    (daily.state.status === "error" && isMissing(daily.state.error)) ||
+    (daily.state.status === "ok" && !daily.state.data.items.some((x) => x.sol === sol));
+  const nothing =
+    rad.state.status !== "loading" && daily.state.status !== "loading" && hourlyGone && dailyGone;
+
+  const photos = (
+    <Link class="btn btn-primary" href={`/rovers/${rover}?sol=${sol}`}>
+      Photos of this sol →
+    </Link>
+  );
+  if (nothing) {
+    return (
+      <>
+        {head}
+        <div style={{ marginTop: 16 }}>
+          <EmptyState title={`No data for sol ${sol}`} actions={photos}>
+            There is no weather or radiation data for this sol in the source archives (the
+            instruments were off, the sol is missing, or it is not published yet). Nothing is
+            estimated or interpolated. Photos for the sol may still exist.
+          </EmptyState>
+        </div>
+      </>
+    );
+  }
+  const announce =
+    cur.active && cur.live
+      ? `${hourLabel(cur.hour)} LMST. ${rad.defs
+          .filter((d) => !d.noData)
+          .map((d) => `${d.title}: ${readoutOf(d, cur.hour)}`)
+          .join(". ")}`
+      : "";
+  return (
+    <>
+      {head}
+      <div style={{ marginTop: 16 }} data-testid="no-weather">
+        <EmptyState title={`No weather data for sol ${sol}`} actions={photos}>
+          The source archive has no weather files for this sol (the instrument was off, the sol is
+          missing, or it is not published yet). Nothing is estimated or interpolated. Radiation data
+          for the sol is shown below where it exists.
+        </EmptyState>
+      </div>
+      {rad.defs.length > 0 && (
+        <div
+          class="hour-bar"
+          style={{ marginTop: 16 }}
+          role="group"
+          aria-label="Shared hour cursor"
+        >
+          <label for="hourIn">Inspect hour (LMST)</label>
+          <input
+            type="range"
+            id="hourIn"
+            min={0}
+            max={23}
+            step={1}
+            value={cur.hour}
+            aria-valuetext={`${hourLabel(cur.hour)} LMST`}
+            onInput={(e) =>
+              setCur({
+                hour: Number((e.currentTarget as HTMLInputElement).value),
+                active: true,
+                live: true,
+              })
+            }
+          />
+          <output for="hourIn">{cur.active ? hourLabel(cur.hour) : "none selected"}</output>
+        </div>
+      )}
+      <div class="visually-hidden" role="status" aria-live="polite" data-testid="hour-announce">
+        {announce}
+      </div>
+      <div style={{ marginTop: 32 }}>
+        <SolRadiationHourly
+          state={rad.state}
+          retry={rad.retry}
+          defs={rad.defs}
+          sol={sol}
+          night={null}
+          hour={cur.active ? cur.hour : null}
+          onHour={onHour}
+        />
+      </div>
+      <div style={{ marginTop: 32 }}>
+        <SolRadiationDailyView sol={sol} {...daily} />
+      </div>
     </>
   );
 }

@@ -71,6 +71,8 @@ export function reportRoutes(over: Record<string, Handler> = {}): Record<string,
     routes[RADH(sol)] = radDetail(sol);
   }
   routes[WXD("curiosity", 2)] = noSol(2);
+  // no weather does not hide radiation (decision 2026-11-25): the report asks for it, the archive has none
+  routes[RADH(2)] = apiError(404, "sol_not_found", "No radiation data for sol 2", null);
   for (const sol of [0, 1, 99, PER_SOL, 101]) {
     routes[WXD("perseverance", sol)] = reportDetail("perseverance", sol);
   }
