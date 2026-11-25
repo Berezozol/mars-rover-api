@@ -11,6 +11,7 @@ import { NotFound } from "./pages/NotFound";
 import { PhotoPage } from "./pages/Photo";
 import { RouteMapPage } from "./pages/RouteMap";
 import { Photos } from "./pages/Photos";
+import { SolReport } from "./pages/SolReport";
 import { Samples } from "./pages/Samples";
 import { Search } from "./pages/Search";
 import { Stats } from "./pages/Stats";
@@ -106,6 +107,9 @@ export function App() {
       break;
     case "keysDelete":
       page = <KeysDelete />;
+      break;
+    case "solReport":
+      page = <SolReport key={`${route.rover}:${route.sol}`} rover={route.rover} sol={route.sol} />;
       break;
     case "photo":
       page = <PhotoPage key={route.id} id={route.id} />;

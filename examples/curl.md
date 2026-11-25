@@ -60,8 +60,8 @@ curl "$BASE/api/v2/rovers/curiosity/radiation?sol_min=1600&sol_max=1700"
 # Daily weather summaries (curiosity or perseverance); sol_min and sol_max are optional
 curl "$BASE/api/v2/rovers/perseverance/weather?sol_min=100&sol_max=110"
 
-# One sol with 24 hourly values and the source files
-curl "$BASE/api/v2/rovers/curiosity/weather/1000"
+# One sol with 24 hourly values (mean, _min, _max) and the source files
+curl "$BASE/api/v2/rovers/perseverance/weather/100"
 
 # RSS feed of new photos
 curl "$BASE/api/v2/rovers/perseverance/feed.xml"
@@ -106,6 +106,16 @@ The response has `credit`: keep it when you show the data.
 # Mean air temperature of each sol, with jq
 curl -s "$BASE/api/v2/rovers/perseverance/weather?sol_min=100&sol_max=110" \
   | jq '.items[] | {sol, mean: .air_temp_c.mean, flags: [.flags[].code]}'
+```
+
+Hourly values of one sol (`hours`, LMST): the key without a suffix is the hourly mean, `_min` and `_max` are the
+lowest and highest valid values of the hour, `null` when the hour has no readings. Perseverance also has
+`wind_speed_ms`, `wind_gust_ms` (99th percentile of the hour's wind speed) and `wind_direction_deg`, `null` outside
+sols 36-313.
+
+```sh
+# Hourly air temperature range and wind gust of one sol
+curl -s "$BASE/api/v2/rovers/perseverance/weather/100"   | jq '.hours[] | {hour, air_temp_c, air_temp_c_min, air_temp_c_max, wind_gust_ms}'
 ```
 
 More: [weather.py](weather.py) (Python, standard library) and [weather.mjs](weather.mjs) (JavaScript, `fetch`).

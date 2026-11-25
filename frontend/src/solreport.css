@@ -1,0 +1,269 @@
+/* Sol report (stage 22, phase B): header, shared hour bar and the grid of hourly charts. Tokens only. */
+.sr-head {
+  padding: var(--s4);
+}
+.sr-top {
+  display: flex;
+  gap: var(--s3) var(--s4);
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+}
+.sr-top h1 {
+  margin: 0;
+}
+.sr-nav {
+  display: flex;
+  gap: var(--s2);
+  flex-wrap: wrap;
+}
+.sr-nav [aria-disabled="true"] {
+  color: var(--text-muted);
+  border-style: dashed;
+  cursor: not-allowed;
+}
+.sr-facts {
+  margin-top: var(--s3);
+}
+.opt {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  vertical-align: 1px;
+}
+.sr-cov {
+  display: flex;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: var(--s3);
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+.sr-links {
+  display: flex;
+  gap: var(--s2);
+  flex-wrap: wrap;
+  margin-top: var(--s3);
+}
+.hour-bar {
+  position: sticky;
+  top: var(--header-h, 56px);
+  z-index: 5;
+  display: flex;
+  gap: var(--s3) var(--s4);
+  flex-wrap: wrap;
+  align-items: center;
+  padding: var(--s2) var(--s3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.hour-bar input[type="range"] {
+  flex: 1 1 200px;
+  min-width: 0;
+  accent-color: var(--accent);
+  min-height: 32px;
+}
+.hour-bar input[type="range"]:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.hour-bar label {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.hour-bar output {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  min-width: 9ch;
+}
+.hour-bar .chk {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+}
+.charts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s4);
+}
+@media (min-width: 760px) {
+  .charts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.pc {
+  padding: var(--s3);
+  min-width: 0;
+}
+.pc-head {
+  display: flex;
+  gap: var(--s1) var(--s2);
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+.pc-head h3 {
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+.pc-sum {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  margin: 2px 0 var(--s1);
+}
+.pc-host {
+  min-width: 0;
+}
+.pc-ro {
+  min-height: 2.6em;
+  margin-top: var(--s1);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+.pc-ro b {
+  color: var(--text);
+}
+.pc-none {
+  margin: var(--s3) 0 0;
+}
+.pc svg.chart {
+  touch-action: pan-y;
+  cursor: crosshair;
+}
+svg.chart .night {
+  fill: var(--text-faint);
+  fill-opacity: 0.13;
+}
+svg.chart .nodata {
+  fill: var(--surface-2);
+  stroke: var(--border-strong);
+  stroke-dasharray: 2 3;
+  stroke-width: 1;
+}
+svg.chart .hl-col {
+  fill: var(--accent);
+  fill-opacity: 0.13;
+}
+svg.chart .hr-band {
+  fill: var(--accent);
+  fill-opacity: 0.14;
+}
+svg.chart .solref {
+  stroke: var(--text-muted);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}
+svg.chart .pt {
+  fill: var(--accent);
+}
+svg.chart .pt-b {
+  fill: var(--text-muted);
+}
+svg.chart .ln-hr {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+svg.chart .ln-hr-b {
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-width: 1.6;
+  stroke-dasharray: 5 3;
+}
+.state-box {
+  padding: var(--s5) var(--s4);
+  text-align: center;
+}
+.sec-head {
+  display: flex;
+  gap: var(--s2) var(--s4);
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: var(--s2);
+}
+.sec-head h2 {
+  margin: 0;
+  font-size: var(--fs-lg);
+}
+.rad-trend-title {
+  margin: var(--s3) 0 var(--s1);
+  font-size: var(--fs-sm);
+}
+.sr-sources {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+.sr-sources ul {
+  margin: var(--s2) 0 0;
+  padding-left: 1.2em;
+  overflow-wrap: anywhere;
+}
+.skel-h {
+  height: 1.4em;
+  margin-bottom: var(--s2);
+}
+.skel-chart {
+  height: 150px;
+}
+.hours-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  min-width: 520px;
+}
+.hours-table th,
+.hours-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: right;
+  white-space: nowrap;
+}
+.hours-table th:first-child,
+.hours-table td:first-child {
+  text-align: left;
+}
+.hours-table thead th {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.hours-table tbody tr.cur td,
+.hours-table tbody tr.cur th {
+  background: var(--accent-soft);
+}
+details.tbl summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: var(--fs-sm);
+  padding: var(--s2) 0;
+}
+.badge-prelim {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.badge-est {
+  background: var(--surface-2);
+  color: var(--text-muted);
+  border: 1px dashed var(--border-strong);
+}

@@ -62,7 +62,7 @@ logger = logging.getLogger(__name__)
 # First key of the advisory lock of ``weather parse`` and ``weather import`` (RAD uses 7_250_004).
 WEATHER_LOCK_NAMESPACE = 7_250_005
 # Raise it whenever the reading, the bounds or the aggregation change: every sol is read again.
-WEATHER_PARSER_REVISION = 4
+WEATHER_PARSER_REVISION = 5
 FLAG_ORDER = ("partial_coverage", "humidity_over_100", "out_of_range")
 
 EXIT_OK = 0
@@ -132,6 +132,19 @@ class HourAggregate:
     uv: float | None = None
     wind_speed: float | None = None
     wind_dir: float | None = None
+    # The lowest and highest valid value of the hour (stage 22) and the gust (99th percentile
+    # of the wind speed of the hour).
+    air_min: float | None = None
+    air_max: float | None = None
+    pressure_min: float | None = None
+    pressure_max: float | None = None
+    humidity_min: float | None = None
+    humidity_max: float | None = None
+    ground_min: float | None = None
+    ground_max: float | None = None
+    uv_min: float | None = None
+    uv_max: float | None = None
+    wind_gust: float | None = None
 
 
 @dataclass(frozen=True)
@@ -207,6 +220,17 @@ class SolAggregate:
                 "uv_wm2": item.uv,
                 "wind_ms": item.wind_speed,
                 "wind_dir_deg": item.wind_dir,
+                "air_min_k": item.air_min,
+                "air_max_k": item.air_max,
+                "pressure_min_pa": item.pressure_min,
+                "pressure_max_pa": item.pressure_max,
+                "humidity_min_pct": item.humidity_min,
+                "humidity_max_pct": item.humidity_max,
+                "ground_min_k": item.ground_min,
+                "ground_max_k": item.ground_max,
+                "uv_min_wm2": item.uv_min,
+                "uv_max_wm2": item.uv_max,
+                "wind_gust_ms": item.wind_gust,
             }
             for item in self.hours
         ]
@@ -215,7 +239,7 @@ class SolAggregate:
 class _Series:
     """Extremes, and sums and counts per hour, of one parameter."""
 
-    __slots__ = ("counts", "high", "low", "sums", "total")
+    __slots__ = ("counts", "high", "highs", "low", "lows", "sums", "total")
 
     def __init__(self) -> None:
         self.low = math.inf
@@ -223,6 +247,8 @@ class _Series:
         self.total = 0
         self.sums = [0.0] * 24
         self.counts = [0] * 24
+        self.lows = [math.inf] * 24
+        self.highs = [-math.inf] * 24
 
     def add(self, value: float, hour: int) -> None:
         if value < self.low:
@@ -232,6 +258,16 @@ class _Series:
         self.total += 1
         self.sums[hour] += value
         self.counts[hour] += 1
+        if value < self.lows[hour]:
+            self.lows[hour] = value
+        if value > self.highs[hour]:
+            self.highs[hour] = value
+
+    def hour_low(self, hour: int) -> float | None:
+        return self.lows[hour] if self.counts[hour] else None
+
+    def hour_high(self, hour: int) -> float | None:
+        return self.highs[hour] if self.counts[hour] else None
 
     def hour_mean(self, hour: int) -> float | None:
         return self.sums[hour] / self.counts[hour] if self.counts[hour] else None
@@ -255,6 +291,7 @@ class _Wind:
     def __init__(self) -> None:
         self.speed = _Series()
         self.speeds = array("d")
+        self.hour_speeds = [array("d") for _ in range(24)]
         self.sectors = [0] * SECTORS
         self.hour_sectors = [[0] * SECTORS for _ in range(24)]
         self.east = 0.0
@@ -264,6 +301,11 @@ class _Wind:
     def add_speed(self, value: float, hour: int) -> None:
         self.speed.add(value, hour)
         self.speeds.append(value)
+        self.hour_speeds[hour].append(value)
+
+    def hour_gust(self, hour: int) -> float | None:
+        speeds = self.hour_speeds[hour]
+        return percentile(sorted(speeds), 0.99) if speeds else None
 
     def add_direction(self, degrees: float, hour: int) -> None:
         sector = int(((degrees + _SECTOR_WIDTH / 2) % 360.0) // _SECTOR_WIDTH)
@@ -421,6 +463,17 @@ def _hours(series: dict[str, _Series], wind: _Wind, bins: set[int]) -> tuple[Hou
             uv=series[UV].hour_mean(hour),
             wind_speed=wind.speed.hour_mean(hour),
             wind_dir=wind.hour_direction(hour),
+            air_min=series[AIR].hour_low(hour),
+            air_max=series[AIR].hour_high(hour),
+            pressure_min=series[PRESSURE].hour_low(hour),
+            pressure_max=series[PRESSURE].hour_high(hour),
+            humidity_min=series[HUMIDITY].hour_low(hour),
+            humidity_max=series[HUMIDITY].hour_high(hour),
+            ground_min=series[GROUND].hour_low(hour),
+            ground_max=series[GROUND].hour_high(hour),
+            uv_min=series[UV].hour_low(hour),
+            uv_max=series[UV].hour_high(hour),
+            wind_gust=wind.hour_gust(hour),
         )
         for hour in range(24)
     )

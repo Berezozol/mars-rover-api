@@ -5,6 +5,7 @@ import "./app.css";
 import "./map.css";
 import "./stage19.css";
 import "./data.css";
+import "./solreport.css";
 import "./keys.css";
 
 const root = document.getElementById("app");

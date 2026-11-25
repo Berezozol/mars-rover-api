@@ -418,16 +418,32 @@ export interface WeatherResponse {
   items: WeatherSol[];
 }
 
-/** Hourly means by local mean solar time; a missing hour is `null`. Keys follow the rover's parameters. */
+/**
+ * One local mean solar time hour of `GET /weather/{sol}`. A key without a suffix is the hourly mean;
+ * `_min` / `_max` are the lowest / highest valid value of the hour (stage 22; absent on servers that
+ * have not re-parsed the archive yet). A missing measurement is `null`. Keys follow the rover.
+ */
 export interface WeatherHour {
   hour: number;
   coverage: number;
   air_temp_c?: number | null;
+  air_temp_c_min?: number | null;
+  air_temp_c_max?: number | null;
   pressure_pa?: number | null;
+  pressure_pa_min?: number | null;
+  pressure_pa_max?: number | null;
   humidity_pct?: number | null;
+  humidity_pct_min?: number | null;
+  humidity_pct_max?: number | null;
   ground_temp_c?: number | null;
+  ground_temp_c_min?: number | null;
+  ground_temp_c_max?: number | null;
   uv_wm2?: number | null;
+  uv_wm2_min?: number | null;
+  uv_wm2_max?: number | null;
   wind_speed_ms?: number | null;
+  /** 99th percentile of the hour's wind speeds (Perseverance). */
+  wind_gust_ms?: number | null;
   wind_direction_deg?: number | null;
 }
 

@@ -23,7 +23,11 @@ function DataMenu({ route }: { route: RouteMatch }) {
   const wrap = useRef<HTMLDivElement>(null);
   const btn = useRef<HTMLButtonElement>(null);
   const active = route.name === "dataSet" ? route.set : null;
-  const here = route.name === "data" || route.name === "dataSet" || route.name === "samples";
+  const here =
+    route.name === "data" ||
+    route.name === "dataSet" ||
+    route.name === "samples" ||
+    route.name === "solReport";
 
   // Navigating closes the menu.
   useEffect(() => setOpen(false), [route]);

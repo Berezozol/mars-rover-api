@@ -1,7 +1,7 @@
 """`weather export` / `weather import` (stage 17, AC-22, AC-23, import side of AC-20).
 
-The export is gzip JSON Lines: a `meta` line (`format` `mars-weather-export`, `version` 1,
-`schema_revision` `0018`, per-rover counts), then `dataset`, `daily`, `hourly` lines. Data
+The export is gzip JSON Lines: a `meta` line (`format` `mars-weather-export`, `version` 2,
+`schema_revision` `0020`, per-rover counts), then `dataset`, `daily`, `hourly` lines. Data
 for the tests is produced by `weather parse` on small synthetic raw trees. The invalid files
 are made from a real export by editing its lines.
 """
@@ -101,8 +101,8 @@ async def test_export_writes_meta_dataset_daily_and_hourly_lines_ac22(
     meta = lines[0]
     assert meta["t"] == "meta"
     assert meta["format"] == "mars-weather-export"
-    assert meta["version"] == 1
-    assert meta["schema_revision"] == "0018"
+    assert meta["version"] == 2  # stage 22: hourly min/max and gust
+    assert meta["schema_revision"] == "0020"
     assert meta["counts"] == {
         "perseverance": {"daily": 3, "hourly": 72},
         "curiosity": {"daily": 2, "hourly": 48},
@@ -136,7 +136,15 @@ async def test_export_rows_carry_all_columns_with_iso_utc_times_ac22(
     assert daily["air_mean_k"] == pytest.approx(stored["air_mean_k"])
     assert datetime.fromisoformat(daily["updated_at"]).utcoffset().total_seconds() == 0
     assert daily["flags"] == [] and daily["source_version"]["CAL_ATS"] == "P01"
-    assert {"rover_id", "sol", "hour", "coverage", "air_k"} <= hourly.keys()
+    assert {
+        "rover_id",
+        "sol",
+        "hour",
+        "coverage",
+        "air_k",
+        "air_min_k",
+        "air_max_k",
+    } <= hourly.keys()
 
 
 async def test_export_of_one_rover_has_only_its_rows_ac22(
@@ -251,7 +259,7 @@ def mutate(lines: list[dict[str, Any]], how: str) -> list[dict[str, Any]]:
     if how == "format":
         out[0]["format"] = "something-else"
     elif how == "version":
-        out[0]["version"] = 2
+        out[0]["version"] = 1  # stage 22: only version 2 is accepted
     elif how == "negative-sol":
         daily["sol"] = -1
     elif how == "hour-24":

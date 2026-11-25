@@ -718,6 +718,17 @@ class WeatherHourly(Base):
         ),
         CheckConstraint("hour >= 0 AND hour <= 23", name="hour_range"),
         CheckConstraint("coverage >= 0 AND coverage <= 1", name="coverage_range"),
+        CheckConstraint("(air_min_k IS NULL) = (air_max_k IS NULL)", name="air_extremes_pair"),
+        CheckConstraint(
+            "(pressure_min_pa IS NULL) = (pressure_max_pa IS NULL)", name="pressure_extremes_pair"
+        ),
+        CheckConstraint(
+            "(humidity_min_pct IS NULL) = (humidity_max_pct IS NULL)", name="humidity_extremes_pair"
+        ),
+        CheckConstraint(
+            "(ground_min_k IS NULL) = (ground_max_k IS NULL)", name="ground_extremes_pair"
+        ),
+        CheckConstraint("(uv_min_wm2 IS NULL) = (uv_max_wm2 IS NULL)", name="uv_extremes_pair"),
     )
 
     rover_id: Mapped[str] = mapped_column(Text, primary_key=True)
@@ -731,6 +742,18 @@ class WeatherHourly(Base):
     uv_wm2: Mapped[float | None] = mapped_column(Float)
     wind_ms: Mapped[float | None] = mapped_column(Float)
     wind_dir_deg: Mapped[float | None] = mapped_column(Float)
+    # Stage 22: the lowest and highest valid value of the hour (NULL before the reparse).
+    air_min_k: Mapped[float | None] = mapped_column(Float)
+    air_max_k: Mapped[float | None] = mapped_column(Float)
+    pressure_min_pa: Mapped[float | None] = mapped_column(Float)
+    pressure_max_pa: Mapped[float | None] = mapped_column(Float)
+    humidity_min_pct: Mapped[float | None] = mapped_column(Float)
+    humidity_max_pct: Mapped[float | None] = mapped_column(Float)
+    ground_min_k: Mapped[float | None] = mapped_column(Float)
+    ground_max_k: Mapped[float | None] = mapped_column(Float)
+    uv_min_wm2: Mapped[float | None] = mapped_column(Float)
+    uv_max_wm2: Mapped[float | None] = mapped_column(Float)
+    wind_gust_ms: Mapped[float | None] = mapped_column(Float)
 
 
 class WeatherDataset(Base):

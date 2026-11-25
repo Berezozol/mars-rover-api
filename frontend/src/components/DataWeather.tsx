@@ -325,11 +325,18 @@ function WeatherView({
         latest={now}
         roverName={rover.name}
         onJump={(sol) => setChosen([Math.min(range[0], sol), Math.max(range[1], sol)])}
-        rowLink={(r) => ({
-          href: `/rovers/${rover.id}?sol=${r.sol}`,
-          label: "Photos",
-          aria: `Photos of sol ${r.sol}`,
-        })}
+        rowLink={(r) => [
+          {
+            href: `/rovers/${rover.id}?sol=${r.sol}`,
+            label: "Photos",
+            aria: `Photos of sol ${r.sol}`,
+          },
+          {
+            href: `/rovers/${rover.id}/sols/${r.sol}/conditions`,
+            label: "Sol report →",
+            aria: `Sol report for sol ${r.sol}`,
+          },
+        ]}
         focus={jump}
       />
       <p class="xsmall muted" style={{ margin: 0 }}>

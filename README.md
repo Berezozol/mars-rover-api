@@ -93,9 +93,16 @@ other rovers answer `404 not_found`. Optional `sol_min` and `sol_max` (inclusive
   urn:nasa:pds:mars2020_meda". Curiosity: "REMS team (Centro de Astrobiologia) / NASA PDS Atmospheres Node,
   urn:nasa:pds:msl_rems". This project is unofficial.
 
+Hourly values (`hours`, 24 items, `hour` 0-23 in LMST): each parameter key without a suffix is the mean of the
+hour, and `_min` / `_max` are its lowest and highest valid values, for example `air_temp_c`, `air_temp_c_min`,
+`air_temp_c_max`. An hour with no readings of a parameter has `null` in all three keys. Perseverance also has
+`wind_speed_ms` (mean), `wind_gust_ms` (99th percentile of the hour's wind speed) and `wind_direction_deg` (most
+frequent direction), all `null` outside sols 36-313. The keys are additions: clients that read only the means keep
+working. Sol Index shows these hours as charts at `/rovers/{rover}/sols/{sol}/conditions`.
+
 ```sh
 curl "$BASE/api/v2/rovers/perseverance/weather?sol_min=100&sol_max=110"
-curl "$BASE/api/v2/rovers/curiosity/weather/1000"
+curl "$BASE/api/v2/rovers/perseverance/weather/100"
 ```
 
 ## Quick start

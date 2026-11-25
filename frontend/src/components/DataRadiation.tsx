@@ -336,11 +336,18 @@ function RadiationView({
         latest={now}
         roverName="Curiosity"
         onJump={(s) => setChosen([Math.min(range[0], s), Math.max(range[1], s)])}
-        rowLink={(x) => ({
-          href: `/rovers/${RAD_ROVER}?sol=${x.sol}`,
-          label: "Photos",
-          aria: `Photos of sol ${x.sol}`,
-        })}
+        rowLink={(x) => [
+          {
+            href: `/rovers/${RAD_ROVER}?sol=${x.sol}`,
+            label: "Photos",
+            aria: `Photos of sol ${x.sol}`,
+          },
+          {
+            href: `/rovers/${RAD_ROVER}/sols/${x.sol}/conditions`,
+            label: "Sol report →",
+            aria: `Sol report for sol ${x.sol}`,
+          },
+        ]}
         focus={jump}
       />
 

@@ -66,7 +66,7 @@
 | AC-21 | Час с одним показанием → `_min = _max =` среднее; порыв часа — `percentile(скорости часа, 0.99)` | qa-engineer | unit |
 | AC-22 | `weather parse` на базе со строками ревизии 4 → в плане все солы (ревизия 5); суточные столбцы не меняются; повтор → 0 солов | qa-engineer | integration |
 | AC-23 | Миграция 0020: `upgrade` → `downgrade` → `upgrade` на временной базе; существующие строки получают `NULL`; `downgrade` удаляет только новые столбцы | qa-engineer | integration |
-| AC-24 | `weather export` → версия формата 2, `schema_revision` `0020`, часы с `_min/_max`; `weather import` в пустую базу → `/weather/{sol}` побайтно как в исходной; файл с `schema_revision` `0018` → отказ, код 1, база не тронута | qa-engineer | integration |
+| AC-24 | `weather export` → версия формата 2, `schema_revision` `0020`, часы с `_min/_max`; `weather import` в пустую базу → `/weather/{sol}` побайтно как в исходной, кроме `source.files` (`weather_files` не переносится — как в этапе 17); файл с `schema_revision` `0018` → отказ, код 2 (неверный ввод, как AC-23 этапа 17), база не тронута | qa-engineer | integration |
 | AC-25 | Маршрут `/rovers/curiosity/sols/344/conditions` → страница отчёта; `/rovers/opportunity/sols/1/conditions` → состояние «no weather data for this rover» со ссылкой на снимки; `/rovers/curiosity/sols/abc/conditions` → страница «not found» | frontend-qa | компонентный |
 | AC-26 | Шапка: Ls из `ls` ответа (ответ с `ls` 356.7 → «Ls 356.7°»), сезон по полушарию (Curiosity, юг: «southern summer»), покрытие, флаги, восход/закат с пометкой «optional»; `ls: null` → «—», сезона нет | frontend-qa | компонентный |
 | AC-27 | Отдельный график на параметр, ось X — LMST 0–24; час с `null` → разрыв линии и штриховая колонка, без интерполяции | frontend-qa | компонентный |
@@ -74,7 +74,7 @@
 | AC-29 | Наведение, касание или ползунок «Inspect hour» → курсор на этом часе во всех графиках; значения часа объявляются `aria-live` | frontend-qa | компонентный |
 | AC-30 | «← Sol N−1» / «Sol N+1 →» ведут на соседний номер; сол 0 — кнопки назад нет; `404 sol_not_found` → состояние «No data for sol N» с теми же кнопками | frontend-qa | компонентный |
 | AC-31 | «Photos of this sol →» → `/rovers/{rover}?sol={sol}`; строки таблиц фазы A получают ссылку «Sol report» на отчёт | frontend-qa | компонентный |
-| AC-32 | Отчёт Perseverance → есть график ветра (средняя скорость, порыв, направление часа), блока радиации нет; отчёт Curiosity → есть УФ и блок радиации — суточная сводка из `/radiation?sol_min=N&sol_max=N`, почасовой части нет до фазы C | frontend-qa | компонентный |
+| AC-32 | Отчёт Perseverance → есть график ветра (средняя скорость, порыв, направление часа), блока радиации нет; отчёт Curiosity → есть УФ и блок радиации — суточная сводка сола и тренд ±30 солов с отметкой сола из одного запроса `/radiation?sol_min=N−30&sol_max=N+30` (границы зажаты в 0…2 147 483 647; уточнение тимлида после ревью фазы B), почасовой части нет до фазы C | frontend-qa | компонентный |
 | AC-33 | Ширина 360 px → одна колонка графиков, 760 px → две; тёмная тема, загрузка и `503` → читаемо, с «Retry» | frontend-qa | e2e + `/ui-check` |
 
 ### Фаза C — почасовая радиация Curiosity

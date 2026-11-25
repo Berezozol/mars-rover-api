@@ -5952,6 +5952,28 @@
             ],
             "title": "Air Temp C"
           },
+          "air_temp_c_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Air Temp C Min"
+          },
+          "air_temp_c_max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Air Temp C Max"
+          },
           "pressure_pa": {
             "anyOf": [
               {
@@ -5962,6 +5984,28 @@
               }
             ],
             "title": "Pressure Pa"
+          },
+          "pressure_pa_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pressure Pa Min"
+          },
+          "pressure_pa_max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pressure Pa Max"
           },
           "humidity_pct": {
             "anyOf": [
@@ -5974,6 +6018,28 @@
             ],
             "title": "Humidity Pct"
           },
+          "humidity_pct_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Humidity Pct Min"
+          },
+          "humidity_pct_max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Humidity Pct Max"
+          },
           "wind_speed_ms": {
             "anyOf": [
               {
@@ -5985,6 +6051,18 @@
             ],
             "title": "Wind Speed Ms",
             "description": "Perseverance only."
+          },
+          "wind_gust_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wind Gust Ms",
+            "description": "Perseverance only. 99th percentile of the wind speed of the hour."
           },
           "wind_direction_deg": {
             "anyOf": [
@@ -6010,6 +6088,30 @@
             "title": "Ground Temp C",
             "description": "Curiosity (see WeatherSol)."
           },
+          "ground_temp_c_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ground Temp C Min",
+            "description": "See ground_temp_c."
+          },
+          "ground_temp_c_max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ground Temp C Max",
+            "description": "See ground_temp_c."
+          },
           "uv_wm2": {
             "anyOf": [
               {
@@ -6021,6 +6123,30 @@
             ],
             "title": "Uv Wm2",
             "description": "Curiosity only."
+          },
+          "uv_wm2_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uv Wm2 Min",
+            "description": "Curiosity only."
+          },
+          "uv_wm2_max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uv Wm2 Max",
+            "description": "Curiosity only."
           }
         },
         "type": "object",
@@ -6028,10 +6154,17 @@
           "hour",
           "coverage",
           "air_temp_c",
+          "air_temp_c_min",
+          "air_temp_c_max",
           "pressure_pa",
-          "humidity_pct"
+          "pressure_pa_min",
+          "pressure_pa_max",
+          "humidity_pct",
+          "humidity_pct_min",
+          "humidity_pct_max"
         ],
-        "title": "WeatherHour"
+        "title": "WeatherHour",
+        "description": "One hour of LMST: the mean of each parameter and the lowest and highest valid value."
       },
       "WeatherResponse": {
         "properties": {

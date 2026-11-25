@@ -66,6 +66,14 @@ def main() -> int:
         detail = get(f"{base}/api/v2/rovers/{rover}/weather/{sol}")
         print(f"\nHourly air temperature, sol {sol} (LMST hours; - = no readings)")
         print(" ".join(f"{h['hour']:02d}:{fmt(h['air_temp_c'])}" for h in detail["hours"]))
+        # Each hour also has air_temp_c_min / air_temp_c_max;
+        # Perseverance has wind_gust_ms (99th percentile).
+        print("hour  air min/max (C)  wind gust (m/s)")
+        for h in detail["hours"]:
+            gust = fmt(h.get("wind_gust_ms"))
+            low = fmt(h["air_temp_c_min"])
+            high = fmt(h["air_temp_c_max"])
+            print(f"{h['hour']:02d}    {low:>6} {high:>6}  {gust:>15}")
     return 0
 
 

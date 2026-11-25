@@ -204,7 +204,9 @@ async def test_export_carries_no_absolute_path_ac22(
 
 
 @pytest.mark.parametrize(
-    "revision", ["0017", "0019", "", None], ids=["older", "newer", "empty", "null"]
+    "revision",
+    ["0017", "0019", "0021", "", None],
+    ids=["older", "previous", "newer", "empty", "null"],
 )
 async def test_import_of_another_schema_revision_is_refused_and_changes_nothing_ac23(
     raw: Path, clean_db: Factory, tmp_path: Path, revision: str | None
@@ -235,7 +237,7 @@ async def test_import_with_the_current_schema_revision_still_works_ac22(
     raw: Path, clean_db: Factory, tmp_path: Path
 ) -> None:
     lines = await exported(raw, clean_db, tmp_path)
-    assert lines[0]["schema_revision"] == "0018"
+    assert lines[0]["schema_revision"] == "0020"
     good = write_export(tmp_path / "good-rev.jsonl.gz", lines)
 
     assert await import_(good) == 0

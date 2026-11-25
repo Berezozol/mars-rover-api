@@ -105,6 +105,7 @@ export type RouteMatch =
   | { name: "map"; rover: string }
   | { name: "flights"; rover: string }
   | { name: "samples"; rover: string }
+  | { name: "solReport"; rover: string; sol: number }
   | { name: "photo"; id: string }
   | { name: "data" }
   | { name: "dataSet"; set: DataSet }
@@ -133,6 +134,14 @@ export function matchRoute(pathname: string): RouteMatch {
   }
   if (a === "rovers" && b && c === "samples" && parts.length === 3) {
     return { name: "samples", rover: b.toLowerCase() };
+  }
+  if (a === "rovers" && b && c === "sols" && parts.length === 5 && parts[4] === "conditions") {
+    const sol = parts[3]!;
+    // A sol is a whole number the API accepts (0 .. 2^31-1); anything else is not a page.
+    if (/^(0|[1-9]\d{0,9})$/.test(sol) && Number(sol) <= 2147483647) {
+      return { name: "solReport", rover: b.toLowerCase(), sol: Number(sol) };
+    }
+    return { name: "notfound" };
   }
   if (a === "photos" && b && parts.length === 2) return { name: "photo", id: b };
   if (a === "data" && parts.length === 1) return { name: "data" };

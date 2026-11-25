@@ -77,21 +77,43 @@ P_HOUR_KEYS = [
     "hour",
     "coverage",
     "air_temp_c",
+    "air_temp_c_min",
+    "air_temp_c_max",
     "pressure_pa",
+    "pressure_pa_min",
+    "pressure_pa_max",
     "humidity_pct",
+    "humidity_pct_min",
+    "humidity_pct_max",
     "wind_speed_ms",
+    "wind_gust_ms",
     "wind_direction_deg",
     "ground_temp_c",
+    "ground_temp_c_min",
+    "ground_temp_c_max",
 ]
 C_HOUR_KEYS = [
     "hour",
     "coverage",
     "air_temp_c",
+    "air_temp_c_min",
+    "air_temp_c_max",
     "pressure_pa",
+    "pressure_pa_min",
+    "pressure_pa_max",
     "humidity_pct",
+    "humidity_pct_min",
+    "humidity_pct_max",
     "ground_temp_c",
+    "ground_temp_c_min",
+    "ground_temp_c_max",
     "uv_wm2",
+    "uv_wm2_min",
+    "uv_wm2_max",
 ]
+# Stage 22: the hourly extremes and the gust are null in rows that were not read again (AC-15).
+NO_EXTREMES = {k: None for k in P_HOUR_KEYS if k.endswith(("_min", "_max")) or k == "wind_gust_ms"}
+C_NO_EXTREMES = {k: None for k in C_HOUR_KEYS if k.endswith(("_min", "_max"))}
 P_PARAMETERS = {
     "air_temp_c": {"unit": "°C", "quality": "measured"},
     "pressure_pa": {"unit": "Pa", "quality": "measured"},
@@ -585,6 +607,7 @@ async def test_detail_has_the_sol_fields_and_24_hours_ac31(
         "wind_speed_ms": 2.1,
         "wind_direction_deg": 157.5,
         "ground_temp_c": -10.0,
+        **NO_EXTREMES,
     }
     assert hours[12]["air_temp_c"] == -23.0
     assert hours[12]["wind_speed_ms"] is None and hours[12]["wind_direction_deg"] is None
@@ -606,6 +629,7 @@ async def test_hours_without_data_have_null_values_and_zero_coverage_ac31(
         "wind_speed_ms": None,
         "wind_direction_deg": None,
         "ground_temp_c": None,
+        **NO_EXTREMES,
     }
     assert all(h["coverage"] == 0 and h["air_temp_c"] is None for h in hours[13:])
 
@@ -645,6 +669,7 @@ async def test_curiosity_hours_have_ground_and_uv_and_no_wind_ac32(
         "humidity_pct": 12.0,
         "ground_temp_c": -87.5,
         "uv_wm2": 0.0,
+        **C_NO_EXTREMES,
     }
     assert "wind" not in response.text.lower()
 

@@ -402,6 +402,20 @@ export const api = {
     cached(`radiation:${rover}`, () =>
       request<RadiationResponse>(`/rovers/${slug(rover)}/radiation`),
     ),
+  /** Daily RAD summaries of a sol range (inclusive), not cached: used by the sol report. */
+  radiationRange: (rover: string, solMin: number, solMax: number, signal?: AbortSignal) =>
+    request<RadiationResponse>(
+      `/rovers/${slug(rover)}/radiation`,
+      { sol_min: solMin, sol_max: solMax },
+      signal,
+    ),
+  /** The weather list of a sol range (inclusive); the header (credit, source_url) is the same for any range. */
+  weatherRange: (rover: string, solMin: number, solMax: number, signal?: AbortSignal) =>
+    request<WeatherResponse>(
+      `/rovers/${slug(rover)}/weather`,
+      { sol_min: solMin, sol_max: solMax },
+      signal,
+    ),
   /** Daily weather summaries of a rover (Curiosity, Perseverance): the whole history in one response, cached. */
   weather: (rover: string) =>
     cached(`weather:${rover}`, () => request<WeatherResponse>(`/rovers/${slug(rover)}/weather`)),

@@ -397,13 +397,24 @@ export interface WeatherFlag {
 
 export interface WeatherHour {
   air_temp_c: number | null;
+  air_temp_c_max: number | null;
+  air_temp_c_min: number | null;
   coverage: number;
   ground_temp_c?: number | null;
+  ground_temp_c_max?: number | null;
+  ground_temp_c_min?: number | null;
   hour: number;
   humidity_pct: number | null;
+  humidity_pct_max: number | null;
+  humidity_pct_min: number | null;
   pressure_pa: number | null;
+  pressure_pa_max: number | null;
+  pressure_pa_min: number | null;
   uv_wm2?: number | null;
+  uv_wm2_max?: number | null;
+  uv_wm2_min?: number | null;
   wind_direction_deg?: number | null;
+  wind_gust_ms?: number | null;
   wind_speed_ms?: number | null;
 }
 

@@ -34,4 +34,15 @@ SYNTHETIC rows appended at the end of the sol 100 files (everything else is real
 | `DER_TIRS` P03 | `00100M12:00:11.000`, flux 300.0, `ROVER_LOW_TILT` = 0 | filtered out (rover tilted), not counted |
 | `DER_TIRS` P03 | `00100M12:00:12.000`, flux 300.0, wheel flag 0 | filtered out (wheel in the field of view), not counted |
 
+## SYNTHETIC: `synthetic/single_reading/` (stage 22, hourly min/max; no real data at all)
+
+Built with the helpers of `tests/_weather.py` (MEDA format, sol 7, CRLF). The real fixtures have no
+hour with a single reading, so this small set covers the edge cases of the hourly `_min`/`_max`:
+
+| File | Hour 3 | Hour 4 | Hour 5 | Hour 6 |
+|------|--------|--------|--------|--------|
+| `sol_0007_CAL_ATS.csv` | one reading, 210 K | 205 K and 207 K | two readings of 999.9 K (all out of range) | 220 K and 224 K |
+| `sol_0007_DER_PS.csv` | one reading, 740.5 Pa | 741.0 and 743.0 Pa | two readings of 50 Pa (all out of range) | none |
+| `sol_0007_CAL_WS.csv` | one speed, 4.0 m/s | 2.0 and 6.0 m/s | none | none |
+
 Other versions of a product (`CAL_ATS` P02 of sol 100) and the quirk files are built in the tests.

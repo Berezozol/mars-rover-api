@@ -42,4 +42,11 @@ if (data.items.length > 0) {
   const detail = await get(`/api/v2/rovers/${rover}/weather/${sol}`);
   console.log(`\nHourly air temperature, sol ${sol} (LMST hours; - = no readings)`);
   console.log(detail.hours.map((h) => `${String(h.hour).padStart(2, "0")}:${fmt(h.air_temp_c)}`).join(" "));
+  // Each hour also has air_temp_c_min / air_temp_c_max; Perseverance has wind_gust_ms (99th percentile).
+  console.log("hour  air min/max (C)  wind gust (m/s)");
+  for (const h of detail.hours) {
+    console.log(
+      `${String(h.hour).padStart(2, "0")}    ${fmt(h.air_temp_c_min).padStart(6)} ${fmt(h.air_temp_c_max).padStart(6)}  ${fmt(h.wind_gust_ms).padStart(15)}`,
+    );
+  }
 }

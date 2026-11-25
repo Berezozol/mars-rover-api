@@ -289,18 +289,38 @@ class WeatherService:
         def pick(name: str, convert: Callable[[float | None], float | None]) -> float | None:
             return convert(getattr(row, name)) if row is not None else None
 
+        def triple(
+            key: str,
+            mean: str,
+            low: str,
+            high: str,
+            convert: Callable[[float | None], float | None],
+        ) -> Json:
+            return {
+                key: pick(mean, convert),
+                f"{key}_min": pick(low, convert),
+                f"{key}_max": pick(high, convert),
+            }
+
         out: Json = {
             "hour": hour,
             "coverage": _value(row.coverage, 2) if row is not None else 0.0,
-            "air_temp_c": pick("air_k", _celsius),
-            "pressure_pa": pick("pressure_pa", _pressure),
-            "humidity_pct": pick("humidity_pct", _humidity),
+            **triple("air_temp_c", "air_k", "air_min_k", "air_max_k", _celsius),
+            **triple("pressure_pa", "pressure_pa", "pressure_min_pa", "pressure_max_pa", _pressure),
+            **triple(
+                "humidity_pct", "humidity_pct", "humidity_min_pct", "humidity_max_pct", _humidity
+            ),
         }
         if rover == "perseverance":
             out["wind_speed_ms"] = pick("wind_ms", lambda v: _value(v, 1))
+            out["wind_gust_ms"] = pick("wind_gust_ms", lambda v: _value(v, 1))
             out["wind_direction_deg"] = pick("wind_dir_deg", lambda v: _value(v, 1))
         if self._has_ground(rover):
-            out["ground_temp_c"] = pick("ground_k", _celsius)
+            out.update(
+                triple("ground_temp_c", "ground_k", "ground_min_k", "ground_max_k", _celsius)
+            )
         if rover == "curiosity":
-            out["uv_wm2"] = pick("uv_wm2", lambda v: _value(v, 2))
+            out.update(
+                triple("uv_wm2", "uv_wm2", "uv_min_wm2", "uv_max_wm2", lambda v: _value(v, 2))
+            )
         return out

@@ -97,7 +97,7 @@ the mission by months, so the latest sols are missing. Other rovers: `404 not_fo
 `GET /api/v2/rovers/{{rover}}/weather` (`curiosity` REMS and `perseverance` MEDA only, NASA PDS; \
 daily summaries per sol; optional `sol_min`/`sol_max`, inclusive; no pagination), \
 `GET /api/v2/rovers/{{rover}}/weather/{{sol}}` (the same plus 24 hourly values in `hours`, LMST, and \
-`source.files`; unknown sol: `404 sol_not_found`). Units: °C, Pa, % relative humidity, W/m2 (UV), m/s. \
+`source.files`; unknown sol: `404 sol_not_found`). \nEach hour in `hours` has the hourly mean (`air_temp_c`) and the lowest and highest valid values of the hour \n(`air_temp_c_min`, `air_temp_c_max`); same for pressure, humidity, ground temperature and (Curiosity) UV; \nan hour without readings has `null` in all three keys. Perseverance also has `wind_speed_ms` (mean), \n`wind_gust_ms` (99th percentile of the hour's wind speed) and `wind_direction_deg` (most frequent \ndirection), `null` outside sols 36-313. The keys are additions to the means. Web page with hourly charts: \n`{origin}/rovers/{{rover}}/sols/{{sol}}/conditions`. Units: °C, Pa, % relative humidity, W/m2 (UV), m/s. \
 Wind direction: azimuth in degrees clockwise from north as the source gives it; from/to is not stated. \
 `min`/`max` are the lowest and highest valid values; `mean` is the mean of the hourly means and is always \
 given. `flags` (`code`, `parameter`, `count`): `partial_coverage` (readings in fewer than 18 of 24 hours), \

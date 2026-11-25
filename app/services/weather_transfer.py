@@ -32,8 +32,8 @@ from app.services.weather_sync import WEATHER_LOCK_NAMESPACE
 logger = logging.getLogger(__name__)
 
 EXPORT_FORMAT = "mars-weather-export"
-EXPORT_VERSION = 1
-SCHEMA_REVISION = "0018"
+EXPORT_VERSION = 2
+SCHEMA_REVISION = "0020"
 ROVERS = ("curiosity", "perseverance")
 # Columns of the state row that an import sets itself.
 _IMPORT_OWN = ("imported_at", "import_meta")
@@ -51,6 +51,25 @@ _HOURLY_FLOATS = (
     "uv_wm2",
     "wind_ms",
     "wind_dir_deg",
+    "air_min_k",
+    "air_max_k",
+    "pressure_min_pa",
+    "pressure_max_pa",
+    "humidity_min_pct",
+    "humidity_max_pct",
+    "ground_min_k",
+    "ground_max_k",
+    "uv_min_wm2",
+    "uv_max_wm2",
+    "wind_gust_ms",
+)
+# (mean, lowest, highest) columns of the parameters that have extremes in an hour.
+_HOURLY_TRIPLES = (
+    ("air_k", "air_min_k", "air_max_k"),
+    ("pressure_pa", "pressure_min_pa", "pressure_max_pa"),
+    ("humidity_pct", "humidity_min_pct", "humidity_max_pct"),
+    ("ground_k", "ground_min_k", "ground_max_k"),
+    ("uv_wm2", "uv_min_wm2", "uv_max_wm2"),
 )
 _HOURLY_KEYS = frozenset(("t", "rover_id", "sol", "hour", "coverage", *_HOURLY_FLOATS))
 
@@ -169,7 +188,7 @@ class _RoverCounts(_Line):
 class _Meta(_Line):
     t: Literal["meta"]
     format: Literal["mars-weather-export"]
-    version: Literal[1]
+    version: Literal[2]
     schema_revision: str
     exported_at: AwareDatetime
     counts: dict[Rover, _RoverCounts]
@@ -291,6 +310,16 @@ def _is_number(value: object) -> bool:
     return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
 
 
+def _check_triple(number: int, data: dict[str, Any], mean: str, low: str, high: str) -> None:
+    """The extremes are both set or both empty, the mean is set exactly then, and low <= high."""
+    if (data[low] is None) != (data[high] is None):
+        raise WeatherImportError(f"line {number}: {low} and {high} must be both set or empty")
+    if (data[mean] is None) != (data[low] is None):
+        raise WeatherImportError(f"line {number}: {mean} and {low} must be both set or empty")
+    if data[low] is not None and data[low] > data[high]:
+        raise WeatherImportError(f"line {number}: {low} is greater than {high}")
+
+
 def _hourly_row(number: int, data: dict[str, Any]) -> dict[str, Any]:
     """Check one ``hourly`` line without a model per row (there are ~156 thousand of them)."""
     if data.keys() != _HOURLY_KEYS:
@@ -308,6 +337,8 @@ def _hourly_row(number: int, data: dict[str, Any]) -> dict[str, Any]:
     for name in _HOURLY_FLOATS:
         if data[name] is not None and not _is_number(data[name]):
             raise WeatherImportError(f"line {number}: invalid {name}")
+    for mean, low, high in _HOURLY_TRIPLES:
+        _check_triple(number, data, mean, low, high)
     row = {key: value for key, value in data.items() if key != "t"}
     row["coverage"] = float(coverage)
     return row

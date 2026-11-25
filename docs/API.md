@@ -481,16 +481,24 @@
 `sol` — целое от 0 до 2 147 483 647, иначе `422`. Сол без данных → `404 sol_not_found`. Ответ — WeatherSol и дополнительно:
 ```json
 {"rover": "perseverance", "sol": 100, "...": "поля WeatherSol",
- "hours": [{"hour": 0, "coverage": 0.5, "air_temp_c": -71.2, "pressure_pa": 735.4,
-            "humidity_pct": 5.8, "wind_speed_ms": 2.1, "wind_direction_deg": 157.5},
-           {"hour": 1, "coverage": 0.0, "air_temp_c": null, "pressure_pa": null,
-            "humidity_pct": null, "wind_speed_ms": null, "wind_direction_deg": null}],
+ "hours": [{"hour": 0, "coverage": 0.5,
+            "air_temp_c": -71.2, "air_temp_c_min": -73.9, "air_temp_c_max": -68.4,
+            "pressure_pa": 735.4, "pressure_pa_min": 734.1, "pressure_pa_max": 736.8,
+            "humidity_pct": 5.8, "humidity_pct_min": 4.9, "humidity_pct_max": 6.7,
+            "wind_speed_ms": 2.1, "wind_gust_ms": 6.4, "wind_direction_deg": 157.5,
+            "ground_temp_c": -78.0, "ground_temp_c_min": -79.3, "ground_temp_c_max": -76.6},
+           {"hour": 1, "coverage": 0.0,
+            "air_temp_c": null, "air_temp_c_min": null, "air_temp_c_max": null,
+            "pressure_pa": null, "pressure_pa_min": null, "pressure_pa_max": null,
+            "humidity_pct": null, "humidity_pct_min": null, "humidity_pct_max": null,
+            "wind_speed_ms": null, "wind_gust_ms": null, "wind_direction_deg": null,
+            "ground_temp_c": null, "ground_temp_c_min": null, "ground_temp_c_max": null}],
  "source": {"files": [{"product": "CAL_ATS", "version": "P02",
                        "file": "data_calibrated_env/sol_0090_0179/sol_0100/WE__0100___________CAL_ATS_________________P02.CSV",
                        "link": "https://atmos.nmsu.edu/PDS/data/PDS4/Mars2020/mars2020_meda/data_calibrated_env/sol_0090_0179/sol_0100/WE__0100___________CAL_ATS_________________P02.CSV"}]}}
 ```
-- `hours` — всегда 24 элемента, `hour` 0…23 — час местного среднего солнечного времени (LMST). Значения — средние за час, в тех же единицах и с тем же округлением, что у сола; час без измерений — `null`; `coverage` часа — доля его 10-минутных интервалов с измерениями температуры воздуха.
-- Ключи часов следуют ключам марсохода: Curiosity — `air_temp_c`, `pressure_pa`, `humidity_pct`, `ground_temp_c`, `uv_wm2`; Perseverance — `air_temp_c`, `pressure_pa`, `humidity_pct`, `wind_speed_ms`, `wind_direction_deg` (самое частое направление часа), `ground_temp_c`; вне солов 36–313 ветер `null`.
+- `hours` — всегда 24 элемента, `hour` 0…23 — час местного среднего солнечного времени (LMST). Ключ параметра без суффикса — среднее за час; `_min` и `_max` — наименьшее и наибольшее годное значение за час (то же правило, что у `min`/`max` сола: влажность выше 100 % входит, значения с флагом `out_of_range` — нет). Единицы и округление — как у сола. Час без измерений параметра — `null` во всех трёх ключах; `coverage` часа — доля его 10-минутных интервалов с измерениями температуры воздуха. Суточные `min`/`max` равны наименьшему из почасовых `_min` и наибольшему из почасовых `_max`.
+- Ключи часов следуют ключам марсохода: Curiosity — `air_temp_c`, `pressure_pa`, `humidity_pct`, `ground_temp_c`, `uv_wm2`, у каждого `_min` и `_max`; Perseverance — `air_temp_c`, `pressure_pa`, `humidity_pct`, `ground_temp_c` с `_min` и `_max`, а также `wind_speed_ms` (средняя скорость часа), `wind_gust_ms` (99-й перцентиль скорости за час) и `wind_direction_deg` (самое частое направление часа); вне солов 36–313 все три ключа ветра `null`. Новые ключи (этап 22) добавлены к прежним: клиенты, читающие только средние, не затронуты.
 - `source.files` — файлы архива, из которых посчитан сол (путь от корня набора и ссылка в архиве NASA PDS).
 - `200` · `404 rover_not_found` · `404 not_found` (как у списка) · `404 sol_not_found` · `422 validation_error`.
 

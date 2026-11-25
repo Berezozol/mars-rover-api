@@ -348,12 +348,24 @@ class WeatherSol(BaseModel):
 
 
 class WeatherHour(BaseModel):
+    """One hour of LMST: the mean of each parameter and the lowest and highest valid value."""
+
     hour: int
     coverage: float
     air_temp_c: float | None
+    air_temp_c_min: float | None
+    air_temp_c_max: float | None
     pressure_pa: float | None
+    pressure_pa_min: float | None
+    pressure_pa_max: float | None
     humidity_pct: float | None
+    humidity_pct_min: float | None
+    humidity_pct_max: float | None
     wind_speed_ms: float | None = Field(default=None, description="Perseverance only.")
+    wind_gust_ms: float | None = Field(
+        default=None,
+        description="Perseverance only. 99th percentile of the wind speed of the hour.",
+    )
     wind_direction_deg: float | None = Field(
         default=None,
         description=(
@@ -362,7 +374,11 @@ class WeatherHour(BaseModel):
         ),
     )
     ground_temp_c: float | None = Field(default=None, description="Curiosity (see WeatherSol).")
+    ground_temp_c_min: float | None = Field(default=None, description="See ground_temp_c.")
+    ground_temp_c_max: float | None = Field(default=None, description="See ground_temp_c.")
     uv_wm2: float | None = Field(default=None, description="Curiosity only.")
+    uv_wm2_min: float | None = Field(default=None, description="Curiosity only.")
+    uv_wm2_max: float | None = Field(default=None, description="Curiosity only.")
 
 
 class WeatherSourceFile(BaseModel):
