@@ -1,5 +1,10 @@
 // What the sol report draws: one chart definition per parameter, read from `GET /weather/{sol}`.
-import type { WeatherHour, WeatherSolDetail } from "../api/types";
+import type {
+  RadiationHour,
+  RadiationSolDetail,
+  WeatherHour,
+  WeatherSolDetail,
+} from "../api/types";
 import { isNum } from "./weather";
 
 export type HourValues = (number | null)[];
@@ -171,6 +176,50 @@ export function chartDefs(sol: WeatherSolDetail): ChartDef[] {
     out.push(def);
   }
   return out;
+}
+
+/**
+ * Hourly RAD charts (Curiosity, stage 22 phase C): dose rate of detectors E (solid) and B (dashed) in
+ * µGy per hour, and the count rate of detector B. Hours come from `GET /radiation/{sol}`.
+ */
+export function radiationDefs(sol: RadiationSolDetail, hours: RadiationHour[]): ChartDef[] {
+  const col = (key: "dose_e_ugy_h" | "dose_b_ugy_h" | "count_rate_b_per_s"): HourValues => {
+    const out: HourValues = Array.from({ length: 24 }, () => null);
+    for (const h of hours) {
+      const v = h[key];
+      if (Number.isInteger(h.hour) && h.hour >= 0 && h.hour < 24 && isNum(v)) out[h.hour] = v;
+    }
+    return out;
+  };
+  const e = col("dose_e_ugy_h");
+  const b = col("dose_b_ugy_h");
+  const c = col("count_rate_b_per_s");
+  const day = (v: number | undefined) => (isNum(v) ? fmtNum(v, 1) : "–");
+  return [
+    {
+      id: "rad-dose",
+      title: "Dose rate, detectors E and B",
+      unit: "µGy/h",
+      digits: 2,
+      zero: true,
+      series: [
+        { name: "E", values: e },
+        { name: "B", values: b, dashed: true },
+      ],
+      summary: `Sol, daily mean: E ${day(sol.dose_e_ugy_day?.mean)} µGy/day · B ${day(sol.dose_b_ugy_day?.mean)} µGy/day`,
+      noData: e.concat(b).some((v) => v !== null) ? undefined : "No dose readings on this sol.",
+    },
+    {
+      id: "rad-count",
+      title: "Count rate, detector B",
+      unit: "events/s",
+      digits: 3,
+      zero: true,
+      series: [{ name: "count rate", values: c }],
+      summary: "Raw counts, not a calibrated flux",
+      noData: c.some((v) => v !== null) ? undefined : "No count-rate readings on this sol.",
+    },
+  ];
 }
 
 /** The values of every chart at one hour, for the readout and the screen-reader announcement. */

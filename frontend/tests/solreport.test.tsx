@@ -577,7 +577,7 @@ describe("AC-32 what is on the report of each rover", () => {
 
   it("AC-32 Curiosity: the radiation block shows the daily summary of this sol from /radiation?sol_min=&sol_max=", async () => {
     const m = await openCuriosity();
-    expect(await screen.findByRole("heading", { name: /radiation/i })).toBeTruthy();
+    expect(await screen.findAllByRole("heading", { name: /radiation/i })).toBeTruthy();
     await waitFor(() => expect(mainText()).toContain("231.4")); // dose B mean of the sol
     expect(mainText()).toContain("218.7"); // dose E mean of the sol
     const asked = m.calls.filter((c) => c.pathname === RAD);
@@ -589,7 +589,7 @@ describe("AC-32 what is on the report of each rover", () => {
   it("AC-32 the radiation range is clamped at the low end: sol 5 asks for 0 ... 35", async () => {
     const m = openReport(reportPath(CUR, 5));
     await reportHeading("Curiosity", 5);
-    await screen.findByRole("heading", { name: /radiation/i });
+    await screen.findAllByRole("heading", { name: /radiation/i });
     const asked = m.calls.filter((c) => c.pathname === RAD);
     expect(asked).toHaveLength(1);
     expect(asked[0]!.searchParams.get("sol_min")).toBe("0");
@@ -599,7 +599,7 @@ describe("AC-32 what is on the report of each rover", () => {
   it("AC-32 the radiation range is clamped at the top: sol 2147483647 asks for 2147483617 ... 2147483647", async () => {
     const m = openReport(reportPath(CUR, MAX_SOL));
     await reportHeading("Curiosity", MAX_SOL);
-    await screen.findByRole("heading", { name: /radiation/i });
+    await screen.findAllByRole("heading", { name: /radiation/i });
     const asked = m.calls.filter((c) => c.pathname === RAD);
     expect(asked).toHaveLength(1);
     expect(asked[0]!.searchParams.get("sol_min")).toBe(String(MAX_SOL - 30));
@@ -608,9 +608,11 @@ describe("AC-32 what is on the report of each rover", () => {
 
   it("AC-32 Curiosity: a trend of about 30 sols each side with this sol marked", async () => {
     await openCuriosity();
-    await screen.findByRole("heading", { name: /radiation/i });
+    await screen.findAllByRole("heading", { name: /radiation/i });
     await waitFor(() => expect(charts(/radiation|dose/i).length).toBeGreaterThan(0));
-    const trend = charts(/radiation|dose/i)[0]!;
+    const trend = charts(/radiation|dose/i).find((s) =>
+      tickNumbers(s).some((n) => n >= 300 && n <= 400),
+    )!;
     // the sol axis reaches towards sol 314 and sol 374
     const ticks = tickNumbers(trend).filter((n) => n >= 300 && n <= 400);
     expect(ticks.length, "sol ticks on the axis").toBeGreaterThan(1);
@@ -621,10 +623,14 @@ describe("AC-32 what is on the report of each rover", () => {
     expect(trend.outerHTML + (box.textContent ?? "")).toContain(String(CUR_SOL));
   });
 
-  it("AC-32 Curiosity: hourly radiation is phase C, so the page does not ask for /radiation/{sol}", async () => {
+  it("AC-32 Curiosity: phase C asks for the hourly radiation of this sol once", async () => {
     const m = await openCuriosity();
-    await screen.findByRole("heading", { name: /radiation/i });
-    expect(m.calls.filter((c) => /\/radiation\/\d+/.test(c.pathname))).toEqual([]);
+    await screen.findAllByRole("heading", { name: /radiation/i });
+    await waitFor(() =>
+      expect(
+        m.calls.filter((c) => c.pathname === `/api/v2/rovers/curiosity/radiation/${CUR_SOL}`),
+      ).toHaveLength(1),
+    );
   });
 
   it("AC-32 Curiosity: radiation unavailable (503) does not take the weather charts away", async () => {

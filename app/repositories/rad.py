@@ -9,7 +9,7 @@ from sqlalchemy import Row, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import RadDaily, RadDataset, RadFile
+from app.db.models import RadDaily, RadDataset, RadFile, RadHourly
 from app.repositories._common import FRESH
 from app.sources.rad import file_name
 
@@ -36,9 +36,12 @@ DAILY_VALUE_COLUMNS = (
 )
 _FILE_COLUMNS = tuple(column.name for column in RadFile.__table__.columns)
 _DAILY_COLUMNS = tuple(column.name for column in RadDaily.__table__.columns)
+_HOURLY_COLUMNS = tuple(column.name for column in RadHourly.__table__.columns)
 _DATASET_COLUMNS = tuple(column.name for column in RadDataset.__table__.columns)
 _FILE_KEYS = ("path",)
 _IN_CHUNK = 5000
+# Rows per INSERT of the hours (the import has ~113 thousand; asyncpg takes 32 767 parameters).
+_HOURLY_INSERT_CHUNK = 4000
 
 
 @dataclass(frozen=True)
@@ -119,6 +122,50 @@ async def upsert_daily(session: AsyncSession, row: Mapping[str, Any]) -> bool:
         )
     )
     return bool(result.rowcount)  # type: ignore[attr-defined]
+
+
+async def get_daily(session: AsyncSession, sol: int) -> RadDaily | None:
+    """The stored summary of one sol."""
+    return (await get_daily_map(session, [sol])).get(sol)
+
+
+async def list_hourly(session: AsyncSession, sol: int) -> Sequence[RadHourly]:
+    """The stored hours of a sol (only those with observations), by hour."""
+    query = select(RadHourly).where(RadHourly.sol == sol).order_by(RadHourly.hour)
+    return (await session.scalars(query, execution_options=FRESH)).all()
+
+
+async def sols_below_hourly_revision(
+    session: AsyncSession, revision: int, sol_min: int | None, sol_max: int | None
+) -> list[int]:
+    """The sols with a summary whose hours were calculated with a lower revision, ascending."""
+    query = select(RadDaily.sol).where(RadDaily.hourly_revision < revision).order_by(RadDaily.sol)
+    if sol_min is not None:
+        query = query.where(RadDaily.sol >= sol_min)
+    if sol_max is not None:
+        query = query.where(RadDaily.sol <= sol_max)
+    return list((await session.scalars(query)).all())
+
+
+async def replace_hourly(
+    session: AsyncSession, sol: int, rows: Sequence[Mapping[str, Any]]
+) -> None:
+    """Replace the hours of a sol with ``rows`` (none: the sol has no hours)."""
+    await session.execute(delete(RadHourly).where(RadHourly.sol == sol))
+    if rows:
+        await session.execute(pg_insert(RadHourly), list(rows))
+
+
+async def set_hourly_state(
+    session: AsyncSession, sol: int, *, revision: int, reject: str | None, dropped: int
+) -> None:
+    """Record how the hours of a sol were calculated. ``updated_at`` stays: the summary of the
+    sol did not change."""
+    await session.execute(
+        update(RadDaily)
+        .where(RadDaily.sol == sol)
+        .values(hourly_revision=revision, hourly_reject=reject, hourly_dropped=dropped)
+    )
 
 
 async def delete_daily(session: AsyncSession, sols: Collection[int]) -> None:
@@ -222,14 +269,21 @@ async def status(session: AsyncSession) -> RadStatus:
 
 async def export_rows(
     session: AsyncSession,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any] | None]:
-    """All files, all summaries and the state row as plain dicts (files by path, daily by sol)."""
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], dict[str, Any] | None]:
+    """All files, summaries, hours and the state row as plain dicts (files by path, daily by
+    sol, hourly by sol and hour)."""
     files = (await session.execute(select(RadFile).order_by(RadFile.path))).scalars().all()
     daily = (await session.execute(select(RadDaily).order_by(RadDaily.sol))).scalars().all()
+    hourly = (
+        (await session.execute(select(RadHourly).order_by(RadHourly.sol, RadHourly.hour)))
+        .scalars()
+        .all()
+    )
     dataset = await get_dataset(session)
     return (
         [_as_dict(row, _FILE_COLUMNS) for row in files],
         [_as_dict(row, _DAILY_COLUMNS) for row in daily],
+        [_as_dict(row, _HOURLY_COLUMNS) for row in hourly],
         _as_dict(dataset, _DATASET_COLUMNS) if dataset is not None else None,
     )
 
@@ -238,9 +292,10 @@ async def replace_all(
     session: AsyncSession,
     files: Sequence[Mapping[str, Any]],
     daily: Sequence[Mapping[str, Any]],
+    hourly: Sequence[Mapping[str, Any]],
     dataset: Mapping[str, Any],
 ) -> None:
-    """Replace the content of the three tables; the caller commits (one transaction)."""
+    """Replace the content of the four tables; the caller commits (one transaction)."""
     await session.execute(delete(RadDaily))
     await session.execute(delete(RadFile))
     await session.execute(delete(RadDataset))
@@ -248,6 +303,10 @@ async def replace_all(
         await session.execute(pg_insert(RadFile), list(files))
     if daily:
         await session.execute(pg_insert(RadDaily), list(daily))
+    for start in range(0, len(hourly), _HOURLY_INSERT_CHUNK):
+        await session.execute(
+            pg_insert(RadHourly), list(hourly[start : start + _HOURLY_INSERT_CHUNK])
+        )
     await session.execute(pg_insert(RadDataset), [dict(dataset)])
 
 

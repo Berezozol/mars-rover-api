@@ -249,6 +249,15 @@ export interface PhotoStatsResponse {
   total_photos: number;
 }
 
+export interface RadiationHour {
+  count_rate_b_per_s: number | null;
+  coverage: number;
+  dose_b_ugy_h: number | null;
+  dose_e_ugy_h: number | null;
+  hour: number;
+  observations: number;
+}
+
 export interface RadiationResponse {
   citation: string;
   credit: string;
@@ -267,6 +276,22 @@ export interface RadiationSol {
   dose_e_ugy_day: DoseStats;
   earth_date: string;
   observations: ObservationCounts;
+  sol: number;
+  source: RadiationSource;
+  timing_caveat: boolean | null;
+}
+
+export interface RadiationSolDetail {
+  citation: string;
+  count_rate_b_per_s: number;
+  coverage: number;
+  credit: string;
+  dose_b_ugy_day: DoseStats;
+  dose_e_ugy_day: DoseStats;
+  earth_date: string;
+  hours: RadiationHour[] | null;
+  observations: ObservationCounts;
+  rover: string;
   sol: number;
   source: RadiationSource;
   timing_caveat: boolean | null;

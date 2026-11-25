@@ -57,6 +57,9 @@ curl "$BASE/api/v2/rovers/perseverance/samples"
 # Daily radiation summaries of Curiosity (RAD); sol_min and sol_max are optional
 curl "$BASE/api/v2/rovers/curiosity/radiation?sol_min=1600&sol_max=1700"
 
+# One sol of Curiosity with 24 hourly doses (uGy per hour, LMST hours)
+curl "$BASE/api/v2/rovers/curiosity/radiation/1649"
+
 # Daily weather summaries (curiosity or perseverance); sol_min and sol_max are optional
 curl "$BASE/api/v2/rovers/perseverance/weather?sol_min=100&sol_max=110"
 
@@ -88,6 +91,24 @@ make searches faster or change rate limits.
 Each item is one sol: `dose_b_ugy_day` and `dose_e_ugy_day` (`mean`, `min`, `max`) are the absorbed dose rate in
 the instrument's detectors in microgray per day, not equivalent dose. The dataset lags the mission by months,
 so the latest sols are missing. The response has `credit` and `citation`: keep them when you show the data.
+
+Hourly doses of one sol (`/radiation/{sol}`, Curiosity only): the same sol fields plus `hours`, 24 items. Mind the
+units: `dose_e_ugy_h` and `dose_b_ugy_h` are microgray per **hour**, the daily `dose_*_ugy_day` are per **day**
+(the source gives per hour; the daily values are multiplied by 24). `hour` 0-23 is local mean solar time (LMST)
+computed by us from the observation's UTC time (Mars24 algorithm), not taken from the file's local-time label.
+An hour with no observations has `coverage` 0, `observations` 0 and `null` doses. `hours: null` means the hours
+were not computed for this sol, or the observation times of the sol contradict each other; use the daily fields
+then. `timing_caveat: true` means the dataset lists timing errors for this sol, so hours may be shifted.
+`observations.dropped_invalid` counts incomplete, unreadable or implausible observations (dose B or E below
+1 microgray per hour with quality flag 0). A sol without a summary answers `404 sol_not_found`.
+
+```sh
+# Hourly dose of one sol, with jq (guard against hours: null)
+curl -s "$BASE/api/v2/rovers/curiosity/radiation/1649" \
+  | jq '(.hours // [])[] | {hour, coverage, dose_e_ugy_h, dose_b_ugy_h}'
+```
+
+More: [radiation.py](radiation.py) (Python, standard library) and [radiation.mjs](radiation.mjs) (JavaScript, `fetch`).
 
 ## Weather data
 

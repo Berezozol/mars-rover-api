@@ -73,6 +73,8 @@ class RadObservation:
     live_s: float | None
     bu_count: int | None
     bu_read: int | None
+    # ``OBS_DURATION`` in seconds; ``None`` in the early format (2012) and when unreadable.
+    obs_duration_s: float | None = None
 
     @property
     def qc(self) -> int | None:
@@ -182,6 +184,7 @@ class _Block:
         self.live_s: float | None = None
         self.bu_count: int | None = None
         self.bu_read: int | None = None
+        self.obs_duration_s: float | None = None
 
     def observation(self) -> RadObservation:
         return RadObservation(
@@ -194,6 +197,7 @@ class _Block:
             live_s=self.live_s,
             bu_count=self.bu_count,
             bu_read=self.bu_read,
+            obs_duration_s=self.obs_duration_s,
         )
 
 
@@ -210,6 +214,19 @@ def _number(text: str) -> float:
         return float(text)
     except ValueError:
         return math.nan
+
+
+MAX_OBS_DURATION_S = 14400.0
+
+
+def _duration(text: str) -> float | None:
+    """``OBS_DURATION``: a finite number of seconds in (0, ``MAX_OBS_DURATION_S``], else ``None``
+    (the caller falls back)."""
+    try:
+        value = float(text)
+    except ValueError:
+        return None
+    return value if math.isfinite(value) and 0 < value <= MAX_OBS_DURATION_S else None
 
 
 class RadParser:
@@ -349,6 +366,8 @@ class RadParser:
             block.start_utc_raw = pair[1]
         elif pair[0] == "QC":
             block.qc_raw = pair[1]
+        elif pair[0] == "OBS_DURATION":
+            block.obs_duration_s = _duration(pair[1])
 
     @staticmethod
     def _counter_l1(block: _Block, text: str) -> None:

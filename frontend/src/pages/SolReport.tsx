@@ -4,6 +4,7 @@ import type { WeatherHour, WeatherSolDetail } from "../api/types";
 import { FlagPill } from "../components/WeatherInspector";
 import { HourChart } from "../components/HourChart";
 import { SolRadiationDaily } from "../components/SolRadiationDaily";
+import { SolRadiationHourly, useHourlyRadiation } from "../components/SolRadiationHourly";
 import { EmptyState, ErrorAlert } from "../components/States";
 import { useAsync, useRovers, useTitle } from "../lib/hooks";
 import { fallbackLat, hemisphereOf, hhmm, seasonOf, sunTimes } from "../lib/marsSeason";
@@ -334,6 +335,7 @@ function Loaded({
   });
   const [night, setNight] = useState(true);
   const defs = useMemo(() => chartDefs(detail), [detail]);
+  const rad = useHourlyRadiation(rover, sol);
   const sun = sunTimes(detail.ls, lat ?? fallbackLat(rover));
   const clamp24 = (v: number) => Math.min(24, Math.max(0, v));
   const shade: [number, number] | null = night && sun ? [clamp24(sun[0]), clamp24(sun[1])] : null;
@@ -347,7 +349,7 @@ function Loaded({
   const hasSolBand = defs.some((d) => !d.hourBand && d.solBand);
   const announce =
     cur.active && cur.live
-      ? `${hourLabel(cur.hour)} LMST. ${defs
+      ? `${hourLabel(cur.hour)} LMST. ${[...defs, ...rad.defs]
           .filter((d) => !d.noData)
           .map((d) => `${d.title}: ${readoutOf(d, cur.hour)}`)
           .join(". ")}`
@@ -423,9 +425,22 @@ function Loaded({
         ))}
       </div>
       {rover === RAD_ROVER ? (
-        <div style={{ marginTop: 32 }}>
-          <SolRadiationDaily rover={rover} sol={sol} />
-        </div>
+        <>
+          <div style={{ marginTop: 32 }}>
+            <SolRadiationHourly
+              state={rad.state}
+              retry={rad.retry}
+              defs={rad.defs}
+              sol={sol}
+              night={shade}
+              hour={cur.active ? cur.hour : null}
+              onHour={onHour}
+            />
+          </div>
+          <div style={{ marginTop: 32 }}>
+            <SolRadiationDaily rover={rover} sol={sol} />
+          </div>
+        </>
       ) : (
         <p class="hint" style={{ marginTop: 16 }}>
           No radiation series for {name}: Sol Index has radiation data for Curiosity only.

@@ -1,8 +1,9 @@
-"""Read logic of ``GET /api/v2/rovers/{rover}/radiation`` (docs/API.md, stage 21).
+"""Read logic of ``GET /api/v2/rovers/{rover}/radiation[/{sol}]`` (docs/API.md, stages 21-22).
 
 The daily summaries are stored in uGy/h as the source gives them; the API converts on read:
 doses to uGy/day (x24), the rate of detector B and the coverage from the stored counts and
-live time.
+live time. The hours of a sol stay in uGy/h; the 24 hours are made here from the stored rows
+(only the hours with observations are stored).
 """
 
 from collections.abc import Sequence
@@ -14,7 +15,9 @@ from typing import Any
 from sqlalchemy import Row
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import InvalidParam, NotFoundError
+from app.core.errors import InvalidParam, NotFoundError, SolNotFound
+from app.core.mars_time import HOUR_LIVE_S
+from app.db.models import RadDaily, RadHourly
 from app.repositories import rad as rad_repo
 from app.services.rover_lookup import find_rover
 
@@ -36,6 +39,15 @@ class RadiationData:
     source_max_sol: int | None
     source_release: date | None
     items: Sequence[Row[Any]]
+
+
+@dataclass(frozen=True)
+class RadiationSolData:
+    """One sol: its summary row and its 24 hours (``None``: not calculated or refused)."""
+
+    rover: str
+    row: RadDaily
+    hours: list[dict[str, Any]] | None
 
 
 class RadiationService:
@@ -70,6 +82,44 @@ class RadiationService:
         dataset = await rad_repo.get_dataset(self._session)
         release = _http_date(dataset.checksums_last_modified) if dataset else None
         return RadiationData(RAD_ROVER, updated_at, max_sol, release, items)
+
+    async def get_sol(self, rover: str, sol: int) -> RadiationSolData:
+        """One sol of Curiosity with its hours; a sol without a summary -> ``SolNotFound``."""
+        await self.check(rover, None, None)
+        row = await rad_repo.get_daily(self._session, sol)
+        if row is None:
+            raise SolNotFound()
+        stored = await rad_repo.list_hourly(self._session, sol)
+        return RadiationSolData(RAD_ROVER, row, _hours(row, stored))
+
+
+def _hours(row: RadDaily, stored: Sequence[RadHourly]) -> list[dict[str, Any]] | None:
+    """The 24 hours of a sol; ``None`` when the hours are not calculated (``hourly_revision`` 0)
+    or were refused (``hourly_reject``). Hours without observations are empty."""
+    if row.hourly_revision == 0 or row.hourly_reject is not None:
+        return None
+    by_hour = {item.hour: item for item in stored}
+    return [_hour(hour, by_hour.get(hour)) for hour in range(24)]
+
+
+def _hour(hour: int, item: RadHourly | None) -> dict[str, Any]:
+    if item is None:
+        return {
+            "hour": hour,
+            "coverage": 0.0,
+            "observations": 0,
+            "dose_e_ugy_h": None,
+            "dose_b_ugy_h": None,
+            "count_rate_b_per_s": None,
+        }
+    return {
+        "hour": hour,
+        "coverage": round(min(1.0, item.live_s / HOUR_LIVE_S), 2),
+        "observations": item.n_obs,
+        "dose_e_ugy_h": round(item.dose_e_mean, 2),
+        "dose_b_ugy_h": round(item.dose_b_mean, 2),
+        "count_rate_b_per_s": round(item.bu_count / item.live_s, 3),
+    }
 
 
 def _http_date(value: str | None) -> date | None:

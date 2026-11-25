@@ -1,6 +1,6 @@
 """`rad export` / `rad import` and the run lock (stage 21, AC-24, AC-27, AC-28, AC-29).
 
-The export is gzip JSON Lines: a `meta` line (`format` `mars-rad-export`, `version` 1,
+The export is gzip JSON Lines: a `meta` line (`format` `mars-rad-export`, `version` 2,
 `schema_revision`, `counts`, `dataset`), then `file` and `daily` lines with all columns.
 """
 
@@ -88,14 +88,14 @@ async def test_export_writes_gzip_json_lines_with_meta_files_and_daily_rows_ac27
     meta = lines[0]
     assert meta["t"] == "meta"
     assert meta["format"] == "mars-rad-export"
-    assert meta["version"] == 1
-    assert meta["schema_revision"] == "0017"
-    assert meta["counts"] == {"file": 2, "daily": 2}
+    assert meta["version"] == 2  # stage 22: hourly lines
+    assert meta["schema_revision"] == "0021"
+    assert (meta["counts"]["file"], meta["counts"]["daily"]) == (2, 2)
     assert meta["exported_at"]
     assert isinstance(meta["dataset"], dict)
     assert meta["dataset"]["checksums_etag"] == '"cs-1"'
     kinds = [line["t"] for line in lines[1:]]
-    assert sorted(kinds) == ["daily", "daily", "file", "file"]
+    assert sorted(k for k in kinds if k != "hourly") == ["daily", "daily", "file", "file"]
     daily = [line for line in lines if line["t"] == "daily"]
     assert sorted(line["sol"] for line in daily) == [4842, 4843]
     assert {line["path"] for line in lines if line["t"] == "file"} == {
@@ -120,7 +120,7 @@ async def test_export_of_an_empty_database_has_a_meta_line_only_ac27(tmp_path: P
     assert code == 0
     lines = read_export(out)
     assert [line["t"] for line in lines] == ["meta"]
-    assert lines[0]["counts"] == {"file": 0, "daily": 0}
+    assert (lines[0]["counts"]["file"], lines[0]["counts"]["daily"]) == (0, 0)
 
 
 async def test_export_does_not_change_the_database_ac27(
@@ -206,7 +206,7 @@ def corrupt(lines: list[dict[str, Any]], how: str) -> list[dict[str, Any]]:
     if how == "format":
         meta["format"] = "something-else"
     elif how == "version":
-        meta["version"] = 2
+        meta["version"] = 3
     elif how == "sol-zero":
         out[daily[0]]["sol"] = 0
     elif how == "sol-negative":

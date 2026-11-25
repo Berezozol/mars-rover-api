@@ -25,12 +25,13 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequenc
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.core.config import Settings
+from app.core.mars_time import HOUR_LIVE_S, local_mean_time
 from app.db.models import RadDataset
 from app.db.models import RadFile as RadFileRow
 from app.db.session import create_session_factory
@@ -76,6 +77,21 @@ RETRY_PAUSES = (30.0, 120.0)
 # The date of a file header is trusted when it is within this of the observations' median.
 DATE_TOLERANCE = timedelta(days=2)
 MAX_ERROR_LENGTH = 500
+# Hours (stage 22, docs/proposals/sol-conditions.md): the east longitude of Curiosity and the
+# local day number (floor of MSD + lon / 360) of sol 0.
+CURIOSITY_LON_E = 137.4
+CURIOSITY_SOL0_MSD = 49269
+# Two used observations of a sol may overlap by this much (s) before the hours are refused.
+OVERLAP_TOLERANCE_S = 60.0
+# The share of the used observations that must fall into the sol (by UTC) for it to have hours.
+MIN_ON_SOL_SHARE = 0.5
+# A dose of B or E below this (uGy/h) at QC 0 is not plausible (the norm is 6.6-13.1).
+MIN_DOSE_UGY_H = 1.0
+# ``HOUR_LIVE_S`` (an hour of LMST in SI seconds) lives in ``app.core.mars_time``; re-exported.
+__all__ = ["HOUR_LIVE_S"]
+MAX_SMALLINT = 32767
+# The revision of the hourly calculation; ``rad sync --reprocess`` redoes sols below it.
+RAD_HOURLY_REVISION = 1
 
 Sleep = Callable[[float], Awaitable[None]]
 
@@ -99,6 +115,31 @@ class SolSummary:
     qc_bits: int
     # Start times (UTC) of the used observations that have a readable one.
     used_utc: tuple[datetime, ...] = ()
+    # The used observations themselves (the input of ``combine_hours``).
+    used_observations: tuple[RadObservation, ...] = ()
+
+
+@dataclass(frozen=True)
+class HourSummary:
+    """One hour (LMST) of a sol: observations, live time, doses in uGy/h weighted by live time
+    and the BU count (the rate is ``bu_count / live_s``)."""
+
+    hour: int
+    n_obs: int
+    live_s: float
+    dose_b_mean: float
+    dose_e_mean: float
+    bu_count: int
+
+
+@dataclass(frozen=True)
+class HourlyResult:
+    """The hours of a sol, how many used observations are not in them and, if the hours of the
+    sol were refused, why (then ``hours`` is empty and ``dropped`` is all of the used)."""
+
+    hours: list[HourSummary]
+    dropped: int
+    reject: Literal["overlap", "off_sol"] | None
 
 
 @dataclass
@@ -173,9 +214,11 @@ def combine_sol(
     An observation is dropped as ``dropped_invalid`` (unreadable QC, missing or odd numbers),
     ``dropped_qc`` (QC bit 0: possible quality problems) or ``dropped_low_rate`` (the rate of
     detector B below ``low_rate_ratio`` of the median of the sol: the instrument hardly
-    counted). QC bits 2 (DAN) and 3 (Solar Event) do not drop anything and are reported in
-    ``qc_bits``. Means are weighted by the live time. ``repeated`` observations that were merged
-    away for sharing a start time inside one file are added to ``dropped_invalid``.
+    counted). After that rule an observation whose dose B or E is below ``MIN_DOSE_UGY_H`` is
+    ``dropped_invalid`` too (an implausible dose with a clean QC; stage 22). QC bits 2 (DAN)
+    and 3 (Solar Event) do not drop anything and are reported in ``qc_bits``. Means are
+    weighted by the live time. ``repeated`` observations that were merged away for sharing a
+    start time inside one file are added to ``dropped_invalid``.
     """
     dropped_qc = 0
     dropped_invalid = repeated
@@ -191,14 +234,20 @@ def combine_sol(
         else:
             passed.append((obs, qc))
     median = statistics.median(_rate(obs) for obs, _ in passed) if passed else 0.0
-    kept = [(obs, qc) for obs, qc in passed if _rate(obs) >= low_rate_ratio * median]
+    fast = [(obs, qc) for obs, qc in passed if _rate(obs) >= low_rate_ratio * median]
+    kept = [(obs, qc) for obs, qc in fast if _is_plausible(obs)]
     if not kept:
         return None
     return _summarize(
         [obs for obs, _ in kept],
         qc_bits=_or_all(qc for _, qc in kept),
-        dropped=(dropped_qc, len(passed) - len(kept), dropped_invalid),
+        dropped=(dropped_qc, len(passed) - len(fast), dropped_invalid + len(fast) - len(kept)),
     )
+
+
+def _is_plausible(obs: RadObservation) -> bool:
+    """Both doses are at least ``MIN_DOSE_UGY_H`` (the observation is already complete)."""
+    return (obs.dose_b or 0.0) >= MIN_DOSE_UGY_H and (obs.dose_e or 0.0) >= MIN_DOSE_UGY_H
 
 
 def _or_all(values: Any) -> int:
@@ -230,6 +279,85 @@ def _summarize(
         dropped_invalid=dropped[2],
         qc_bits=qc_bits,
         used_utc=tuple(o.start_utc for o in used if o.start_utc is not None),
+        used_observations=tuple(used),
+    )
+
+
+# --- the hours of a sol ---------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _Timed:
+    """A used observation with its start, duration (s) and, when it is in the sol, its hour."""
+
+    obs: RadObservation
+    start: datetime
+    duration: float
+    hour: int | None
+
+
+def _duration(obs: RadObservation) -> float:
+    """``OBS_DURATION``; the early format has none, then the live time."""
+    return obs.obs_duration_s or obs.live_s or 0.0
+
+
+def _timed(obs: RadObservation, file_sol: int) -> _Timed | None:
+    """The observation placed by the UTC of its middle (LMST at ``CURIOSITY_LON_E``), or ``None``
+    without a readable start. ``hour`` is ``None`` when the middle falls into another sol."""
+    if obs.start_utc is None:
+        return None
+    duration = _duration(obs)
+    try:
+        middle = obs.start_utc + timedelta(seconds=duration / 2)
+        day, seconds = local_mean_time(middle, CURIOSITY_LON_E)
+    except (OverflowError, ValueError):
+        return None
+    hour = min(int(seconds // 3600), 23) if day - CURIOSITY_SOL0_MSD == file_sol else None
+    return _Timed(obs, obs.start_utc, duration, hour)
+
+
+def _overlaps(timed: Sequence[_Timed]) -> bool:
+    """Neighbours by start that overlap by more than ``OVERLAP_TOLERANCE_S``."""
+    ordered = sorted(timed, key=lambda item: item.start)
+    return any(
+        (after.start - before.start).total_seconds() < before.duration - OVERLAP_TOLERANCE_S
+        for before, after in zip(ordered, ordered[1:], strict=False)
+    )
+
+
+def combine_hours(used: Sequence[RadObservation], file_sol: int) -> HourlyResult:
+    """The hours (LMST) of the sol ``file_sol`` from its used observations.
+
+    An observation belongs to the hour of its middle (start + duration / 2 by UTC). Those whose
+    middle is in another sol or whose start is unreadable are ``dropped`` (they stay in the
+    daily summary). The hours of the whole sol are refused (``reject``) when fewer than
+    ``MIN_ON_SOL_SHARE`` of the used observations are in the sol (``off_sol``) or two of them
+    overlap by more than ``OVERLAP_TOLERANCE_S`` (``overlap``): the times are then contradictory.
+    """
+    placed = [item for obs in used if (item := _timed(obs, file_sol)) is not None]
+    on_sol = [item for item in placed if item.hour is not None]
+    if len(on_sol) < MIN_ON_SOL_SHARE * len(used):
+        return HourlyResult([], len(used), "off_sol")
+    if _overlaps(on_sol):
+        return HourlyResult([], len(used), "overlap")
+    by_hour: dict[int, list[RadObservation]] = defaultdict(list)
+    for item in on_sol:
+        by_hour[item.hour or 0].append(item.obs)
+    hours = [_hour_summary(hour, group) for hour, group in sorted(by_hour.items())]
+    return HourlyResult(hours, len(used) - len(on_sol), None)
+
+
+def _hour_summary(hour: int, group: Sequence[RadObservation]) -> HourSummary:
+    live = sum(o.live_s or 0.0 for o in group)
+    weighted_b = sum((o.dose_b or 0.0) * (o.live_s or 0.0) for o in group)
+    weighted_e = sum((o.dose_e or 0.0) * (o.live_s or 0.0) for o in group)
+    return HourSummary(
+        hour=hour,
+        n_obs=len(group),
+        live_s=live,
+        dose_b_mean=weighted_b / live,
+        dose_e_mean=weighted_e / live,
+        bu_count=sum(o.bu_count or 0 for o in group),
     )
 
 
@@ -344,6 +472,7 @@ class _SolWork:
     parsed: list[tuple[str, RadFile]] = field(default_factory=list)
     earth_date: date | None = None
     failed: bool = False
+    hourly: HourlyResult | None = None
 
 
 def _is_transient(exc: BaseException) -> bool:
@@ -396,10 +525,17 @@ class RadLoader:
         self._sleep: Sleep = sleep or _default_sleep
         self._base = settings.rad_base_url.rstrip("/") + "/"
 
-    async def run(self, from_sol: int | None = None, to_sol: int | None = None) -> RadRunResult:
+    async def run(
+        self, from_sol: int | None = None, to_sol: int | None = None, reprocess: bool = False
+    ) -> RadRunResult:
         """Load the sols in ``[from_sol, to_sol]`` (all without bounds; only then do files that
         left the listing disappear). Exit codes: 0 done, 1 some files stay unloaded, 2 the lock
-        is taken, 3 the server stayed unavailable."""
+        is taken, 3 the server stayed unavailable.
+
+        ``reprocess``: instead of the files that are new or changed, read again the ``loaded``
+        files of the sols whose ``hourly_revision`` is below ``RAD_HOURLY_REVISION`` (no probes
+        of duplicates, nothing forgotten, the listing validators are left as they were). Every
+        sol is one transaction, so an interrupted run is continued by running it again."""
         _check_range(from_sol, to_sol)
         async with advisory_lock(self._engine) as acquired:
             if not acquired:
@@ -408,7 +544,7 @@ class RadLoader:
             result = RadRunResult()
             before = self._client.stats.snapshot()
             try:
-                await self._run(result, from_sol, to_sol)
+                await self._run(result, from_sol, to_sol, reprocess)
             except _ListingFailed as exc:
                 transient = _is_transient(exc.cause)
                 result.exit_code = EXIT_SERVER_DOWN if transient else EXIT_REMAINING
@@ -439,12 +575,22 @@ class RadLoader:
             result.slowest_wait,
         )
 
-    async def _run(self, result: RadRunResult, lo: int | None, hi: int | None) -> None:
+    async def _run(
+        self, result: RadRunResult, lo: int | None, hi: int | None, reprocess: bool
+    ) -> None:
         now = datetime.now(UTC)
+        pending: list[int] = []
         async with self._factory() as session:
             state = _State.of(await rad_repo.get_dataset(session))
             known = {row.path: row for row in await rad_repo.list_files(session)}
-        conditional = self._can_use_validators(state, known, lo, hi)
+            if reprocess:
+                pending = await rad_repo.sols_below_hourly_revision(
+                    session, RAD_HOURLY_REVISION, lo, hi
+                )
+        if reprocess:
+            conditional = bool(state.checksums_etag or state.checksums_last_modified)
+        else:
+            conditional = self._can_use_validators(state, known, lo, hi)
         response = await self._fetch(
             CHECKSUMS_NAME,
             state.checksums_etag if conditional else None,
@@ -452,7 +598,11 @@ class RadLoader:
         )
         entries = None if response.not_modified else self._listing_entries(response)
         groups = _group(entries or [])
-        todo = _plan(groups, known, lo, hi) if entries is not None else []
+        if reprocess:
+            groups = _reprocess_groups(pending, known, groups)
+            todo = list(groups)
+        else:
+            todo = _plan(groups, known, lo, hi) if entries is not None else []
         result.sols_planned = len(todo)
         result.not_modified = response.not_modified
         timing = await self._fetch_timing(state, conditional_ok=not todo)
@@ -461,14 +611,23 @@ class RadLoader:
         if timing.names is not None and timing.response and not timing.response.not_modified:
             await self._refresh_timing_flags(timing.names)
         for sol in todo:
-            await self._load_sol(result, sol, groups[sol], known, timing.names)
-        if entries is not None and lo is None and hi is None:
+            await self._load_sol(result, sol, groups[sol], known, timing.names, reprocess)
+        if entries is not None and lo is None and hi is None and not reprocess:
             await self._prune(result, known, groups, len(entries))
         if result.sols_failed or result.files_failed:
             result.exit_code = EXIT_REMAINING
             listed = ", ".join(str(sol) for sol in result.sols_failed[:10])
             result.error = f"{len(result.sols_failed)} sols not loaded: {listed}"
-        await self._finish(result, now, response, entries, timing, groups)
+        # A reprocess does not look at the listing for changes: it must not store its validators.
+        await self._finish(
+            result,
+            now,
+            response,
+            None if reprocess else entries,
+            timing,
+            groups,
+            reprocess=reprocess,
+        )
 
     # --- the listings
 
@@ -545,27 +704,31 @@ class RadLoader:
         entries: Sequence[ChecksumEntry],
         known: Mapping[str, RadFileRow],
         timing: set[str] | None,
+        reprocess: bool = False,
     ) -> None:
         work = _SolWork(sol, entries[-1])
         summary: SolSummary | None = None
         try:
-            await self._read_group(work, entries)
+            await self._read_group(work, entries, probe=not reprocess)
             summary = self._summarize(work)
         except _FileFailed as exc:
             self._mark_failed(work, entries, exc)
         await self._save_sol(work, summary, known, timing)
         self._count(result, work, summary)
 
-    async def _read_group(self, work: _SolWork, entries: Sequence[ChecksumEntry]) -> None:
+    async def _read_group(
+        self, work: _SolWork, entries: Sequence[ChecksumEntry], *, probe: bool = True
+    ) -> None:
         primary = work.primary
         parsed = await self._read_file(primary)
         work.parsed.append((primary.path, parsed))
         work.rows.append(_file_row(primary, parsed, status="loaded", role="primary"))
         for entry in entries[:-1]:
-            probe = await self._probe(entry)
-            if _same_file(probe, parsed):
-                work.rows.append(_duplicate_row(entry, primary.path, probe))
-                continue
+            if probe:
+                tail = await self._probe(entry)
+                if _same_file(tail, parsed):
+                    work.rows.append(_duplicate_row(entry, primary.path, tail))
+                    continue
             try:
                 other = await self._read_file(entry)
             except _FileFailed as exc:
@@ -575,6 +738,16 @@ class RadLoader:
             work.rows.append(_file_row(entry, other, status="loaded", role="extra"))
 
     def _summarize(self, work: _SolWork) -> SolSummary | None:
+        """Like ``_summarize_sol``, but an unexpected error of one sol fails that sol only."""
+        try:
+            return self._summarize_sol(work)
+        except _FileFailed:
+            raise
+        except Exception as exc:
+            logger.exception("RAD sol %d could not be combined", work.sol)
+            raise _FileFailed("failed", f"unexpected {_describe(exc)}") from exc
+
+    def _summarize_sol(self, work: _SolWork) -> SolSummary | None:
         """The sol's summary (``None``: no usable observation); sets the sol's Earth date."""
         merged, collapsed = merge_files_counted(work.parsed)
         if collapsed:
@@ -585,6 +758,8 @@ class RadLoader:
             )
         summary = combine_sol(merged, self._settings.rad_low_rate_ratio, repeated=collapsed)
         if summary is not None:
+            work.hourly = combine_hours(summary.used_observations, work.sol)
+            _check_smallint(work.hourly, summary.used)
             primary = dict(work.parsed)[work.primary.path]
             work.earth_date = choose_earth_date(primary.start_time, summary.used_utc)
             if work.earth_date is None:
@@ -635,9 +810,26 @@ class RadLoader:
             await rad_repo.upsert_files(session, rows)
             if daily is not None:
                 await rad_repo.upsert_daily(session, daily)
+                await self._save_hours(session, work)
             elif not work.failed:
                 await rad_repo.delete_daily(session, [work.sol])
             await session.commit()
+
+    @staticmethod
+    async def _save_hours(session: AsyncSession, work: _SolWork) -> None:
+        """The hours of the sol and the state of their calculation (the revision is set last)."""
+        hourly = work.hourly
+        if hourly is None:
+            return
+        rows = [_hour_row(work.sol, hour) for hour in hourly.hours]
+        await rad_repo.replace_hourly(session, work.sol, rows)
+        await rad_repo.set_hourly_state(
+            session,
+            work.sol,
+            revision=RAD_HOURLY_REVISION,
+            reject=hourly.reject,
+            dropped=hourly.dropped,
+        )
 
     @staticmethod
     def _count(result: RadRunResult, work: _SolWork, summary: SolSummary | None) -> None:
@@ -772,6 +964,8 @@ class RadLoader:
         entries: list[ChecksumEntry] | None,
         timing: _Timing,
         groups: Mapping[int, Sequence[ChecksumEntry]],
+        *,
+        reprocess: bool = False,
     ) -> None:
         """Store the state: validators of the listings (their content is fully dealt with)
         and the outcome; ``last_error`` gets what needs a look."""
@@ -783,7 +977,7 @@ class RadLoader:
             "checked_at": now,
             "last_error": "; ".join(notes)[:MAX_ERROR_LENGTH] or None,
         }
-        if result.exit_code == EXIT_OK:
+        if result.exit_code == EXIT_OK and not reprocess:
             fields["succeeded_at"] = now
         async with self._factory() as session:
             state = _State.of(await rad_repo.get_dataset(session))
@@ -874,6 +1068,50 @@ def _plan(
         if not done:
             todo.append(sol)
     return todo
+
+
+def _check_smallint(hourly: HourlyResult, used: int) -> None:
+    """The counts are stored as SMALLINT: a sol over the limit is failed, not truncated."""
+    if used > MAX_SMALLINT or any(hour.n_obs > MAX_SMALLINT for hour in hourly.hours):
+        raise _FileFailed("failed", f"more than {MAX_SMALLINT} observations in one sol")
+
+
+def _hour_row(sol: int, hour: HourSummary) -> dict[str, Any]:
+    return {
+        "sol": sol,
+        "hour": hour.hour,
+        "n_obs": hour.n_obs,
+        "live_s": hour.live_s,
+        "dose_b_mean": hour.dose_b_mean,
+        "dose_e_mean": hour.dose_e_mean,
+        "bu_count": hour.bu_count,
+    }
+
+
+def _reprocess_groups(
+    sols: Sequence[int],
+    known: Mapping[str, RadFileRow],
+    groups: Mapping[int, Sequence[ChecksumEntry]],
+) -> dict[int, list[ChecksumEntry]]:
+    """The files to read again for ``sols``: the stored ``loaded`` ones, the main file last.
+
+    The md5 comes from the listing when it was read (it may have changed since the file was
+    stored), else from the stored row. A sol whose main file is not ``loaded`` is left to
+    ``rad sync`` without the flag.
+    """
+    listed = {entry.path: entry for group in groups.values() for entry in group}
+    loaded: dict[int, list[RadFileRow]] = defaultdict(list)
+    for row in known.values():
+        if row.status == "loaded" and row.md5 is not None:
+            loaded[row.sol].append(row)
+    plan: dict[int, list[ChecksumEntry]] = {}
+    for sol in sorted(sols):
+        rows = sorted(loaded.get(sol, []), key=lambda r: (r.role == "primary", r.path))
+        if not rows or rows[-1].role != "primary":
+            logger.warning("RAD sol %d has no loaded main file: left to rad sync", sol)
+            continue
+        plan[sol] = [listed.get(r.path) or ChecksumEntry(r.path, r.md5 or "", sol) for r in rows]
+    return plan
 
 
 def _is_empty(work: _SolWork, summary: SolSummary | None) -> bool:

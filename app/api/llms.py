@@ -91,8 +91,16 @@ unknown ids are not an error)
 NASA PDS dataset MSL-M-RAD-3-RDR-V1.0; optional `sol_min`/`sol_max`, inclusive; no pagination). \
 `dose_b_ugy_day` and `dose_e_ugy_day` (`mean`, `min`, `max`) are the absorbed dose rate in the \
 instrument's detectors, in microgray per day: not equivalent dose, no sieverts. The dataset lags \
-the mission by months, so the latest sols are missing. Other rovers: `404 not_found`. Keep the \
-`credit` and `citation` fields when you show or redistribute the data
+the mission by months, so the latest sols are missing. Other rovers: `404 not_found`. \
+`GET /api/v2/rovers/curiosity/radiation/{{sol}}` (the same plus 24 hourly doses in `hours`; unknown sol: \
+`404 sol_not_found`). Units differ: `dose_e_ugy_h` and `dose_b_ugy_h` in `hours` are microgray per HOUR \
+(as in the source), the daily `dose_*_ugy_day` are microgray per DAY. `hour` 0-23 is LMST at the rover, \
+computed from the observation's UTC time (Mars24), not from the file's local-time label. An hour without \
+observations has `coverage` 0, `observations` 0 and `null` doses. `hours: null` = hours not computed for \
+this sol, or its observation times contradict each other; the daily fields stay valid. `timing_caveat: true` \
+= the dataset lists timing errors for this sol, hours may be shifted. `observations.dropped_invalid` counts \
+incomplete, unreadable or implausible observations (dose B or E below 1 microgray per hour with quality \
+flag 0). Keep the `credit` and `citation` fields when you show or redistribute the data
 - [Weather]({origin}/api/v2/rovers/perseverance/weather?sol_min=100&sol_max=110): \
 `GET /api/v2/rovers/{{rover}}/weather` (`curiosity` REMS and `perseverance` MEDA only, NASA PDS; \
 daily summaries per sol; optional `sol_min`/`sol_max`, inclusive; no pagination), \

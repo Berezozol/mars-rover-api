@@ -3,9 +3,10 @@
 The history is loaded on a home computer (hours of downloads) and carried to the server as one
 small file: gzip-compressed JSON Lines. The first line is ``meta`` (format, version, schema
 revision, counts, the state of the dataset with the validators of the listings), then one
-``file`` line per ``rad_files`` row and one ``daily`` line per ``rad_daily`` row; times are
-ISO 8601 UTC. The import checks everything before it touches the database, then replaces the
-three tables in one transaction under the RAD advisory lock.
+``file`` line per ``rad_files`` row, one ``daily`` line per ``rad_daily`` row and one
+``hourly`` line per ``rad_hourly`` row (version 2, stage 22); times are ISO 8601 UTC. The import
+checks everything before it touches the database (a file of another schema revision is
+refused), then replaces the four tables in one transaction under the RAD advisory lock.
 """
 
 import asyncio
@@ -24,13 +25,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.repositories import rad as rad_repo
-from app.services.rad_sync import RAD_LOCK_NAMESPACE
+from app.services.rad_sync import MIN_LIVE_SECONDS, RAD_LOCK_NAMESPACE
 
 logger = logging.getLogger(__name__)
 
 EXPORT_FORMAT = "mars-rad-export"
-EXPORT_VERSION = 1
-SCHEMA_REVISION = "0017"
+EXPORT_VERSION = 2
+SCHEMA_REVISION = "0021"
 # Columns of the state row that an import sets itself.
 _IMPORT_OWN = ("imported_at", "import_meta")
 
@@ -38,7 +39,7 @@ _IMPORT_OWN = ("imported_at", "import_meta")
 VOLUME_PATH = r"^DATA/SOL_\d{5}_\d{5}/RAD_RDR_[A-Za-z0-9_]+\.TXT$"
 VolumePath = Annotated[str, Field(pattern=VOLUME_PATH, max_length=200)]
 Float = Annotated[float, Field(ge=0, allow_inf_nan=False)]
-Count = Annotated[int, Field(ge=0)]
+Count = Annotated[int, Field(ge=0, le=2**63 - 1)]
 
 
 class RadTransferError(Exception):
@@ -62,6 +63,7 @@ class TransferResult:
     status: Literal["exported", "imported", "unchanged"]
     files: int
     daily: int
+    hourly: int = 0
 
 
 class _Line(BaseModel):
@@ -104,7 +106,7 @@ class _DailyLine(_Line):
     dose_e_min: Float
     dose_e_max: Float
     bu_count: Count
-    live_s: Annotated[float, Field(gt=0, allow_inf_nan=False)]
+    live_s: Annotated[float, Field(ge=MIN_LIVE_SECONDS, le=90000, allow_inf_nan=False)]
     n_used: Annotated[int, Field(gt=0)]
     n_dropped_qc: Count
     n_dropped_low_rate: Count
@@ -113,6 +115,20 @@ class _DailyLine(_Line):
     timing_caveat: bool | None
     source_path: VolumePath
     updated_at: AwareDatetime
+    hourly_revision: Annotated[int, Field(ge=0, le=32767)]
+    hourly_reject: Literal["overlap", "off_sol"] | None
+    hourly_dropped: Annotated[int, Field(ge=0, le=32767)]
+
+
+class _HourlyLine(_Line):
+    t: Literal["hourly"]
+    sol: Annotated[int, Field(ge=1, le=2**31 - 1)]
+    hour: Annotated[int, Field(ge=0, le=23)]
+    n_obs: Annotated[int, Field(gt=0, le=32767)]
+    live_s: Annotated[float, Field(ge=MIN_LIVE_SECONDS, le=3698.97 * 1.01, allow_inf_nan=False)]
+    dose_b_mean: Float
+    dose_e_mean: Float
+    bu_count: Count
 
 
 class _DatasetState(_Line):
@@ -134,12 +150,13 @@ class _DatasetState(_Line):
 class _Counts(_Line):
     file: Count
     daily: Count
+    hourly: Count
 
 
 class _Meta(_Line):
     t: Literal["meta"]
     format: Literal["mars-rad-export"]
-    version: Literal[1]
+    version: Literal[2]
     schema_revision: str
     exported_at: AwareDatetime
     counts: _Counts
@@ -151,6 +168,7 @@ class _Export:
     meta: _Meta
     files: list[dict[str, Any]]
     daily: list[dict[str, Any]]
+    hourly: list[dict[str, Any]]
 
 
 def _json_default(value: object) -> str:
@@ -182,7 +200,7 @@ async def export_rad(session: AsyncSession, path: Path) -> TransferResult:
     # One snapshot of the three tables even while a sync commits sols.
     await session.rollback()
     await session.connection(execution_options={"isolation_level": "REPEATABLE READ"})
-    files, daily, dataset = await rad_repo.export_rows(session)
+    files, daily, hourly, dataset = await rad_repo.export_rows(session)
     await session.rollback()
     state = None
     if dataset is not None:
@@ -193,14 +211,15 @@ async def export_rad(session: AsyncSession, path: Path) -> TransferResult:
         "version": EXPORT_VERSION,
         "schema_revision": SCHEMA_REVISION,
         "exported_at": datetime.now(UTC),
-        "counts": {"file": len(files), "daily": len(daily)},
+        "counts": {"file": len(files), "daily": len(daily), "hourly": len(hourly)},
         "dataset": state,
     }
     lines = [_dumps(meta)]
     lines += [_dumps({"t": "file", **row}) for row in files]
     lines += [_dumps({"t": "daily", **row}) for row in daily]
+    lines += [_dumps({"t": "hourly", **row}) for row in hourly]
     await asyncio.to_thread(_write_gzip, path, lines)
-    return TransferResult("exported", len(files), len(daily))
+    return TransferResult("exported", len(files), len(daily), len(hourly))
 
 
 def _read_text(path: Path, limit: int) -> str:
@@ -248,8 +267,14 @@ def parse_export(path: Path, limit: int) -> _Export:
     if not lines:
         raise RadImportError("the file is empty")
     meta = _validate(1, _Meta, _parse_line(1, lines[0]))
+    if meta.schema_revision != SCHEMA_REVISION:
+        raise RadImportError(
+            f"schema revision {meta.schema_revision!r} of the file differs from "
+            f"{SCHEMA_REVISION!r} of this version"
+        )
     files: list[dict[str, Any]] = []
     daily: list[dict[str, Any]] = []
+    hourly: list[dict[str, Any]] = []
     for number, text in enumerate(lines[1:], start=2):
         data = _parse_line(number, text)
         kind = data.get("t")
@@ -257,19 +282,45 @@ def parse_export(path: Path, limit: int) -> _Export:
             files.append(_validate(number, _FileLine, data).model_dump(exclude={"t"}))
         elif kind == "daily":
             daily.append(_validate(number, _DailyLine, data).model_dump(exclude={"t"}))
+        elif kind == "hourly":
+            hourly.append(_validate(number, _HourlyLine, data).model_dump(exclude={"t"}))
         else:
             raise RadImportError(f"line {number}: unknown line type")
-    if (len(files), len(daily)) != (meta.counts.file, meta.counts.daily):
+    counts = (meta.counts.file, meta.counts.daily, meta.counts.hourly)
+    if (len(files), len(daily), len(hourly)) != counts:
         raise RadImportError(
-            f"counts in meta ({meta.counts.file} files, {meta.counts.daily} daily) differ "
-            f"from the lines ({len(files)}, {len(daily)})"
+            f"counts in meta ({meta.counts.file} files, {meta.counts.daily} daily, "
+            f"{meta.counts.hourly} hourly) differ from the lines "
+            f"({len(files)}, {len(daily)}, {len(hourly)})"
         )
     _check_unique(files, "path")
     _check_unique(daily, "sol")
+    _check_hourly(daily, hourly)
     paths = {row["path"] for row in files}
     if any(row["source_path"] not in paths for row in daily):
         raise RadImportError("a daily row names a source file that is not in the file list")
-    return _Export(meta, files, daily)
+    return _Export(meta, files, daily, hourly)
+
+
+def _check_hourly(daily: list[dict[str, Any]], hourly: list[dict[str, Any]]) -> None:
+    """Every hour belongs to a sol of the file whose hours were calculated and not refused, and
+    no hour occurs twice."""
+    if len({(row["sol"], row["hour"]) for row in hourly}) != len(hourly):
+        raise RadImportError("an hour occurs twice")
+    accepted = {
+        row["sol"] for row in daily if row["hourly_revision"] > 0 and row["hourly_reject"] is None
+    }
+    if any(row["sol"] not in accepted for row in hourly):
+        raise RadImportError("an hourly row belongs to a sol without calculated hours")
+    in_hours: dict[int, int] = {}
+    for row in hourly:
+        in_hours[row["sol"]] = in_hours.get(row["sol"], 0) + row["n_obs"]
+    for row in daily:
+        if row["hourly_revision"] == 0:
+            continue
+        counted = 0 if row["hourly_reject"] is not None else in_hours.get(row["sol"], 0)
+        if counted + row["hourly_dropped"] != row["n_used"]:
+            raise RadImportError(f"sol {row['sol']}: the hours do not add up to n_used")
 
 
 def _check_unique(rows: list[dict[str, Any]], key: str) -> None:
@@ -291,22 +342,27 @@ async def import_rad(
     try:
         if not await session.scalar(select(func.pg_try_advisory_xact_lock(RAD_LOCK_NAMESPACE))):
             raise RadBusy("another RAD sync or import is running")
-        current_files, current_daily, current_dataset = await rad_repo.export_rows(session)
-        if _same_content(parsed, current_files, current_daily, current_dataset):
+        current = await rad_repo.export_rows(session)
+        current_files, current_daily, current_hourly, _ = current
+        if _same_content(parsed, *current):
             await session.rollback()
-            return TransferResult("unchanged", len(current_files), len(current_daily))
+            return TransferResult(
+                "unchanged", len(current_files), len(current_daily), len(current_hourly)
+            )
         shrinks = len(parsed.daily) < settings.rad_min_keep_ratio * len(current_daily)
         if not force and current_daily and shrinks:
             raise RadImportRefused(
                 f"the file has {len(parsed.daily)} sols, the database {len(current_daily)}; "
                 "use --force to replace them"
             )
-        await rad_repo.replace_all(session, parsed.files, parsed.daily, _dataset_row(parsed))
+        await rad_repo.replace_all(
+            session, parsed.files, parsed.daily, parsed.hourly, _dataset_row(parsed)
+        )
         await session.commit()
     except BaseException:
         await session.rollback()
         raise
-    return TransferResult("imported", len(parsed.files), len(parsed.daily))
+    return TransferResult("imported", len(parsed.files), len(parsed.daily), len(parsed.hourly))
 
 
 def _dataset_fields(parsed: _Export) -> dict[str, Any]:
@@ -327,6 +383,7 @@ def _dataset_row(parsed: _Export) -> dict[str, Any]:
             "schema_revision": meta.schema_revision,
             "files": meta.counts.file,
             "daily": meta.counts.daily,
+            "hourly": meta.counts.hourly,
         },
     }
     return {"id": rad_repo.DATASET_ID, **_dataset_fields(parsed), **own}
@@ -336,12 +393,15 @@ def _same_content(
     parsed: _Export,
     files: list[dict[str, Any]],
     daily: list[dict[str, Any]],
+    hourly: list[dict[str, Any]],
     dataset: dict[str, Any] | None,
 ) -> bool:
     """The stored tables already hold what the file holds (the import marks aside)."""
     if files != sorted(parsed.files, key=lambda row: row["path"]):
         return False
     if daily != sorted(parsed.daily, key=lambda row: row["sol"]):
+        return False
+    if hourly != sorted(parsed.hourly, key=lambda row: (row["sol"], row["hour"])):
         return False
     stored = {k: v for k, v in (dataset or {}).items() if k not in ("id", *_IMPORT_OWN)}
     return stored == _dataset_fields(parsed)

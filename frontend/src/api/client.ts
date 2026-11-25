@@ -14,6 +14,7 @@ import type {
   PhotoPage,
   PhotoQuery,
   RadiationResponse,
+  RadiationSolDetail,
   Rover,
   SamplesResponse,
   SearchQuery,
@@ -409,6 +410,9 @@ export const api = {
       { sol_min: solMin, sol_max: solMax },
       signal,
     ),
+  /** One sol of RAD: the daily summary plus hourly values by LMST (stage 22, Curiosity only). */
+  radiationSol: (rover: string, sol: number, signal?: AbortSignal) =>
+    request<RadiationSolDetail>(`/rovers/${slug(rover)}/radiation/${sol}`, undefined, signal),
   /** The weather list of a sol range (inclusive); the header (credit, source_url) is the same for any range. */
   weatherRange: (rover: string, solMin: number, solMax: number, signal?: AbortSignal) =>
     request<WeatherResponse>(

@@ -65,6 +65,29 @@ without them you get the whole history in one response, no pagination.
 curl "$BASE/api/v2/rovers/curiosity/radiation?sol_min=1600&sol_max=1700"
 ```
 
+`observations.dropped_invalid` counts observations dropped because their data are incomplete, unreadable or
+implausible (dose B or E below 1 microgray per hour with quality flag 0). `timing_caveat: true` means the dataset
+lists timing errors for that sol's file.
+
+Hourly doses of one sol: `GET /api/v2/rovers/curiosity/radiation/{sol}` returns the sol fields plus `credit`,
+`citation` and `hours` (24 items). Watch the units: `dose_e_ugy_h` and `dose_b_ugy_h` in `hours` are microgray per
+**hour** (as in the source), while the daily `dose_*_ugy_day` are microgray per **day** (hourly values times 24).
+Do not mix them.
+
+- `hour` 0-23 is local mean solar time (LMST) at the rover. We compute it from the observation's UTC time
+  (Mars24 algorithm), not from the local-time label in the file. An observation (about 16 minutes) belongs to the
+  hour of its midpoint. Hourly values are means weighted by live time; `count_rate_b_per_s` is the raw count rate
+  of detector B.
+- An hour without observations has `coverage: 0`, `observations: 0` and `null` values.
+- `hours: null` has two causes: hours were not computed for this sol, or the observation times of the sol
+  contradict each other (observations overlap, or fewer than half of them fall on this sol). The daily fields stay valid.
+- `timing_caveat: true`: the dataset lists timing errors for this sol, so the hours may be shifted.
+- A sol with no summary answers `404 sol_not_found`; other rovers answer `404 not_found`.
+
+```sh
+curl "$BASE/api/v2/rovers/curiosity/radiation/1649"
+```
+
 ## Weather by sol (Curiosity and Perseverance)
 
 `GET /api/v2/rovers/{rover}/weather` returns one daily summary per sol; `GET /api/v2/rovers/{rover}/weather/{sol}`

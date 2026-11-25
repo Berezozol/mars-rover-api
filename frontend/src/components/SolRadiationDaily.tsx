@@ -14,8 +14,8 @@ interface Props {
 }
 
 /**
- * Daily RAD summary of the sol with a small trend of the surrounding sols (Curiosity). Hourly radiation
- * is not served yet (stage 22 phase C): this block is the one that phase replaces with hourly charts.
+ * Daily RAD summary of the sol with a small trend of the surrounding sols (Curiosity), in µGy per day.
+ * The hourly charts are in `SolRadiationHourly`.
  */
 export function SolRadiationDaily({ rover, sol }: Props) {
   const lo = Math.max(0, sol - TREND_SOLS);
@@ -140,7 +140,6 @@ export function SolRadiationDaily({ rover, sol }: Props) {
     <section id="radiation" aria-labelledby="radH" class="rad-daily">
       <div class="sec-head">
         <h2 id="radH">Radiation (RAD), daily</h2>
-        <span class="badge badge-est no-dot">hourly values planned</span>
       </div>
       <div class="card panel">{body}</div>
     </section>

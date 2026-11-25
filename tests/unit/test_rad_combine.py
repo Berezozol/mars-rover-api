@@ -12,11 +12,17 @@ from typing import Any
 import pytest
 
 from app.services.rad_sync import combine_sol
-from app.sources.rad import RadObservation
-from tests._rad import attr
+from app.sources.rad import RadObservation, RadParser
+from tests._rad import F_1649_B, F_4843, F_SOL10, attr, fixture
 from tests.unit.test_rad_parser import counters
 
 pytestmark = pytest.mark.unit
+
+
+def parse_fixture(name: str) -> Any:
+    parser = RadParser()
+    parser.feed(fixture(name))
+    return attr(parser.result(), "observations")
 
 
 def mk(
@@ -59,7 +65,9 @@ def test_combine_drops_an_observation_with_a_very_low_count_rate_ac6() -> None:
 
 
 def test_combine_a_single_valid_observation_is_never_dropped_for_its_rate_ac6() -> None:
-    summary = combine_sol([mk(0, 0.2, 900, 27)], 0.5)
+    # The dose is plausible (>= 1.0 uGy/h): with 0.2 the dose filter of ADR-8 would drop it as
+    # invalid. The low rate (0.03 /s) alone must not drop the only observation.
+    summary = combine_sol([mk(0, 2.0, 900, 27)], 0.5)
 
     assert counters(summary) == (1, 0, 0, 0)
 
@@ -147,3 +155,146 @@ def test_combine_is_independent_of_the_observation_order() -> None:
 
     for name in ("dose_b_mean", "dose_b_min", "dose_b_max", "live_s", "bu_count"):
         assert attr(forward, name) == pytest.approx(attr(backward, name)), name
+
+
+# --- AC-58: the implausible dose filter (stage 22, ADR-8) ----------------------------------------
+
+
+def test_combine_drops_a_dose_below_the_limit_as_invalid_ac58() -> None:
+    """AC-58: QC=0, a normal rate and B = 0.5 uGy/h -> `dropped_invalid`, not in the day."""
+    observations = [mk(0, 6.0, 900, 7200), mk(2, 6.2, 900, 7200), mk(4, 0.5, 900, 7200, dose_e=5.0)]
+
+    summary = combine_sol(observations, 0.5)
+
+    assert counters(summary) == (2, 0, 0, 1)
+    assert attr(summary, "dose_b_min") == 6.0  # the dropped 0.5 does not count
+    assert attr(summary, "live_s") == 1800
+    assert attr(summary, "bu_count") == 14400
+    assert attr(summary, "dose_b_mean") == pytest.approx(6.1)
+
+
+def test_combine_drops_a_low_e_dose_as_invalid_too_ac58() -> None:
+    """AC-58: B or E below the limit is enough."""
+    observations = [mk(0, 6.0, 900, 7200), mk(2, 6.2, 900, 7200, dose_e=0.9)]
+
+    summary = combine_sol(observations, 0.5)
+
+    assert counters(summary) == (1, 0, 0, 1)
+    assert attr(summary, "dose_e_min") == pytest.approx(6.0 * 0.9)
+
+
+def test_combine_a_dose_of_exactly_the_limit_is_used_ac58() -> None:
+    """AC-58: 1.0 uGy/h is not below the limit (B and E)."""
+    observations = [mk(0, 6.0, 900, 7200), mk(2, 1.0, 900, 7200, dose_e=1.0)]
+
+    summary = combine_sol(observations, 0.5)
+
+    assert counters(summary) == (2, 0, 0, 0)
+    assert attr(summary, "dose_b_min") == 1.0
+
+
+@pytest.mark.parametrize(
+    ("dose_b", "dose_e", "expected"),
+    [
+        (0.999999, 5.0, (1, 0, 0, 1)),
+        (5.0, 0.999999, (1, 0, 0, 1)),
+        (1.000001, 1.000001, (2, 0, 0, 0)),
+        (0.0, 5.0, (1, 0, 0, 1)),
+    ],
+    ids=["b-just-below", "e-just-below", "both-just-above", "zero"],
+)
+def test_combine_dose_limit_boundary_ac58(
+    dose_b: float, dose_e: float, expected: tuple[int, int, int, int]
+) -> None:
+    summary = combine_sol([mk(0, 6.0, 900, 7200), mk(2, dose_b, 900, 7200, dose_e=dose_e)], 0.5)
+
+    assert counters(summary) == expected
+
+
+def test_combine_the_rate_rule_comes_first_so_garbage_with_a_low_rate_stays_low_rate_ac58() -> None:
+    """AC-58: sol 10 obs 13 (B 0.216, 0.03 /s) is `dropped_low_rate`, not `dropped_invalid`."""
+    observations = [
+        mk(0, 8.4, 960, 7817),
+        mk(12, 8.7, 960, 7817),
+        mk(13, 0.216, 960, 26, dose_e=0.25),
+        mk(25, 9.8, 960, 7707),
+    ]
+
+    assert counters(combine_sol(observations, 0.5)) == (3, 0, 1, 0)
+
+
+def test_combine_a_qc_failure_with_a_low_dose_stays_dropped_qc_ac58() -> None:
+    """AC-58: QC=1 and B 0.19 -> `dropped_qc`, as before (sol 1649 obs 14 has that shape)."""
+    observations = [mk(0, 6.0, 900, 7200), mk(2, 0.19, 900, 7200, dose_e=0.2, qc="00000001")]
+
+    assert counters(combine_sol(observations, 0.5)) == (1, 1, 0, 0)
+
+
+def test_combine_the_median_still_includes_the_low_dose_observation_ac58() -> None:
+    """AC-58: the dose filter comes after the rate rule; the median is taken as before.
+
+    Rates 8.0, 8.0, 3.0 (dose 0.5) and 3.5: with the low-dose observation in the median it is
+    5.75 and the threshold 2.875, so nothing is dropped for its rate and 3.0 goes as invalid.
+    A median without it (8.0) would make 3.5 a `dropped_low_rate`.
+    """
+    observations = [
+        mk(0, 6.0, 1000, 8000),
+        mk(2, 6.0, 1000, 8000),
+        mk(4, 0.5, 1000, 3000, dose_e=5.0),
+        mk(6, 6.0, 1000, 3500),
+    ]
+
+    summary = combine_sol(observations, 0.5)
+
+    assert counters(summary) == (3, 0, 0, 1)
+    assert attr(summary, "bu_count") == 8000 + 8000 + 3500
+
+
+def test_combine_only_low_dose_observations_give_no_summary_ac58() -> None:
+    assert combine_sol([mk(0, 0.5, 900, 7200, dose_e=0.4), mk(2, 0.6, 900, 7200)], 0.5) is None
+
+
+def test_combine_the_dose_filter_adds_to_the_repeated_count_ac58() -> None:
+    summary = combine_sol(
+        [mk(0, 6.0, 900, 7200), mk(2, 0.5, 900, 7200, dose_e=5.0)], 0.5, repeated=2
+    )
+
+    assert attr(summary, "dropped_invalid", "n_dropped_invalid") == 3
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        (F_4843, (3, 1, 0, 0)),
+        (F_SOL10, (3, 0, 1, 0)),
+        (F_1649_B, (3, 1, 0, 0)),
+    ],
+    ids=["sol-4843", "sol-10", "sol-1649"],
+)
+def test_combine_fixtures_keep_their_counters_under_the_dose_filter_ac58(
+    name: str, expected: tuple[int, int, int, int]
+) -> None:
+    """AC-58: the real fixtures 10, 1649 and 4843 have no implausible dose that gets through."""
+    summary = combine_sol(parse_fixture(name), 0.5)
+
+    assert counters(summary) == expected
+
+
+def test_combine_fixture_4843_daily_values_do_not_change_under_the_dose_filter_ac58() -> None:
+    summary = combine_sol(parse_fixture(F_4843), 0.5)
+
+    b = (6.84128, 6.78671, 6.97246)
+    e = (6.58689, 6.53178, 6.43259)
+    assert attr(summary, "dose_b_mean") == pytest.approx(sum(b) / 3)
+    assert attr(summary, "dose_b_min") == min(b) and attr(summary, "dose_b_max") == max(b)
+    assert attr(summary, "dose_e_mean") == pytest.approx(sum(e) / 3)
+    assert attr(summary, "bu_count") == 6454 + 6487 + 6509
+    assert attr(summary, "live_s") == pytest.approx(2790)
+
+
+def test_combine_fixture_sol_10_daily_values_do_not_change_under_the_dose_filter_ac58() -> None:
+    summary = combine_sol(parse_fixture(F_SOL10), 0.5)
+
+    assert attr(summary, "dose_b_mean") == pytest.approx((8.40398 + 8.72671 + 9.77913) / 3)
+    assert attr(summary, "dose_b_min") == 8.40398
+    assert attr(summary, "bu_count") == 7817 + 7817 + 7707

@@ -341,6 +341,29 @@ export interface RadiationSol {
   source: { file: string; link: string };
 }
 
+/**
+ * One LMST hour of RAD data. Hand-written from docs/API.md (stage 22); replace with the generated type
+ * when docs/openapi.json has it. Doses are µGy per HOUR (the daily fields are per day).
+ */
+export interface RadiationHour {
+  hour: number;
+  /** Share of the hour covered by live time, 0..1. */
+  coverage: number;
+  observations: number;
+  dose_e_ugy_h: number | null;
+  dose_b_ugy_h: number | null;
+  count_rate_b_per_s: number | null;
+}
+
+/** `GET /rovers/curiosity/radiation/{sol}`: RadiationSol plus credit and the hours of the sol. */
+export interface RadiationSolDetail extends RadiationSol {
+  rover: string;
+  credit: string;
+  citation: string;
+  /** `null`: hours not computed for this sol or the observation times contradict each other. */
+  hours: RadiationHour[] | null;
+}
+
 export interface RadiationResponse {
   rover: string;
   credit: string;

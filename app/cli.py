@@ -29,12 +29,17 @@
   columns local_time_s, width and height of stored photos from ``extra`` (all rovers by
   default), sol batches upwards, one commit per batch; offline and idempotent, safe to rerun
   or resume with --from-sol. Exit codes: 0 done, 1 failed, 2 invalid input.
-- ``rad sync [--from-sol N] [--to-sol M]``: load the MSL RAD radiation summaries (Curiosity) from
-  the PDS volume into the database, streaming the files without writing them to disk; the whole
-  history without bounds (resumable, files that left the listing are forgotten), else only the
-  sols in the range. Exit codes: 0 done, 1 some files stay unloaded (or the listing shrank),
-  2 invalid input or another ``rad sync`` / ``rad import`` holds the lock, 3 the server stayed
-  unavailable after the cooldown, 130 interrupted (rerun to continue).
+- ``rad sync [--from-sol N] [--to-sol M] [--reprocess]``: load the MSL RAD radiation summaries
+  (Curiosity) from the PDS volume into the database, streaming the files without writing them
+  to disk; the whole history without bounds (resumable, files that left the listing are
+  forgotten), else only the sols in the range. Exit codes: 0 done, 1 some files stay unloaded
+  (or the listing shrank), 2 invalid input or another ``rad sync`` / ``rad import`` holds the
+  lock, 3 the server stayed unavailable after the cooldown, 130 interrupted (rerun to
+  continue). ``--reprocess`` reads
+  again the stored files of the sols whose hours (stage 22) are not calculated yet
+  (``rad_daily.hourly_revision`` below the code's), without probes of duplicates and without
+  forgetting files; run it by hand only (the monthly timer never passes it), interrupt and
+  rerun at will: finished sols are not read again.
 - ``rad status``: the state of the RAD data (files by status, sols, last check and error).
 - ``rad export --output PATH``: write the RAD tables to a gzip JSON Lines file. Exit codes:
   0 written, 2 the file cannot be written.
@@ -189,6 +194,12 @@ def _add_rad_parser(commands: Any) -> None:
     )
     sync.add_argument("--from-sol", type=int, default=None, help="lowest sol (default: all)")
     sync.add_argument("--to-sol", type=int, default=None, help="highest sol (default: all)")
+    sync.add_argument(
+        "--reprocess",
+        action="store_true",
+        help="read again the stored files of sols whose hourly values are not calculated yet "
+        "(downloads the files again; run by hand)",
+    )
     actions.add_parser("status", help="show the state of the RAD data")
     export = actions.add_parser("export", help="write the RAD tables to a gzip JSON Lines file")
     export.add_argument("--output", required=True, type=Path, help="file to write")
@@ -557,7 +568,9 @@ def _main_rad_sync(args: argparse.Namespace, settings: Settings) -> int:
     if None not in (args.from_sol, args.to_sol) and args.from_sol > args.to_sol:
         print("error: --from-sol must not be greater than --to-sol", file=sys.stderr)
         return EXIT_USAGE
-    return asyncio.run(run_rad_sync_command(args.from_sol, args.to_sol, settings))
+    return asyncio.run(
+        run_rad_sync_command(args.from_sol, args.to_sol, settings, reprocess=args.reprocess)
+    )
 
 
 def _main_weather(args: argparse.Namespace) -> int:
@@ -739,14 +752,16 @@ def _samples_line(result: SampleSyncResult) -> str:
     return f"{line}, error: {result.error}" if result.error else line
 
 
-async def run_rad_sync_command(from_sol: int | None, to_sol: int | None, settings: Settings) -> int:
+async def run_rad_sync_command(
+    from_sol: int | None, to_sol: int | None, settings: Settings, *, reprocess: bool = False
+) -> int:
     """Run ``rad sync`` and return the exit code (see the module docstring)."""
     engine = create_engine(
         settings.database_url, connect_timeout=settings.db_connect_timeout_seconds
     )
     try:
         async with build_rad_client(settings) as client:
-            result = await RadLoader(engine, client, settings).run(from_sol, to_sol)
+            result = await RadLoader(engine, client, settings).run(from_sol, to_sol, reprocess)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_USAGE
@@ -845,7 +860,7 @@ async def run_rad_export_command(path: Path, settings: Settings) -> int:
         return EXIT_USAGE
     finally:
         await engine.dispose()
-    print(f"exported {result.files} files, {result.daily} sols to {path}")
+    print(f"exported {result.files} files, {result.daily} sols, {result.hourly} hours to {path}")
     return EXIT_SUCCESS
 
 
@@ -864,7 +879,7 @@ async def run_rad_import_command(path: Path, force: bool, settings: Settings) ->
         return EXIT_PARTIAL
     finally:
         await engine.dispose()
-    print(f"{result.status}: {result.files} files, {result.daily} sols")
+    print(f"{result.status}: {result.files} files, {result.daily} sols, {result.hourly} hours")
     return EXIT_SUCCESS
 
 

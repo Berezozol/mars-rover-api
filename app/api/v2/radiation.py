@@ -1,4 +1,4 @@
-"""v2 radiation: ``GET /api/v2/rovers/{rover}/radiation`` (docs/API.md, stage 21)."""
+"""v2 radiation: ``GET /api/v2/rovers/{rover}/radiation[/{sol}]`` (docs/API.md, stages 21-22)."""
 
 from collections import OrderedDict
 from typing import Annotated, Any
@@ -7,8 +7,15 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic_core import to_json
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v2.params import MAX_SOL, StrictInt
-from app.api.v2.schemas import ErrorResponse, RadiationResponse, radiation_body
+from app.api.responses import FastJSONResponse
+from app.api.v2.params import MAX_SOL, SolPath, StrictInt
+from app.api.v2.schemas import (
+    ErrorResponse,
+    RadiationResponse,
+    RadiationSolDetail,
+    radiation_body,
+    radiation_detail_body,
+)
 from app.core.errors import InvalidParam
 from app.db.session import get_session
 from app.services.radiation import RadiationService
@@ -18,7 +25,10 @@ router = APIRouter()
 Session = Annotated[AsyncSession, Depends(get_session)]
 
 _ERRORS: dict[int | str, dict[str, Any]] = {
-    404: {"model": ErrorResponse, "description": "rover_not_found / not_found (rover without RAD)"},
+    404: {
+        "model": ErrorResponse,
+        "description": "rover_not_found / not_found (rover without RAD) / sol_not_found",
+    },
     422: {"model": ErrorResponse, "description": "validation_error"},
     503: {"model": ErrorResponse, "description": "db_unavailable / service_busy"},
 }
@@ -86,6 +96,19 @@ async def get_radiation(
         body = to_json(radiation_body(data, _source_url(request)))
         cache.put(key, fingerprint, body)
     return Response(body, media_type="application/json")
+
+
+@router.get(
+    "/rovers/{rover}/radiation/{sol}",
+    response_model=RadiationSolDetail,
+    responses=_ERRORS,
+    summary="Radiation of one sol of Curiosity with its 24 hours",
+)
+async def get_radiation_sol(
+    request: Request, rover: str, sol: SolPath, session: Session
+) -> FastJSONResponse:
+    data = await RadiationService(session).get_sol(rover, sol)
+    return FastJSONResponse(radiation_detail_body(data, _source_url(request)))
 
 
 def _source_url(request: Request) -> str:

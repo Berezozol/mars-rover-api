@@ -3,6 +3,7 @@ import { clearApiCache } from "../src/api/client";
 import { App } from "../src/App";
 import { apiError, curiosity, mockApi, pending, perseverance } from "./helpers";
 import { radiationResponse } from "./fixtures/radiation";
+import { radDetail } from "./fixtures/radhours";
 import {
   CUR_SOL,
   PER_SOL,
@@ -21,6 +22,8 @@ type Handler = Parameters<typeof mockApi>[0][string];
 export const WXD = (rover: string, sol: number) => `/api/v2/rovers/${rover}/weather/${sol}`;
 export const LOC = (rover: string) => `/api/v2/rovers/${rover}/location`;
 export const RAD = "/api/v2/rovers/curiosity/radiation";
+/** `GET /rovers/curiosity/radiation/{sol}` (phase C): the hourly radiation of one sol. */
+export const RADH = (sol: number) => `/api/v2/rovers/curiosity/radiation/${sol}`;
 export const reportPath = (rover: string, sol: number) => `/rovers/${rover}/sols/${sol}/conditions`;
 
 export const MAX_SOL = 2147483647;
@@ -65,6 +68,7 @@ export function reportRoutes(over: Record<string, Handler> = {}): Record<string,
   // edge sols: the bounds of the radiation range are clamped to 0 and 2147483647
   for (const sol of [0, 1, 3, 5, 7, 343, CUR_SOL, 345, MAX_SOL - 1, MAX_SOL]) {
     routes[WXD("curiosity", sol)] = reportDetail("curiosity", sol, { ls: 356.7 });
+    routes[RADH(sol)] = radDetail(sol);
   }
   routes[WXD("curiosity", 2)] = noSol(2);
   for (const sol of [0, 1, 99, PER_SOL, 101]) {

@@ -1854,7 +1854,82 @@
             }
           },
           "404": {
-            "description": "rover_not_found / not_found (rover without RAD)",
+            "description": "rover_not_found / not_found (rover without RAD) / sol_not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "validation_error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "db_unavailable / service_busy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/rovers/{rover}/radiation/{sol}": {
+      "get": {
+        "tags": [
+          "v2"
+        ],
+        "summary": "Radiation of one sol of Curiosity with its 24 hours",
+        "operationId": "get_radiation_sol_api_v2_rovers__rover__radiation__sol__get",
+        "parameters": [
+          {
+            "name": "rover",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rover"
+            }
+          },
+          {
+            "name": "sol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2147483647,
+              "minimum": 0,
+              "description": "Sol number.",
+              "title": "Sol"
+            },
+            "description": "Sol number."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RadiationSolDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "rover_not_found / not_found (rover without RAD) / sol_not_found",
             "content": {
               "application/json": {
                 "schema": {
@@ -5040,6 +5115,71 @@
         ],
         "title": "PhotoStatsResponse"
       },
+      "RadiationHour": {
+        "properties": {
+          "hour": {
+            "type": "integer",
+            "title": "Hour",
+            "description": "Hour of local mean solar time, 0-23."
+          },
+          "coverage": {
+            "type": "number",
+            "title": "Coverage",
+            "description": "Share of the hour covered by live time, 0-1, to 0.01."
+          },
+          "observations": {
+            "type": "integer",
+            "title": "Observations"
+          },
+          "dose_e_ugy_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dose E Ugy H",
+            "description": "Detector E, uGy/h to 0.01; null without data."
+          },
+          "dose_b_ugy_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dose B Ugy H",
+            "description": "Detector B, uGy/h to 0.01; null without data."
+          },
+          "count_rate_b_per_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Count Rate B Per S",
+            "description": "Count rate of detector B per second of live time, to 0.001."
+          }
+        },
+        "type": "object",
+        "required": [
+          "hour",
+          "coverage",
+          "observations",
+          "dose_e_ugy_h",
+          "dose_b_ugy_h",
+          "count_rate_b_per_s"
+        ],
+        "title": "RadiationHour",
+        "description": "One hour of LMST of a sol; doses in uGy/h (the daily fields are in uGy/day)."
+      },
       "RadiationResponse": {
         "properties": {
           "rover": {
@@ -5169,6 +5309,94 @@
           "source"
         ],
         "title": "RadiationSol"
+      },
+      "RadiationSolDetail": {
+        "properties": {
+          "sol": {
+            "type": "integer",
+            "title": "Sol"
+          },
+          "earth_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Earth Date"
+          },
+          "dose_b_ugy_day": {
+            "$ref": "#/components/schemas/DoseStats"
+          },
+          "dose_e_ugy_day": {
+            "$ref": "#/components/schemas/DoseStats"
+          },
+          "count_rate_b_per_s": {
+            "type": "number",
+            "title": "Count Rate B Per S"
+          },
+          "coverage": {
+            "type": "number",
+            "title": "Coverage"
+          },
+          "observations": {
+            "$ref": "#/components/schemas/ObservationCounts"
+          },
+          "timing_caveat": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timing Caveat"
+          },
+          "source": {
+            "$ref": "#/components/schemas/RadiationSource"
+          },
+          "rover": {
+            "type": "string",
+            "title": "Rover"
+          },
+          "credit": {
+            "type": "string",
+            "title": "Credit"
+          },
+          "citation": {
+            "type": "string",
+            "title": "Citation"
+          },
+          "hours": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/RadiationHour"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hours",
+            "description": "24 hours of LMST; null when the hours of the sol are not calculated or its observation times are contradictory."
+          }
+        },
+        "type": "object",
+        "required": [
+          "sol",
+          "earth_date",
+          "dose_b_ugy_day",
+          "dose_e_ugy_day",
+          "count_rate_b_per_s",
+          "coverage",
+          "observations",
+          "timing_caveat",
+          "source",
+          "rover",
+          "credit",
+          "citation",
+          "hours"
+        ],
+        "title": "RadiationSolDetail"
       },
       "RadiationSource": {
         "properties": {

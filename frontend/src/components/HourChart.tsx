@@ -127,7 +127,7 @@ export function HourChart({ def, sol, night, hour, onHour }: Props) {
     <div class="card pc" id={`pc-${def.id}`} data-testid={`hour-chart-${def.id}`}>
       <div class="pc-head">
         <h3>{def.title}</h3>
-        <span class="muted xsmall">{def.unit}</span>
+        <span class="muted xsmall">{def.unit}</span>{" "}
         {badge && (
           <span class={`badge no-dot ${badge === "preliminary" ? "badge-prelim" : "badge-est"}`}>
             {badge}

@@ -562,6 +562,11 @@ class RadDaily(Base):
     __table_args__ = (
         CheckConstraint("live_s > 0", name="live_positive"),
         CheckConstraint("n_used > 0", name="used_positive"),
+        CheckConstraint(
+            "hourly_reject IS NULL OR hourly_reject IN ('overlap', 'off_sol')",
+            name="hourly_reject_valid",
+        ),
+        CheckConstraint("hourly_dropped >= 0", name="hourly_dropped_nonneg"),
     )
 
     sol: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
@@ -585,6 +590,34 @@ class RadDaily(Base):
     # No foreign key: the file may leave rad_files before the sol is recomputed.
     source_path: Mapped[str] = mapped_column(Text)
     updated_at: Mapped[datetime] = mapped_column(_TIMESTAMPTZ, server_default=func.now())
+    # Stage 22: the revision of the hourly calculation of the sol (0: not calculated yet), why
+    # the hours were refused (``overlap`` / ``off_sol``; NULL: accepted or not calculated) and
+    # how many used observations did not enter the hours.
+    hourly_revision: Mapped[int] = mapped_column(SmallInteger, server_default=text("0"))
+    hourly_reject: Mapped[str | None] = mapped_column(Text)
+    hourly_dropped: Mapped[int] = mapped_column(SmallInteger, server_default=text("0"))
+
+
+class RadHourly(Base):
+    """One hour (local mean solar time) of a sol with observations; hours without any are not
+    stored. Doses in uGy/h; the rate of detector B is ``bu_count / live_s``."""
+
+    __tablename__ = "rad_hourly"
+    __table_args__ = (
+        CheckConstraint("hour >= 0 AND hour <= 23", name="hour_range"),
+        CheckConstraint("n_obs > 0", name="n_obs_positive"),
+        CheckConstraint("live_s > 0", name="live_positive"),
+    )
+
+    sol: Mapped[int] = mapped_column(
+        ForeignKey("rad_daily.sol", ondelete="CASCADE"), primary_key=True, autoincrement=False
+    )
+    hour: Mapped[int] = mapped_column(SmallInteger, primary_key=True, autoincrement=False)
+    n_obs: Mapped[int] = mapped_column(SmallInteger)
+    live_s: Mapped[float] = mapped_column(Float)
+    dose_b_mean: Mapped[float] = mapped_column(Float)
+    dose_e_mean: Mapped[float] = mapped_column(Float)
+    bu_count: Mapped[int] = mapped_column(BigInteger)
 
 
 class RadDataset(Base):

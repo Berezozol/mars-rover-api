@@ -259,7 +259,8 @@ class RadHost:
     `md5_override` changes single entries. Behaviours in `fail[path]` are consumed one per
     request: `"503"`, `"429"`, `"404"`, `"truncate"` (body cut in half, full Content-Length),
     `"reset"` (connection error after the first chunk), `"corrupt"` (one byte flipped),
-    `"boom"` (an unexpected exception inside the handler), `"redirect"` (302 elsewhere).
+    `"boom"` (an unexpected exception inside the handler), `"interrupt"` (`KeyboardInterrupt`
+    inside the handler, i.e. Ctrl+C), `"redirect"` (302 elsewhere).
     """
 
     events: list[tuple[str, Any]]
@@ -357,6 +358,8 @@ class RadHost:
         behaviour = queue.pop(0) if queue else None
         if behaviour == "boom":
             raise RuntimeError("boom: unexpected failure inside the fake host")
+        if behaviour == "interrupt":
+            raise KeyboardInterrupt  # Ctrl+C in the middle of a request
         if behaviour in ("503", "429", "404"):
             self._end(rel)
             return httpx.Response(int(behaviour), content=b"error")
@@ -565,7 +568,8 @@ async def daily_row(factory: Factory, sol: int) -> dict[str, Any] | None:
 
 async def wipe_rad(factory: Factory) -> None:
     async with factory() as session:
-        await session.execute(text("TRUNCATE rad_files, rad_daily, rad_dataset"))
+        # CASCADE: `rad_hourly` (stage 22) references `rad_daily`.
+        await session.execute(text("TRUNCATE rad_files, rad_daily, rad_dataset CASCADE"))
         await session.commit()
 
 
@@ -586,18 +590,34 @@ async def insert_daily(
     timing_caveat: bool | None = False,
     source_path: str | None = None,
     updated_at: str = "2026-11-01T01:42:10+00:00",
+    hourly_revision: int | None = None,
+    hourly_reject: str | None = None,
+    hourly_dropped: int | None = None,
 ) -> None:
-    """Insert one `rad_daily` row (doses in uGy/h; `(mean, min, max)` tuples)."""
+    """Insert one `rad_daily` row (doses in uGy/h; `(mean, min, max)` tuples).
+
+    The stage-22 columns (`hourly_*`) are written only when given, so that the stage-21 tests
+    run on the schema with or without migration 0021.
+    """
+    extra = {
+        "hourly_revision": hourly_revision,
+        "hourly_reject": hourly_reject,
+        "hourly_dropped": hourly_dropped,
+    }
+    extra = {k: v for k, v in extra.items() if v is not None}
+    extra_columns = "".join(f", {k}" for k in extra)
+    extra_marks = "".join(f", :{k}" for k in extra)
     async with factory() as session:
         await session.execute(
             text(
                 "INSERT INTO rad_daily (sol, earth_date, dose_b_mean, dose_b_min, dose_b_max, "
                 "dose_e_mean, dose_e_min, dose_e_max, bu_count, live_s, n_used, n_dropped_qc, "
                 "n_dropped_low_rate, n_dropped_invalid, qc_bits, timing_caveat, source_path, "
-                "updated_at) VALUES (:sol, :ed, :bm, :bn, :bx, :em, :en, :ex, :bu, "
-                ":live, :used, :dq, :dl, :di, :qc, :tc, :sp, :ua)"
+                f"updated_at{extra_columns}) VALUES (:sol, :ed, :bm, :bn, :bx, :em, :en, :ex, "
+                f":bu, :live, :used, :dq, :dl, :di, :qc, :tc, :sp, :ua{extra_marks})"
             ),
             {
+                **extra,
                 "sol": sol,
                 "ed": date.fromisoformat(earth_date),
                 "bm": dose_b[0],
@@ -621,6 +641,58 @@ async def insert_daily(
             },
         )
         await session.commit()
+
+
+async def insert_hours(factory: Factory, sol: int, hours: list[dict[str, Any]]) -> None:
+    """Insert `rad_hourly` rows of an existing `rad_daily` sol.
+
+    Every dict has `hour`, `n_obs`, `live_s`, `dose_b_mean`, `dose_e_mean`, `bu_count`.
+    """
+    async with factory() as session:
+        for row in hours:
+            await session.execute(
+                text(
+                    "INSERT INTO rad_hourly (sol, hour, n_obs, live_s, dose_b_mean, dose_e_mean, "
+                    "bu_count) VALUES (:sol, :hour, :n_obs, :live_s, :dose_b_mean, :dose_e_mean, "
+                    ":bu_count)"
+                ),
+                {"sol": sol, **row},
+            )
+        await session.commit()
+
+
+async def rad_hourly(factory: Factory, sol: int | None = None) -> list[dict[str, Any]]:
+    """`rad_hourly` rows ordered by sol and hour (all, or one sol)."""
+    if sol is None:
+        return await fetch(factory, "SELECT * FROM rad_hourly ORDER BY sol, hour")
+    return await fetch(factory, "SELECT * FROM rad_hourly WHERE sol = :s ORDER BY hour", s=sol)
+
+
+HOURLY_COLUMNS = ("hourly_revision", "hourly_reject", "hourly_dropped")
+
+
+def without_hourly(row: dict[str, Any] | None) -> dict[str, Any] | None:
+    """A `rad_daily` row without the stage-22 columns (the daily values of stage 21)."""
+    if row is None:
+        return None
+    return {k: v for k, v in row.items() if k not in HOURLY_COLUMNS}
+
+
+async def reset_hourly(factory: Factory) -> None:
+    """Make the database look as before stage 22: no hours, `hourly_revision` 0 everywhere."""
+    async with factory() as session:
+        await session.execute(text("DELETE FROM rad_hourly"))
+        await session.execute(
+            text(
+                "UPDATE rad_daily SET hourly_revision = 0, hourly_reject = NULL, hourly_dropped = 0"
+            )
+        )
+        await session.commit()
+
+
+def utc_text(moment: datetime) -> str:
+    """`START_OBS_UTC` text (`YYYY-DDD HH:MM:SS`) of a moment."""
+    return moment.strftime("%Y-%j %H:%M:%S")
 
 
 async def insert_dataset(factory: Factory, **values: Any) -> None:

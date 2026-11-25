@@ -27,7 +27,13 @@ from app.services.api_keys import (
     normalize_email,
 )
 from app.services.locations import LocationData, PhotoLocation, TraverseData
-from app.services.radiation import RAD_CITATION, RAD_CREDIT, SOL_SECONDS, RadiationData
+from app.services.radiation import (
+    RAD_CITATION,
+    RAD_CREDIT,
+    SOL_SECONDS,
+    RadiationData,
+    RadiationSolData,
+)
 from app.services.samples import SampleLocation, SamplesData, SampleView
 from app.services.v2 import (
     CameraInfo,
@@ -273,6 +279,31 @@ class RadiationSol(BaseModel):
     observations: ObservationCounts
     timing_caveat: bool | None
     source: RadiationSource
+
+
+class RadiationHour(BaseModel):
+    """One hour of LMST of a sol; doses in uGy/h (the daily fields are in uGy/day)."""
+
+    hour: int = Field(description="Hour of local mean solar time, 0-23.")
+    coverage: float = Field(description="Share of the hour covered by live time, 0-1, to 0.01.")
+    observations: int
+    dose_e_ugy_h: float | None = Field(description="Detector E, uGy/h to 0.01; null without data.")
+    dose_b_ugy_h: float | None = Field(description="Detector B, uGy/h to 0.01; null without data.")
+    count_rate_b_per_s: float | None = Field(
+        description="Count rate of detector B per second of live time, to 0.001."
+    )
+
+
+class RadiationSolDetail(RadiationSol):
+    rover: str
+    credit: str
+    citation: str
+    hours: list[RadiationHour] | None = Field(
+        description=(
+            "24 hours of LMST; null when the hours of the sol are not calculated or its "
+            "observation times are contradictory."
+        )
+    )
 
 
 class RadiationResponse(BaseModel):
@@ -784,6 +815,17 @@ def radiation_body(data: RadiationData, source_url: str) -> Json:
         "source_max_sol": data.source_max_sol,
         "source_release": data.source_release,
         "items": [radiation_dict(row, source_url) for row in data.items],
+    }
+
+
+def radiation_detail_body(data: RadiationSolData, source_url: str) -> Json:
+    """One sol: the fields of ``RadiationSol`` and the 24 hours (``None`` when not available)."""
+    return {
+        "rover": data.rover,
+        **radiation_dict(data.row, source_url),
+        "credit": RAD_CREDIT,
+        "citation": RAD_CITATION,
+        "hours": data.hours,
     }
 
 

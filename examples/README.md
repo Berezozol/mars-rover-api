@@ -7,6 +7,9 @@
 - [weather.py](weather.py) and [weather.mjs](weather.mjs): daily and hourly weather of Curiosity or
   Perseverance (standard library only; Node 18+ for the `.mjs`). Arguments: base URL, rover, `sol_min`, `sol_max`.
 
+- [radiation.py](radiation.py) and [radiation.mjs](radiation.mjs): daily radiation of Curiosity and the hourly
+  dose of one sol (standard library only; Node 18+ for the `.mjs`). Arguments: base URL, `sol_min`, `sol_max`.
+
 ## Check your old-API requests: `compat_check.py`
 
 [compat_check.py](compat_check.py) sends typical requests of the archived Mars Rover Photos API
