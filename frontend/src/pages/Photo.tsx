@@ -75,6 +75,12 @@ export function parseFrom(from: string | null): { rover: string; query: PhotoQue
   return { rover: safeDecode(parts[1]).toLowerCase(), query };
 }
 
+/** The search page a photo was opened from: only our own `/search…` addresses (no other hosts or schemes). */
+export function backToSearch(from: string | null): string | null {
+  if (!from || !/^\/search(?:[?#]|$)/.test(from) || from.includes("\\")) return null;
+  return from;
+}
+
 function withPage(from: string, page: number): string {
   const url = new URL(from, "http://local.invalid");
   if (page > 1) url.searchParams.set("page", String(page));
@@ -223,12 +229,26 @@ export function PhotoPage({ id }: { id: string }) {
       />
     );
   }
-  return <PhotoView photo={state.data.photo} ctx={state.data.ctx} />;
+  return <PhotoView photo={state.data.photo} ctx={state.data.ctx} rawFrom={from} />;
 }
 
-function PhotoView({ photo, ctx }: { photo: PhotoDetail; ctx: ListContext }) {
+function PhotoView({
+  photo,
+  ctx,
+  rawFrom,
+}: {
+  photo: PhotoDetail;
+  ctx: ListContext;
+  rawFrom: string | null;
+}) {
   const roverName = photo.rover.charAt(0).toUpperCase() + photo.rover.slice(1);
-  const solHref = `/rovers/${photo.rover}${qs({ sol: photo.sol })}`;
+  // The sol crumb returns to the page of the list the visitor came from (same rover and sol).
+  const fromList = parseFrom(ctx.from);
+  const solHref =
+    ctx.from && fromList && fromList.rover === photo.rover && fromList.query.sol === photo.sol
+      ? withoutFilters(ctx.from)
+      : `/rovers/${photo.rover}${qs({ sol: photo.sol })}`;
+  const searchHref = backToSearch(rawFrom);
   const camHref = `/rovers/${photo.rover}${qs({ sol: photo.sol, camera: photo.camera.code })}`;
   const from = ctx.from;
   const [nb] = useAsync(
@@ -244,6 +264,13 @@ function PhotoView({ photo, ctx }: { photo: PhotoDetail; ctx: ListContext }) {
 
   return (
     <>
+      {searchHref && (
+        <p class="crumbs">
+          <Link href={searchHref} data-testid="back-to-search">
+            ← Back to search results
+          </Link>
+        </p>
+      )}
       <nav class="crumbs" aria-label="Breadcrumb">
         <Link href="/">Rovers</Link> › <Link href={`/rovers/${photo.rover}`}>{roverName}</Link> ›{" "}
         <Link href={solHref}>Sol {photo.sol}</Link> ›{" "}

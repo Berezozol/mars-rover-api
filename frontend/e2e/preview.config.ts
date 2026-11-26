@@ -2,7 +2,7 @@ import { defineConfig } from "@playwright/test";
 import base from "../playwright.config";
 
 // Local run without the backend: serves `dist` with `vite preview` (build first: `npm run build`) and runs the
-// specs whose API is fully intercepted (the stage 22 sol report and sol range, the small fixes of 2026-11-26). `npx playwright test -c e2e/preview.config.ts`.
+// specs whose API is fully intercepted (the stage 22 sol report and sol range, the small fixes of 2026-11-26, the url-state package). `npx playwright test -c e2e/preview.config.ts`.
 export default defineConfig({
   ...base,
   testDir: ".",
@@ -14,6 +14,7 @@ export default defineConfig({
     "data-texts.spec.ts",
     "keys-flow.spec.ts",
     "ac32-keys.spec.ts",
+    "url-state.spec.ts",
   ],
   use: { ...base.use, baseURL: "http://127.0.0.1:4173" },
   webServer: {

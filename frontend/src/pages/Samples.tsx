@@ -19,7 +19,7 @@ import {
   type StatusFilter,
   type TypeFilter,
 } from "../lib/samples";
-import { Link, useHash } from "../router";
+import { Link, useHash, useQueryParam, useRestoreScroll } from "../router";
 
 export function Samples({ roverId }: { roverId: string }) {
   const [rovers, reload] = useRovers();
@@ -69,14 +69,20 @@ function listNumbers(n: number[]): string {
 
 const dateOnly = (iso: string) => iso.slice(0, 10);
 
+const STATUSES: StatusFilter[] = ["on_rover", "depot"];
+const TYPES: TypeFilter[] = ["rock_core", "regolith", "atmospheric"];
+const parseStatus = (raw: string) => STATUSES.find((x) => x === raw);
+const parseType = (raw: string) => TYPES.find((x) => x === raw);
+
 function SamplesView({ rover }: { rover: Rover }) {
   const [state, retry] = useAsync(() => api.samples(rover.id), [rover.id]);
-  const [status, setStatus] = useState<StatusFilter>("all");
-  const [type, setType] = useState<TypeFilter>("all");
+  const [status, setStatus] = useQueryParam<StatusFilter>("status", parseStatus, "all");
+  const [type, setType] = useQueryParam<TypeFilter>("type", parseType, "all");
   const [target, setTarget] = useState<number | null>(null);
   const { hash, visit } = useHash();
   const data = state.status === "ok" ? state.data : null;
   const items = data?.items ?? null;
+  useRestoreScroll(state.status === "ok");
 
   // `#sample-N`: the rows appear after loading and may be filtered out, so the page scrolls to the row itself.
   useEffect(() => {

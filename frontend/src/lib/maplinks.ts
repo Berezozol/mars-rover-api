@@ -1,22 +1,34 @@
 import type { Waypoint } from "../api/types";
 import { qs } from "../router";
 
-/** The stop a link points at: same site and drive, else the last stop of the sol. */
+/** A stop found for a link; `exact: false` when the stop of the asked sol was missing and an earlier one stands in. */
+export interface FoundStop {
+  index: number;
+  exact: boolean;
+}
+
+/**
+ * The stop a link points at: same site and drive (and sol, when given); otherwise the last stop of
+ * the sol, or, when the sol has none, the last stop before it (`exact: false`). `null` when nothing fits.
+ */
 export function findStop(
   stops: Waypoint[],
   sol: number | null,
   site: number | null,
   drive: number | null,
-): number | null {
+): FoundStop | null {
   if (site !== null && drive !== null) {
     const i = stops.findIndex(
       (w) => w.site === site && w.drive === drive && (sol === null || w.sol === sol),
     );
-    if (i >= 0) return i;
+    if (i >= 0) return { index: i, exact: true };
   }
   if (sol === null) return null;
-  for (let i = stops.length - 1; i >= 0; i--) if (stops[i]!.sol === sol) return i;
-  return null;
+  let best = -1;
+  for (let i = 0; i < stops.length; i++) {
+    if (stops[i]!.sol <= sol && (best < 0 || stops[i]!.sol >= stops[best]!.sol)) best = i;
+  }
+  return best < 0 ? null : { index: best, exact: stops[best]!.sol === sol };
 }
 
 /** Address of the map for a rover, optionally centred on a stop or with a sol range highlighted. */

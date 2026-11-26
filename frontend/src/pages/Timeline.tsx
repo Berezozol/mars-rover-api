@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { api } from "../api/client";
 import type { Manifest, ManifestSol, Rover } from "../api/types";
 import { RoverTabs } from "../components/RoverTabs";
 import { EmptyState, ErrorAlert, PageSkeleton } from "../components/States";
 import { fmt } from "../lib/format";
 import { useAsync, useRovers, useTitle } from "../lib/hooks";
-import { Link, navigate, qs, useQuery } from "../router";
+import { Link, navigate, qs, useQuery, useRestoreScroll } from "../router";
 
 const MAX_CHART_SOLS = 1000;
 const TABLE_ROWS = 20;
@@ -136,6 +136,7 @@ function TipLayer() {
 }
 
 function Charts({ rover, maxSol, manifest }: { rover: Rover; maxSol: number; manifest: Manifest }) {
+  useRestoreScroll(true);
   const q = useQuery();
   const fromP = parseSolParam(q.get("from_sol"));
   const toP = parseSolParam(q.get("to_sol"));
@@ -156,7 +157,8 @@ function Charts({ rover, maxSol, manifest }: { rover: Rover; maxSol: number; man
   );
 
   const setRange = (a: number, b: number) =>
-    navigate(`/rovers/${rover.id}/timeline${qs({ from_sol: a, to_sol: b })}`, { replace: true });
+    // A new history entry: Back returns to the previous range.
+    navigate(`/rovers/${rover.id}/timeline${qs({ from_sol: a, to_sol: b })}`);
 
   return (
     <div>
@@ -356,11 +358,20 @@ function Detail(props: {
   const { rover, maxSol, bySol, from, to } = props;
   const [fromText, setFromText] = useState(String(from));
   const [toText, setToText] = useState(String(to));
-  const [formErr, setFormErr] = useState<string | null>(null);
+  const [formErr, setFormErr] = useState<{ field: "from" | "to"; text: string } | null>(null);
   const [showAll, setShowAll] = useState(false);
-  useEffect(() => setFromText(String(from)), [from]);
-  useEffect(() => setToText(String(to)), [to]);
-  useEffect(() => setShowAll(false), [from, to]);
+  // The fields follow the range when the address changes (links, Back), not on mount: the visitor may
+  // have started typing before the mount effects run.
+  const seen = useRef({ from, to });
+  useEffect(() => {
+    const prev = seen.current;
+    if (prev.from === from && prev.to === to) return;
+    seen.current = { from, to };
+    setFromText(String(from));
+    setToText(String(to));
+    setShowAll(false);
+    setFormErr(null);
+  }, [from, to]);
 
   const invalid = props.bad || from > to;
   const tooWide = !invalid && to - from + 1 > MAX_CHART_SOLS;
@@ -383,12 +394,26 @@ function Detail(props: {
 
   const apply = (e: Event) => {
     e.preventDefault();
-    if (!/^\d+$/.test(fromText) || !/^\d+$/.test(toText)) {
-      setFormErr("Enter whole numbers, 0 or greater.");
+    const whole = "Enter whole numbers, 0 or greater.";
+    const runs = `Sols run 0–${maxSol}.`;
+    const f = fromText.trim();
+    const t = toText.trim();
+    let err: { field: "from" | "to"; text: string } | null = null;
+    if (!/^\d+$/.test(f)) err = { field: "from", text: whole };
+    else if (!/^\d+$/.test(t)) err = { field: "to", text: whole };
+    else if (Number(f) > maxSol) err = { field: "from", text: runs };
+    else if (Number(t) > maxSol) err = { field: "to", text: runs };
+    else if (Number(f) > Number(t)) {
+      err = { field: "from", text: "“From” must not be greater than “To”." };
+    }
+    if (err) {
+      setFormErr(err);
+      requestAnimationFrame(() => document.getElementById(err.field)?.focus());
       return;
     }
     setFormErr(null);
-    props.setRange(Number(fromText), Number(toText));
+    // The same range is not a new place in the history.
+    if (Number(f) !== from || Number(t) !== to) props.setRange(Number(f), Number(t));
   };
 
   const dates = sols.map((x) => x.entry?.earth_date).filter(Boolean) as string[];
@@ -396,7 +421,7 @@ function Detail(props: {
 
   return (
     <section class="card chart-card" aria-labelledby="det-title">
-      <form class="chart-head" onSubmit={apply}>
+      <form class="chart-head" onSubmit={apply} noValidate>
         <div>
           <h2 id="det-title">Photos per sol</h2>
           <p class="small muted" style={{ margin: 0 }}>
@@ -410,10 +435,18 @@ function Detail(props: {
             id="from"
             type="number"
             min={0}
+            max={maxSol}
+            aria-invalid={formErr?.field === "from" ? "true" : undefined}
+            aria-describedby={formErr?.field === "from" ? "from-err" : undefined}
             style={{ width: 110 }}
             value={fromText}
             onInput={(e) => setFromText(e.currentTarget.value)}
           />
+          {formErr?.field === "from" && (
+            <span id="from-err" class="field-err">
+              {formErr.text}
+            </span>
+          )}
         </div>
         <div class="field">
           <label for="to">To sol</label>
@@ -421,10 +454,18 @@ function Detail(props: {
             id="to"
             type="number"
             min={0}
+            max={maxSol}
+            aria-invalid={formErr?.field === "to" ? "true" : undefined}
+            aria-describedby={formErr?.field === "to" ? "to-err" : undefined}
             style={{ width: 110 }}
             value={toText}
             onInput={(e) => setToText(e.currentTarget.value)}
           />
+          {formErr?.field === "to" && (
+            <span id="to-err" class="field-err">
+              {formErr.text}
+            </span>
+          )}
         </div>
         <button class="btn" type="submit">
           Apply
@@ -442,13 +483,12 @@ function Detail(props: {
       </form>
 
       <div role="alert">
-        {(invalid || formErr) && (
+        {invalid && (
           <div class="alert alert-error range-err">
             <div>
               <div class="alert-title">Invalid range</div>
               <p style={{ margin: 0 }}>
-                {formErr ??
-                  "“From sol” must not be greater than “To sol”, and both must be whole numbers."}
+                “From sol” must not be greater than “To sol”, and both must be whole numbers.
               </p>
             </div>
           </div>

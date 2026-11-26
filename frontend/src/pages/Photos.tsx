@@ -12,7 +12,7 @@ import { EmptyState, ErrorAlert, GridSkeleton, PageSkeleton } from "../component
 import { fmt, short, statusLabel } from "../lib/format";
 import { stopLabel, type StopFilter } from "../lib/maplinks";
 import { useAsync, useRovers, useTitle } from "../lib/hooks";
-import { Link, navigate, qs, useQuery } from "../router";
+import { Link, navigate, qs, useQuery, useRestoreScroll } from "../router";
 
 const PER_PAGE_CHOICES = [24, 48, 96];
 
@@ -175,6 +175,8 @@ function Browser({ rover, maxSol }: { rover: Rover; maxSol: number }) {
       perPage,
     ],
   );
+
+  useRestoreScroll(photos.status === "ok");
 
   const anchorSol =
     rawSol !== undefined && /^\d+$/.test(rawSol)

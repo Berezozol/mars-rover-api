@@ -20,6 +20,7 @@ import {
 import { About, dateOnly, Facts } from "./DataAbout";
 import { LineChart } from "./LineChart";
 import { SolRangeSlider } from "./SolRangeSlider";
+import { useRestoreScroll } from "../router";
 import { SolTable, type SolColumn } from "./SolTable";
 import { EmptyState, ErrorAlert } from "./States";
 
@@ -79,6 +80,7 @@ function RadiationView({
 }) {
   const v = viewOf(data.items);
   const narrow = useMedia("(max-width: 479px)", false);
+  useRestoreScroll(true);
   const [sol, setSol] = useState(v.last);
   const [jump, setJump] = useState<{ sol: number; n: number } | null>(null);
   const [mode, setMode] = useState<ScaleMode>("auto");
@@ -328,6 +330,7 @@ function RadiationView({
       </div>
 
       <SolTable
+        tableId="radiation"
         rows={data.items}
         columns={columns}
         range={range}

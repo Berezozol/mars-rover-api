@@ -1,4 +1,5 @@
 // Range of sols shown by the data pages (stage 22): defaults, presets, clamping and the `?from=&to=` address.
+import { replaceKeepingState } from "../router";
 import { niceScale } from "./radiation";
 import { niceTicks } from "./weather";
 
@@ -115,7 +116,7 @@ export function writeRangeQuery(range: SolRange | null, rover?: string | null): 
       q = s ? `?${s}` : "";
     }
     const next = `${pathname}${q}${hash}`;
-    if (next !== `${pathname}${search}${hash}`) window.history.replaceState(null, "", next);
+    if (next !== `${pathname}${search}${hash}`) replaceKeepingState(next);
   } catch {
     // Some browsers limit how often the address may change; the range just stays unsaved then.
   }

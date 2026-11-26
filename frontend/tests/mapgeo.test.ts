@@ -327,11 +327,13 @@ describe("grid, scale and labels", () => {
 
 describe("stop links", () => {
   it("findStop matches site and drive first, then the last stop of the sol", () => {
-    expect(findStop(stops, 2, 1, 5)).toBe(1);
-    expect(findStop(stops, 3, null, null)).toBe(2);
-    expect(findStop(stops, 99, null, null)).toBeNull();
-    expect(findStop(stops, null, 1, 9)).toBe(2);
-    expect(findStop(stops, 2, 1, 6)).toBe(1); // unknown drive: falls back to the sol
+    expect(findStop(stops, 2, 1, 5)).toEqual({ index: 1, exact: true });
+    expect(findStop(stops, 3, null, null)).toEqual({ index: 2, exact: true });
+    // url-state AC-7: a sol without a stop gives the last stop before it, not "nothing"
+    expect(findStop(stops, 99, null, null)).toEqual({ index: 2, exact: false });
+    expect(findStop(stops, 0, null, null)).toBeNull(); // before the first stop
+    expect(findStop(stops, null, 1, 9)).toEqual({ index: 2, exact: true });
+    expect(findStop(stops, 2, 1, 6)).toEqual({ index: 1, exact: true }); // unknown drive: falls back to the sol
   });
 
   it("mapHref builds the address of the map centred on a stop", () => {

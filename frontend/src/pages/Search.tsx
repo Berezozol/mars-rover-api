@@ -38,7 +38,7 @@ import {
   type SearchFilters,
   type TimeMode,
 } from "../lib/search";
-import { navigate, useLocation } from "../router";
+import { navigate, useLocation, useRestoreScroll } from "../router";
 
 export function Search() {
   const [rovers, reload] = useRovers();
@@ -140,6 +140,7 @@ function SearchPage({ rovers }: { rovers: Rover[] }) {
     } else navigate("/search");
   };
 
+  useRestoreScroll(result.status === "ok");
   const resultsRef = useRef<HTMLElement>(null);
   const firstPage = useRef(true);
   useEffect(() => {
@@ -478,7 +479,13 @@ function SearchPage({ rovers }: { rovers: Rover[] }) {
           />
         )}
         {result.status === "ok" && (
-          <Found data={result.data} hrefForPage={hrefForPage} reasons={reasons} onReset={reset} />
+          <Found
+            data={result.data}
+            from={`${pathname}${search}`}
+            hrefForPage={hrefForPage}
+            reasons={reasons}
+            onReset={reset}
+          />
         )}
       </section>
       <p class="api-line">
@@ -496,11 +503,14 @@ function summary(data: PhotoPage): string {
 
 function Found({
   data,
+  from,
   hrefForPage,
   reasons,
   onReset,
 }: {
   data: PhotoPage;
+  /** The address of this search, handed to the photo page for "Back to search results". */
+  from: string;
   hrefForPage: (p: number) => string;
   reasons: string[];
   onReset: () => void;
@@ -574,7 +584,7 @@ function Found({
       )}
       <ul class="photo-grid">
         {data.items.map((p) => (
-          <PhotoTile key={p.id} photo={p} showRover />
+          <PhotoTile key={p.id} photo={p} from={from} showRover />
         ))}
       </ul>
       <Pager page={data.page} pages={pages} hrefFor={hrefForPage} />

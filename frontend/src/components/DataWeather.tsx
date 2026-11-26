@@ -28,6 +28,7 @@ import {
   type SolRange,
   writeRangeQuery,
 } from "../lib/solRange";
+import { useQueryParam, useRestoreScroll } from "../router";
 import { About, dateOnly, Facts } from "./DataAbout";
 import { SolRangeSlider } from "./SolRangeSlider";
 import { SolTable, type SolColumn } from "./SolTable";
@@ -151,7 +152,11 @@ function WeatherView({
   const lag = now - source;
   const partial = isPartialLoad(source, now);
 
-  const [k, setK] = useState(
+  useRestoreScroll(true);
+  // `?param=`: an unknown value gives the first parameter and is removed from the address.
+  const [k, setK] = useQueryParam<string>(
+    "param",
+    (raw) => (keys.includes(raw) ? raw : undefined),
     keys.includes("air_temp_c") ? "air_temp_c" : (keys[0] ?? "air_temp_c"),
   );
   const [sel, setSel] = useState<number | null>(null);
@@ -314,6 +319,7 @@ function WeatherView({
         latest={now}
         roverName={rover.name}
         onJump={(sol) => setChosen([Math.min(range[0], sol), Math.max(range[1], sol)])}
+        tableId={`weather:${rover.id}`}
         rowLink={(r) => [
           {
             href: `/rovers/${rover.id}?sol=${r.sol}`,

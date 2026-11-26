@@ -44,7 +44,7 @@ import {
   stopKey,
 } from "../lib/samples";
 import { nearHref, parseNearState, supportsNear, type NearState } from "../lib/near";
-import { Link, navigate, qs, useLocation, useQuery } from "../router";
+import { Link, navigate, qs, useLocation, useQuery, useRestoreScroll } from "../router";
 
 const LIST_PAGE = 8;
 
@@ -165,7 +165,7 @@ function LatestPosition({
   // A server that ignores `latest` would return every stop: the last one is still the latest.
   const w = res?.available ? (res.items[res.items.length - 1] ?? null) : null;
   if (!res || !w) return null;
-  const index = findStop(stops, w.sol, w.site, w.drive);
+  const index = findStop(stops, w.sol, w.site, w.drive)?.index ?? null;
   const behind = rover.max_sol !== null && w.sol < rover.max_sol;
   return (
     <section class="card latest-pos" aria-label="Latest position">
@@ -379,12 +379,27 @@ function RouteMapView({
   const samplesAt = (w: Waypoint): Sample[] =>
     showSamples ? (groupAt.get(stopKey(w.sol, w.site, w.drive))?.items ?? []) : [];
 
-  const initialStop = useRef(
-    findStop(stops, intParam(q.get("sol")), intParam(q.get("site")), intParam(q.get("drive"))),
+  useRestoreScroll(true);
+  const askedSol = intParam(q.get("sol"));
+  const initialFound = useRef(
+    findStop(stops, askedSol, intParam(q.get("site")), intParam(q.get("drive"))),
   );
+  const initialStop = useRef<number | null>(initialFound.current?.index ?? null);
   const [sel, setSel] = useState<number | null>(initialStop.current);
+  // Said when a stop other than the asked one was chosen (or none): cleared by the visitor's own choice.
+  const [fallback, setFallback] = useState<string | null>(() => {
+    const f = initialFound.current;
+    if (askedSol === null || (f && f.exact)) return null;
+    return f
+      ? `No stop on sol ${askedSol} — showing the last stop before it, sol ${stops[f.index]!.sol}.`
+      : `No stops on or before sol ${askedSol}.`;
+  });
   const [hover, setHover] = useState<number | null>(null);
-  const [listPage, setListPage] = useState(1);
+  const [listPage, setListPage] = useState(() => {
+    const si = initialStop.current;
+    const pos = si === null ? -1 : pool.findIndex((o) => o.i === si);
+    return pos >= 0 ? Math.floor((pool.length - 1 - pos) / LIST_PAGE) + 1 : 1;
+  });
   const [live, setLive] = useState("");
   const [view, setView] = useState<View>(() => fitView(bounds, 600, 440));
   const viewRef = useRef(view);
@@ -470,6 +485,24 @@ function RouteMapView({
 
   const last = stops.length ? stops[stops.length - 1]! : null;
 
+  // The selected stop lives in the address (`sol`, `site`, `drive`): replaced, not pushed.
+  const firstSel = useRef(true);
+  useEffect(() => {
+    // The mount only shows what the address already says (and a fallback note keeps the asked address).
+    if (firstSel.current) {
+      firstSel.current = false;
+      return;
+    }
+    setFallback(null);
+    const w = sel === null ? undefined : stops[sel];
+    const next = mapHref(rover.id, { stop: w, from, to });
+    if (next !== `${window.location.pathname}${window.location.search}`) {
+      navigate(next, { replace: true });
+    }
+    // Only a change of the selection writes the address.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sel]);
+
   const select = (idx: number | null, center = false) => {
     setSel(idx);
     if (idx === null) return;
@@ -491,7 +524,8 @@ function RouteMapView({
   };
 
   const applyRange = (f: number | null, t: number | null) => {
-    navigate(mapHref(rover.id, { from: f, to: t }), { replace: true });
+    const w = sel === null ? undefined : stops[sel];
+    navigate(mapHref(rover.id, { stop: w, from: f, to: t }), { replace: true });
     setListPage(1);
     const list = stopsInRange(stops, f, t);
     setView((v) =>
@@ -1054,6 +1088,11 @@ function RouteMapView({
 
           <section class="card panel meta" aria-labelledby="sel-h">
             <h2 id="sel-h">Selected stop</h2>
+            {fallback && (
+              <p class="hint" role="status" data-testid="stop-fallback">
+                {fallback}
+              </p>
+            )}
             {selected ? (
               <div>
                 <dl>

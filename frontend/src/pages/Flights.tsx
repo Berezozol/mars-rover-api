@@ -14,7 +14,7 @@ import {
   type SortKey,
 } from "../lib/flights";
 import { useAsync, useRovers, useTitle } from "../lib/hooks";
-import { Link } from "../router";
+import { Link, useQueryParam, useRestoreScroll } from "../router";
 
 interface Column {
   key: SortKey | "route";
@@ -82,12 +82,24 @@ export function Flights({ roverId }: { roverId: string }) {
   return <FlightsView rover={rover} />;
 }
 
+const DEFAULT_SORT = "flight:asc";
+const SORT_KEYS: SortKey[] = ["flight", "sol", "date", "distance", "alt", "speed", "dur", "photos"];
+
+/** `distance:desc` -> itself; anything else -> `undefined` (the default order). */
+function parseSort(raw: string): string | undefined {
+  const [k, d, ...rest] = raw.split(":");
+  return rest.length === 0 && SORT_KEYS.includes(k as SortKey) && (d === "asc" || d === "desc")
+    ? raw
+    : undefined;
+}
+
 function FlightsView({ rover }: { rover: Rover }) {
   const [state, retry] = useAsync(() => api.flights(rover.id), [rover.id]);
-  const [key, setKey] = useState<SortKey>("flight");
-  const [dir, setDir] = useState<SortDir>("asc");
+  const [sort, setSort] = useQueryParam<string>("sort", parseSort, DEFAULT_SORT);
+  const [key, dir] = sort.split(":") as [SortKey, SortDir];
   const [target, setTarget] = useState<number | null>(null);
   const items = state.status === "ok" ? state.data : null;
+  useRestoreScroll(state.status === "ok");
 
   // `#flight-N` anchors: the rows appear after loading, so the browser can't scroll to them itself.
   useEffect(() => {
@@ -99,11 +111,8 @@ function FlightsView({ rover }: { rover: Rover }) {
   }, [items]);
 
   const sortBy = (k: SortKey) => {
-    if (k === key) setDir(dir === "asc" ? "desc" : "asc");
-    else {
-      setKey(k);
-      setDir(defaultDir(k));
-    }
+    if (k === key) setSort(`${k}:${dir === "asc" ? "desc" : "asc"}`);
+    else setSort(`${k}:${defaultDir(k)}`);
   };
   const selectValue = `${key}:${dir}`;
   const selectKnown = SORT_OPTIONS.some((o) => o.value === selectValue);
@@ -186,9 +195,7 @@ function FlightsView({ rover }: { rover: Rover }) {
                   id="sort"
                   value={selectKnown ? selectValue : ""}
                   onChange={(e) => {
-                    const [k, d] = e.currentTarget.value.split(":") as [SortKey, SortDir];
-                    setKey(k);
-                    setDir(d);
+                    setSort(e.currentTarget.value);
                   }}
                 >
                   {!selectKnown && (

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { visibleRovers } from "../lib/format";
 import { useRovers } from "../lib/hooks";
 import { currentTheme, toggleTheme } from "../lib/theme";
-import { Link, type RouteMatch } from "../router";
+import { lastNavigationKind, Link, savedScroll, type RouteMatch } from "../router";
 
 interface Props {
   route: RouteMatch;
@@ -110,11 +110,17 @@ export function Layout({ route, pathname, children }: Props) {
   const [rovers] = useRovers();
   const [theme, setTheme] = useState(currentTheme);
 
-  // On every route change: back to the top and move focus to <main> for keyboard/screen-reader users.
+  // On a route change by a link: back to the top and move focus to <main> for keyboard/screen-reader
+  // users. Back/Forward keep the position: the page restores it itself (`useRestoreScroll`).
   const first = useRef(true);
   useEffect(() => {
     if (first.current) {
       first.current = false;
+      return;
+    }
+    if (lastNavigationKind() === "pop") {
+      // Back/Forward: the saved position at once (the top without one); pages with data restore it again.
+      window.scrollTo?.(0, savedScroll());
       return;
     }
     window.scrollTo?.(0, 0);

@@ -2,7 +2,7 @@ import type { ComponentChildren } from "preact";
 import { useEffect, useId, useMemo, useRef, useState } from "preact/hooks";
 import { fmt } from "../lib/format";
 import type { SolRange } from "../lib/solRange";
-import { Link } from "../router";
+import { Link, readHistoryState, writeHistoryState } from "../router";
 import { pageWindow } from "./Pager";
 
 export interface SolColumn<T> {
@@ -45,17 +45,36 @@ interface Props<T extends { sol: number }> {
   /** A jump requested from elsewhere (a click on the chart); `n` makes the same sol count again. */
   focus?: { sol: number; n: number } | null;
   pageSize?: number;
+  /** Names the table in `history.state` (`solTable:<tableId>`): Back returns to the same page, order and row. */
+  tableId?: string;
 }
 
 type Sort = { key: string; dir: 1 | -1 };
+type Saved = { page: number; sort: Sort; hl: number | null };
+
+/** What `history.state` held, if it still fits this table (the columns may have changed). */
+function validSaved(v: unknown, columns: { key: string }[]): Saved | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as { page?: unknown; sort?: { key?: unknown; dir?: unknown }; hl?: unknown };
+  const key = o.sort?.key;
+  const dir = o.sort?.dir;
+  if (typeof o.page !== "number" || !Number.isInteger(o.page) || o.page < 1) return null;
+  if (typeof key !== "string" || !columns.some((c) => c.key === key)) return null;
+  if (dir !== 1 && dir !== -1) return null;
+  const hl = typeof o.hl === "number" && Number.isInteger(o.hl) ? o.hl : null;
+  return { page: o.page, sort: { key, dir }, hl };
+}
 
 /** Sortable, paged table of the sols of a range, with "Jump to sol". Sorting is done in the browser. */
 export function SolTable<T extends { sol: number }>(p: Props<T>) {
   const { columns, range, pageSize = 50 } = p;
   const id = useId();
-  const [sort, setSort] = useState<Sort>({ key: "sol", dir: -1 });
-  const [page, setPage] = useState(1);
-  const [hl, setHl] = useState<number | null>(null);
+  const stateKey = `solTable:${p.tableId ?? id}`;
+  const saved = useRef<Saved | null | undefined>(undefined);
+  if (saved.current === undefined) saved.current = validSaved(readHistoryState(stateKey), columns);
+  const [sort, setSort] = useState<Sort>(saved.current?.sort ?? { key: "sol", dir: -1 });
+  const [page, setPage] = useState(saved.current?.page ?? 1);
+  const [hl, setHl] = useState<number | null>(saved.current?.hl ?? null);
   const [jumpIn, setJumpIn] = useState("");
   const [msg, setMsg] = useState<{ text: string; widen?: number } | null>(null);
   const [jumpN, setJumpN] = useState(0);
@@ -143,16 +162,27 @@ export function SolTable<T extends { sol: number }>(p: Props<T>) {
   jumpRef.current = jump;
 
   // A new range starts again from the first page; a jump that waited for the range then goes on.
+  const firstRange = useRef(true);
   useEffect(() => {
-    setPage(1);
-    setHl(null);
-    setMsg(null);
+    if (firstRange.current) {
+      // The first run is the mount: the page, order and row restored from `history.state` stay.
+      firstRange.current = false;
+    } else {
+      setPage(1);
+      setHl(null);
+      setMsg(null);
+    }
     const sol = pending.current;
     if (sol !== null) {
       pending.current = null;
       jumpRef.current(sol);
     }
   }, [range[0], range[1], p.rows]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Remember the page, order and row in the history entry, for Back.
+  useEffect(() => {
+    writeHistoryState(stateKey, { page: cur, sort: { key: sort.key, dir: sort.dir }, hl });
+  }, [stateKey, cur, sort.key, sort.dir, hl]);
 
   // A jump asked for by the chart.
   useEffect(() => {
@@ -321,7 +351,21 @@ export function SolTable<T extends { sol: number }>(p: Props<T>) {
               )}
             </tr>
           </thead>
-          <tbody>
+          <tbody
+            onClickCapture={(e) => {
+              // Leaving through a link of a row: remember that row, so that Back highlights it.
+              const row = (e.target as HTMLElement).closest?.("tr[data-sol]");
+              if (!row || !(e.target as HTMLElement).closest("a")) return;
+              // Only a plain click leaves the page in this tab.
+              if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+              const sol = Number(row.getAttribute("data-sol"));
+              writeHistoryState(stateKey, {
+                page: cur,
+                sort: { key: sort.key, dir: sort.dir },
+                hl: sol,
+              });
+            }}
+          >
             {slice.map((r) => (
               <tr
                 key={r.sol}
