@@ -31,11 +31,22 @@ export function ErrorAlert({ error, onRetry, actions, title, alwaysTitle }: Erro
         <p>{v.message}</p>
         {v.fields.length > 0 && (
           <ul>
-            {v.fields.map((f, i) => (
-              <li key={i}>
-                <strong>{f.label}</strong>: {f.message}
-              </li>
-            ))}
+            {v.fields
+              // A standalone message (it names its own fields) is shown once, without a label.
+              .filter(
+                (f, i, all) => !f.standalone || all.findIndex((x) => x.message === f.message) === i,
+              )
+              .map((f, i) => (
+                <li key={i}>
+                  {f.standalone ? (
+                    f.message
+                  ) : (
+                    <>
+                      <strong>{f.label}</strong>: {f.message}
+                    </>
+                  )}
+                </li>
+              ))}
           </ul>
         )}
         <div class="row" style={{ alignItems: "center" }}>

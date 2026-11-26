@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { ApiError, requestLine, searchPhotos } from "../api/client";
-import { describeError } from "../api/errors";
+import { describeError, periodInvalidIds } from "../api/errors";
 import type { PhotoPage, Rover } from "../api/types";
 import { BusyAlert } from "../components/Busy";
 import {
@@ -107,11 +107,13 @@ function SearchPage({ rovers }: { rovers: Rover[] }) {
     );
 
   const problem = (key: FieldProblem["key"]) => problems.find((p) => p.key === key);
-  const invalidIds = problems.flatMap((p) => p.ids);
-
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const query = useMemo(() => toQuery(applied, allIds), [applied, idsKey]);
   const [result, retry] = useAsync((signal) => searchPhotos(query, signal), [search, idsKey]);
+  const invalidIds = [
+    ...problems.flatMap((p) => p.ids),
+    ...periodInvalidIds("search", result.status === "error" ? result.error : null),
+  ];
   // Camera lists are fetched after the search itself, so they never starve it of a request slot.
   const cams = useCameraLists(draft.rovers, pickerOpen && result.status !== "loading");
 

@@ -288,6 +288,12 @@ function RadiationView({
           </p>
         )}
 
+        {data.credit && (
+          <p class="credit credit-line xsmall muted" data-testid="data-credit-chart">
+            Credit: {data.credit}
+          </p>
+        )}
+
         <SolRangeSlider
           bounds={bounds}
           published={source}
@@ -344,6 +350,12 @@ function RadiationView({
         ]}
         focus={jump}
       />
+
+      {data.credit && (
+        <p class="credit credit-line xsmall muted" data-testid="data-credit-table">
+          Credit: {data.credit}
+        </p>
+      )}
 
       <RadAbout data={data} lag={lag} />
     </>

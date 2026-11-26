@@ -10,7 +10,8 @@ interface Props {
   night: [number, number] | null;
   /** Shared cursor: the hour all charts point at, or `null`. */
   hour: number | null;
-  onHour: (hour: number | null) => void;
+  /** `pin`: a choice (click, drag, touch) rather than a hover preview. */
+  onHour: (hour: number | null, pin?: boolean) => void;
 }
 
 const L = 48;
@@ -167,7 +168,10 @@ export function HourChart({ def, sol, night, hour, onHour }: Props) {
               aria-label={label}
               onPointerMove={(e) => {
                 if (e.pointerType === "mouse" || e.buttons || scrub.current === e.pointerId) {
-                  onHour(at(e.clientX, e.currentTarget as SVGSVGElement));
+                  onHour(
+                    at(e.clientX, e.currentTarget as SVGSVGElement),
+                    e.pointerType !== "mouse" || e.buttons > 0,
+                  );
                 }
               }}
               onPointerDown={(e) => {
@@ -182,7 +186,7 @@ export function HourChart({ def, sol, night, hour, onHour }: Props) {
                     /* the pointer is already gone */
                   }
                 }
-                onHour(at(e.clientX, svg));
+                onHour(at(e.clientX, svg), true);
               }}
               onPointerUp={endScrub}
               onPointerCancel={endScrub}

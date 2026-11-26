@@ -324,6 +324,7 @@
   fill: var(--chart-bar-hi);
 }
 .table-wrap {
+  position: relative;
   overflow-x: auto;
   overflow-y: hidden;
 }

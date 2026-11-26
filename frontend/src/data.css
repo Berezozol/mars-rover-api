@@ -162,8 +162,6 @@ table.last td:first-child {
 table.last thead th {
   font-size: var(--fs-xs);
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
   vertical-align: bottom;
 }
 table.last tbody td:first-child {
@@ -386,8 +384,6 @@ table.wx-table td.flags-cell .flag + .flag {
     content: attr(data-label);
     color: var(--text-muted);
     font-size: var(--fs-xs);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
     text-align: left;
     flex: none;
   }
@@ -434,8 +430,6 @@ table.wx-table td.flags-cell .flag + .flag {
 .facts dt {
   font-size: var(--fs-xs);
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
   overflow-wrap: normal;
   word-break: normal;
 }
@@ -469,8 +463,6 @@ table.wx-table td.flags-cell .flag + .flag {
   margin-top: var(--s3);
   font-size: var(--fs-xs);
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 .about-list dt:first-child {
   margin-top: 0;
@@ -869,8 +861,6 @@ table.sol-table .n {
 table.sol-table thead th {
   font-size: var(--fs-xs);
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
   vertical-align: bottom;
 }
 table.sol-table th small {
@@ -1005,8 +995,6 @@ table.sol-table small {
     content: attr(data-label);
     color: var(--text-muted);
     font-size: var(--fs-xs);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
     text-align: left;
     flex: none;
   }

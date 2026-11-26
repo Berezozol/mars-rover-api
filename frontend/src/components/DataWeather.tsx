@@ -274,6 +274,11 @@ function WeatherView({
           {paramNote(k)} Hover the chart to read a sol; click it to find that sol in the table
           below.
         </p>
+        {data.credit && (
+          <p class="credit credit-line xsmall muted" data-testid="data-credit-chart">
+            Credit: {data.credit}
+          </p>
+        )}
         <SolRangeSlider
           bounds={bounds}
           published={source}
@@ -327,6 +332,11 @@ function WeatherView({
         Air: mean (lowest … highest). A flag never hides a value: means and extremes are always
         shown. <code>—</code> means the sensor exists but the sol has no valid readings.
       </p>
+      {data.credit && (
+        <p class="credit credit-line xsmall muted" data-testid="data-credit-table">
+          Credit: {data.credit}
+        </p>
+      )}
       <WeatherAbout rover={rover} data={data} keys={keys} />
     </>
   );

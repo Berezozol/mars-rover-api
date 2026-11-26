@@ -307,7 +307,7 @@ function FlightTable({
   const rows = sortFlights(items, sortKey, dir);
   const records = recordsOf(items);
   return (
-    <div class="card flights-card">
+    <div class="card flights-card" role="region" aria-label="Ingenuity flights" tabIndex={0}>
       <table class="flights" role="table">
         <caption class="visually-hidden">Ingenuity flights</caption>
         <thead role="rowgroup">

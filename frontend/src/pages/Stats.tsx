@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "preact/hooks";
 import type { JSX } from "preact";
 import { api, photoStats, requestLine } from "../api/client";
+import { periodInvalidIds } from "../api/errors";
 import type { Camera, Rover, StatsGroup, StatsResponse } from "../api/types";
 import { BarChart, type Bar } from "../components/BarChart";
 import {
@@ -14,7 +15,7 @@ import { Pager } from "../components/Pager";
 import { ErrorAlert, PageSkeleton } from "../components/States";
 import { fmt, statusLabel, visibleRovers } from "../lib/format";
 import { useAsync, useMedia, useRovers, useTitle, type Async } from "../lib/hooks";
-import { defaultFilters, searchHref, searchLink } from "../lib/search";
+import { defaultFilters, searchHref } from "../lib/search";
 import {
   activeStatsCount,
   fillPeriods,
@@ -227,7 +228,10 @@ function StatsPage({ rovers }: { rovers: Rover[] }) {
                 )
               }
               onChange={(patch) => set(patch)}
-              invalid={problem?.ids ?? []}
+              invalid={[
+                ...(problem?.ids ?? []),
+                ...periodInvalidIds("stats", top.status === "error" ? top.error : null),
+              ]}
               error={problem?.text}
               hint={
                 draft.when === "date"
@@ -620,7 +624,7 @@ function Breakdown(p: BreakdownProps) {
         {p.result.status === "ok" && p.result.data.groups.length > 0 && (
           <>
             {p.applied.tab === "camera" ? (
-              <CameraTable groups={p.result.data.groups} rovers={p.rovers} />
+              <CameraTable groups={p.result.data.groups} rovers={p.rovers} applied={p.applied} />
             ) : p.view === "table" ? (
               <PeriodTable
                 groups={p.result.data.groups}
@@ -738,7 +742,15 @@ function PeriodTable({
 
 type CamSort = "api" | "desc" | "asc";
 
-function CameraTable({ groups, rovers }: { groups: StatsGroup[]; rovers: Rover[] }) {
+function CameraTable({
+  groups,
+  rovers,
+  applied,
+}: {
+  groups: StatsGroup[];
+  rovers: Rover[];
+  applied: StatsFilters;
+}) {
   const [sort, setSort] = useState<CamSort>("api");
   const total: Record<string, number> = {};
   const most: Record<string, number> = {};
@@ -816,12 +828,19 @@ function CameraTable({ groups, rovers }: { groups: StatsGroup[]; rovers: Rover[]
                   {fmt(g.first_sol)} – {fmt(g.last_sol)}
                 </td>
                 <td>
-                  <Link
-                    href={searchLink(g.rover, g.camera)}
-                    aria-label={`Search ${g.camera} photos of ${name}`}
-                  >
-                    Search
-                  </Link>
+                  {g.camera && (
+                    <Link
+                      href={searchLinkFor(
+                        g.rover,
+                        { ...applied, cameras: [g.camera] },
+                        undefined,
+                        true,
+                      )}
+                      aria-label={`Search ${g.camera} photos of ${name}`}
+                    >
+                      Search
+                    </Link>
+                  )}
                 </td>
               </tr>
             );

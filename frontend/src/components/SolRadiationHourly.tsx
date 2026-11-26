@@ -26,7 +26,7 @@ interface Props {
   /** Shared with the weather charts of the page. */
   night: [number, number] | null;
   hour: number | null;
-  onHour: (hour: number | null) => void;
+  onHour: (hour: number | null, pin?: boolean) => void;
 }
 
 /** Shown when the server's own credit line is not available. */

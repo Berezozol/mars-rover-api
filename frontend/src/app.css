@@ -641,8 +641,6 @@ details.more .chips {
 .tile-stat .k {
   font-size: var(--fs-xs);
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 .tile-stat .v {
   font-size: var(--fs-lg);
@@ -847,8 +845,6 @@ td {
 th {
   font-size: var(--fs-xs);
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 td.num,
 th.num {
@@ -931,8 +927,6 @@ td .cam-n {
 .tile .k {
   font-size: var(--fs-xs);
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 .tile .v {
   font-size: var(--fs-xl);
@@ -964,7 +958,9 @@ td .cam-n {
   align-self: center;
 }
 .flights-card {
-  overflow: hidden;
+  position: relative;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 table.flights {
   font-variant-numeric: tabular-nums;
@@ -1086,8 +1082,6 @@ table.flights {
     content: attr(data-label);
     display: block;
     font-size: var(--fs-xs);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
     color: var(--text-muted);
   }
   .flights td.route,
@@ -1112,8 +1106,6 @@ table.flights {
 .latest-pos .k {
   font-size: var(--fs-xs);
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1230,8 +1222,6 @@ table.samples {
 .samples thead th {
   background: var(--surface);
   font-size: var(--fs-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
   color: var(--text-muted);
 }
 .samples .num {
@@ -1317,8 +1307,6 @@ table.samples {
     content: attr(data-label);
     display: block;
     font-size: var(--fs-xs);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
     color: var(--text-muted);
   }
   .samples td.links,

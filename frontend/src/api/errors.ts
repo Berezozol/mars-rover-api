@@ -5,7 +5,7 @@ export interface ErrorView {
   title: string;
   message: string;
   /** Per-field problems of a `422`, already humanised. */
-  fields: { label: string; message: string }[];
+  fields: { label: string; message: string; standalone?: boolean }[];
   code: string;
   status: number;
   /** A retry may help (network, 5xx, rate limit). */
@@ -50,9 +50,37 @@ export function fieldLabel(field: string): string {
 
 const MAX_INT = "2,147,483,647";
 
+/** “Low must not be greater than high”: the text for a lower bound above the upper one. */
+export function rangeOrderText(low: string, high: string): string {
+  const name = (f: string) => FIELD_LABELS[f] ?? f;
+  const dates = /date/i.test(low);
+  return `“${name(low)}” must not be ${dates ? "after" : "greater than"} “${name(high)}”.`;
+}
+
+/** Names of the request fields a `422` blames (`sol_min`, `date_max`, ...), for `aria-invalid`. */
+export function issueFields(error: unknown): string[] {
+  if (!(error instanceof ApiError) || error.status !== 422) return [];
+  return (error.details ?? []).flatMap((d) => {
+    const last = d.field.split(".").pop() ?? d.field;
+    const order = rangeOrderPair(d.message);
+    return order ? order : [last];
+  });
+}
+
+const ORDER = /^(\w+) must be less than or equal to (\w+)$/;
+
+/** `[low, high]` field names when the message says a lower bound is above the upper one. */
+function rangeOrderPair(message: string): [string, string] | null {
+  const m = ORDER.exec(message.trim());
+  if (!m || /^\d+$/.test(m[2]!) || !FIELD_LABELS[m[1]!] || !FIELD_LABELS[m[2]!]) return null;
+  return [m[1]!, m[2]!];
+}
+
 /** Pydantic-style messages are terse; say the same thing in plain words where we can. */
 export function humanizeIssue(field: string, message: string): string {
   const last = field.split(".").pop() ?? field;
+  const order = rangeOrderPair(message);
+  if (order) return rangeOrderText(order[0], order[1]);
   const isSol =
     last === "sol" ||
     last === "from_sol" ||
@@ -126,6 +154,7 @@ export function describeError(error: unknown): ErrorView {
       fields: (error.details ?? []).map((d) => ({
         label: fieldLabel(d.field),
         message: humanizeIssue(d.field, d.message),
+        ...(rangeOrderPair(d.message) ? { standalone: true } : {}),
       })),
     };
   }
@@ -201,4 +230,15 @@ export function describeError(error: unknown): ErrorView {
     };
   }
   return { ...base, title: "Request failed", message: error.message };
+}
+
+/** Input ids (`<prefix>-sol-min`, ...) of the period fields a `422` blames. */
+export function periodInvalidIds(prefix: string, error: unknown): string[] {
+  const map: Record<string, string> = {
+    sol_min: "sol-min",
+    sol_max: "sol-max",
+    date_min: "date-min",
+    date_max: "date-max",
+  };
+  return issueFields(error).flatMap((f) => (map[f] ? [`${prefix}-${map[f]}`] : []));
 }

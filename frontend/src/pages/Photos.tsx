@@ -200,6 +200,13 @@ function Browser({ rover, maxSol }: { rover: Rover; maxSol: number }) {
   const change = (patch: Partial<Filters>) => go({ ...f, sol: effective.sol, ...patch, page: 1 });
 
   const resultsRef = useRef<HTMLElement>(null);
+  // Set by the previous/next sol links: after the move, the focus goes to the results heading.
+  const focusTitle = useRef(false);
+  useEffect(() => {
+    if (!focusTitle.current) return;
+    focusTitle.current = false;
+    document.getElementById("result-title")?.focus({ preventScroll: true });
+  }, [rawSol]);
   const firstPage = useRef(true);
   useEffect(() => {
     if (firstPage.current) {
@@ -259,6 +266,15 @@ function Browser({ rover, maxSol }: { rover: Rover; maxSol: number }) {
         onSample={(s) => change({ sample_type: s })}
         prevSol={prevSol}
         nextSol={nextSol}
+        solHref={(sol) =>
+          photosUrl(rover.id, { ...f, earth_date: undefined, sol: String(sol), page: 1 })
+        }
+        onStep={(e) => {
+          // Only a plain click stays on this page; a new-tab click must not arm the focus move.
+          if (e.button === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
+            focusTitle.current = true;
+          }
+        }}
       />
 
       <section
@@ -268,7 +284,9 @@ function Browser({ rover, maxSol }: { rover: Rover; maxSol: number }) {
         id="results"
       >
         <div class="result-head">
-          <h2 id="result-title">{heading}</h2>
+          <h2 id="result-title" tabIndex={-1}>
+            {heading}
+          </h2>
           <span class="muted small" id="result-sub" aria-live="polite">
             {photos.status === "loading" && "Loading…"}
             {photos.status === "ok" && resultSummary(photos.data, solDate, byDate)}
@@ -479,6 +497,8 @@ interface FormProps {
   cameras: Camera[];
   prevSol: number | undefined;
   nextSol: number | undefined;
+  solHref: (sol: number) => string;
+  onStep: (e: MouseEvent) => void;
   onSol: (s: string) => void;
   onDate: (d: string) => void;
   onMode: (m: "sol" | "date") => void;
@@ -552,8 +572,10 @@ function FilterForm(p: FormProps) {
               aria-label="Previous sol"
               aria-disabled={p.byDate || p.prevSol === undefined}
               tabIndex={p.byDate || p.prevSol === undefined ? -1 : undefined}
-              href={p.prevSol === undefined ? "#" : `/rovers/${p.rover.id}?sol=${p.prevSol}`}
-              onClick={(e) => (p.byDate || p.prevSol === undefined) && e.preventDefault()}
+              href={p.prevSol === undefined ? "#" : p.solHref(p.prevSol)}
+              onClick={(e) =>
+                p.byDate || p.prevSol === undefined ? e.preventDefault() : p.onStep(e)
+              }
             >
               ‹
             </Link>
@@ -573,8 +595,10 @@ function FilterForm(p: FormProps) {
               aria-label="Next sol"
               aria-disabled={p.byDate || p.nextSol === undefined}
               tabIndex={p.byDate || p.nextSol === undefined ? -1 : undefined}
-              href={p.nextSol === undefined ? "#" : `/rovers/${p.rover.id}?sol=${p.nextSol}`}
-              onClick={(e) => (p.byDate || p.nextSol === undefined) && e.preventDefault()}
+              href={p.nextSol === undefined ? "#" : p.solHref(p.nextSol)}
+              onClick={(e) =>
+                p.byDate || p.nextSol === undefined ? e.preventDefault() : p.onStep(e)
+              }
             >
               ›
             </Link>

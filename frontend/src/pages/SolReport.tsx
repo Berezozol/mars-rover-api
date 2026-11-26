@@ -32,26 +32,45 @@ const MAX_SOL = 2147483647;
 const reportPath = (rover: string, sol: number) => `/rovers/${rover}/sols/${sol}/conditions`;
 const pad2 = (n: number) => String(n).padStart(2, "0");
 
-/** The shared hour cursor: `active` false = no hour selected (the slider's position is then only a resting place). */
+/**
+ * The shared hour cursor. `hour` is the hour shown now (a preview while the mouse hovers a chart);
+ * `pinned` is the hour the visitor chose (slider, keys, touch, mouse click): it returns when the
+ * mouse leaves. `active` false = nothing shown (the slider's position is then only a resting place).
+ */
 interface Cursor {
   hour: number;
   active: boolean;
   live: boolean;
+  pinned: number | null;
 }
-const IDLE_CURSOR: Cursor = { hour: 13, active: false, live: false };
+const IDLE_CURSOR: Cursor = { hour: 13, active: false, live: false, pinned: null };
 
-/** Cursor updates from the charts (`null` = leave): same hour keeps the state object, so nothing re-renders. */
-const hourSetter = (setCur: Dispatch<StateUpdater<Cursor>>) => (h: number | null) =>
-  setCur((c) => {
-    if (h === null) return c.active ? { ...c, active: false, live: false } : c;
-    return c.active && c.hour === h && !c.live ? c : { hour: h, active: true, live: false };
-  });
+/**
+ * Cursor updates from the charts (`null` = the mouse left): same hour keeps the state object, so
+ * nothing re-renders. `pin` = a choice (click, drag, touch); without it the hour is a hover preview.
+ */
+const hourSetter =
+  (setCur: Dispatch<StateUpdater<Cursor>>) =>
+  (h: number | null, pin = false) =>
+    setCur((c) => {
+      if (h === null) {
+        if (c.pinned !== null)
+          return c.active && c.hour === c.pinned ? c : { ...c, hour: c.pinned, active: true };
+        return c.active ? { ...c, active: false, live: false } : c;
+      }
+      if (pin) {
+        return c.active && c.hour === h && c.pinned === h && !c.live
+          ? c
+          : { hour: h, active: true, live: false, pinned: h };
+      }
+      return c.active && c.hour === h ? c : { ...c, hour: h, active: true };
+    });
 
 /** The pinned bar: one row (label, slider, readout, clear button); the readout has a fixed width. */
 function HourBar({ cur, setCur }: { cur: Cursor; setCur: Dispatch<StateUpdater<Cursor>> }) {
   const slider = useRef<HTMLInputElement>(null);
   const clear = () => {
-    setCur((c) => ({ ...c, active: false, live: false }));
+    setCur((c) => ({ ...c, active: false, live: false, pinned: null }));
     slider.current?.focus();
   };
   return (
@@ -74,6 +93,7 @@ function HourBar({ cur, setCur }: { cur: Cursor; setCur: Dispatch<StateUpdater<C
             hour: Number((e.currentTarget as HTMLInputElement).value),
             active: true,
             live: true,
+            pinned: Number((e.currentTarget as HTMLInputElement).value),
           })
         }
       />
@@ -268,10 +288,10 @@ function NoWeatherRadiation({
     );
   }
   const announce =
-    cur.active && cur.live
-      ? `${hourLabel(cur.hour)} LMST. ${rad.defs
+    cur.pinned !== null && cur.live
+      ? `${hourLabel(cur.pinned)} LMST. ${rad.defs
           .filter((d) => !d.noData)
-          .map((d) => `${d.title}: ${readoutOf(d, cur.hour)}`)
+          .map((d) => `${d.title}: ${readoutOf(d, cur.pinned as number)}`)
           .join(". ")}`
       : "";
   return (
@@ -542,10 +562,10 @@ function Loaded({
   const hasHourlyBand = defs.some((d) => d.hourBand);
   const hasSolBand = defs.some((d) => !d.hourBand && d.solBand);
   const announce =
-    cur.active && cur.live
-      ? `${hourLabel(cur.hour)} LMST. ${[...defs, ...rad.defs]
+    cur.pinned !== null && cur.live
+      ? `${hourLabel(cur.pinned)} LMST. ${[...defs, ...rad.defs]
           .filter((d) => !d.noData)
-          .map((d) => `${d.title}: ${readoutOf(d, cur.hour)}`)
+          .map((d) => `${d.title}: ${readoutOf(d, cur.pinned as number)}`)
           .join(". ")}`
       : "";
 
@@ -633,7 +653,7 @@ function Loaded({
           hours={detail.hours ?? []}
           radDefs={rad.defs}
           radHours={rad.state.status === "ok" ? (rad.state.data?.hours ?? null) : null}
-          hour={cur.active ? cur.hour : null}
+          hour={cur.pinned}
         />
       </div>
       <section class="card panel sr-sources" aria-labelledby="srcH" style={{ marginTop: 16 }}>

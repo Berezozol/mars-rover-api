@@ -136,8 +136,6 @@
 .key-item dt {
   font-size: var(--fs-xs);
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 .key-item dd {
   margin: 0;

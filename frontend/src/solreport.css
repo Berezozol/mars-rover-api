@@ -185,8 +185,6 @@ html:has(.hour-bar) {
 .sr-sum dt {
   font-size: var(--fs-xs);
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 .sr-sum dd {
   margin: 2px 0 0;
