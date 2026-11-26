@@ -147,8 +147,8 @@ describe("AC-29 /keys/confirm", () => {
       [`POST ${CONFIRM}`]: apiError(400, "invalid_token", "Token is invalid or expired"),
     });
     fireEvent.click(await screen.findByRole("button", { name: /show my key/i }));
-    expect(await screen.findByText(/expired or was already used/i)).toBeTruthy();
-    const again = screen.getByRole("link", { name: /request a new link/i });
+    const again = await screen.findByRole("link", { name: /request a new link/i });
+    expect(screen.getByText(/this link has expired or was already used/i)).toBeTruthy();
     expect(again.getAttribute("href")).toBe("/keys");
     expect(screen.queryByText(KEY)).toBeNull();
   });

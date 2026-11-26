@@ -12,6 +12,8 @@ export default defineConfig({
     "sol-range.spec.ts",
     "small-fixes.spec.ts",
     "data-texts.spec.ts",
+    "keys-flow.spec.ts",
+    "ac32-keys.spec.ts",
   ],
   use: { ...base.use, baseURL: "http://127.0.0.1:4173" },
   webServer: {

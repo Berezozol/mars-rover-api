@@ -63,8 +63,11 @@ async function signIn(secret = MY_KEY) {
   fireEvent.click(screen.getByRole("button", { name: /show my account/i }));
 }
 
+// Scoped to the list: the status region also announces "Key si_XXXX… revoked" (keys-flow AC-9).
 const keyRow = (prefix: string) =>
-  screen.getByText(new RegExp(prefix)).closest("li") as HTMLElement;
+  within(screen.getByRole("list", { name: /your keys/i }))
+    .getByText(new RegExp(prefix))
+    .closest("li") as HTMLElement;
 
 describe("AC-30 /keys/manage sign-in by key", () => {
   it("AC-30 shows a password-type key field and sends nothing before the button", async () => {
@@ -152,8 +155,12 @@ describe("AC-30 /keys/manage sign-in by key", () => {
       [`GET ${ACCOUNT}`]: apiError(401, "api_key_required", "API key required"),
     });
     await signIn("");
-    expect(await screen.findByRole("alert")).toBeTruthy();
-    expect(screen.getByLabelText(/^api key$/i)).toBeTruthy();
+    // keys-flow AC-7: the empty key is reported at the field, not by a banner or a request.
+    const field = screen.getByLabelText(/^api key$/i);
+    await waitFor(() => expect(field.getAttribute("aria-invalid")).toBe("true"));
+    expect(document.getElementById("apikey-err")?.textContent).toBe("Enter your API key.");
+    expect(document.activeElement).toBe(field);
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("AC-30 403 account_blocked says the account is blocked", async () => {

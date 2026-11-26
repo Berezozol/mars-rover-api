@@ -37,15 +37,27 @@
 .btn-block {
   width: 100%;
 }
-.btn-danger {
+/* Outline, so it differs from .btn-primary by shape and not only by hue; fills on hover and focus. */
+.btn.btn-danger {
+  background: transparent;
+  border-color: var(--err);
+  color: var(--err);
+  font-weight: 600;
+}
+.btn.btn-danger:not([disabled]):hover,
+.btn.btn-danger:not([disabled]):focus-visible {
   background: var(--err);
   border-color: var(--err);
   color: var(--on-accent);
 }
-.btn-danger:hover {
-  background: var(--err);
-  filter: brightness(0.92);
-  color: var(--on-accent);
+/* a safe and a dangerous choice side by side with equal width; one under the other on a narrow screen */
+.btn-pair {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3);
+}
+.btn-pair > .btn {
+  flex: 1 1 200px;
 }
 .alert-ok {
   background: var(--ok-soft);

@@ -14,7 +14,46 @@ export function takeToken(): string | null {
   if (!raw) return null;
   const token = new URLSearchParams(raw.replace(/^#/, "")).get("token");
   window.history.replaceState(null, "", window.location.pathname + window.location.search);
-  return token && TOKEN.test(token) ? token : null;
+  const ok = token !== null && TOKEN.test(token);
+  // Remember whose flag this is: a navigation during a later `await` must not clear another page's.
+  takenKey = linkFlagKey();
+  setLinkFlag(ok, takenKey);
+  return ok ? token : null;
+}
+
+/** `sessionStorage` key of the "this page was opened from an emailed link" flag (the value is only "1"). */
+function linkFlagKey(): string {
+  return `sol-index-link:${window.location.pathname.replace(/\/+$/, "")}`;
+}
+
+let takenKey: string | null = null;
+
+function setLinkFlag(on: boolean, key: string = linkFlagKey()): void {
+  try {
+    if (on) window.sessionStorage.setItem(key, "1");
+    else window.sessionStorage.removeItem(key);
+  } catch {
+    /* no storage: the page behaves as before */
+  }
+}
+
+/**
+ * True when this page was opened from the emailed link earlier in this tab (and reloaded since, so
+ * the token is gone from the address). Reading removes the flag. Never holds the token itself.
+ */
+export function takeLinkFlag(): boolean {
+  try {
+    const had = window.sessionStorage.getItem(linkFlagKey()) === "1";
+    if (had) window.sessionStorage.removeItem(linkFlagKey());
+    return had;
+  } catch {
+    return false;
+  }
+}
+
+/** The link is used up (or known bad): a reload must not say it is still valid. */
+export function clearLinkFlag(): void {
+  setLinkFlag(false, takenKey ?? linkFlagKey());
 }
 
 /** "about 42 minutes" from `Retry-After` seconds (rounded up); empty when the server gave none. */

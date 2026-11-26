@@ -6,9 +6,10 @@ import { Link } from "../router";
 
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const EMAIL_HELP = "Enter a valid address: one “@”, no spaces, a domain with a dot.";
+const EMAIL_EMPTY = "Enter your email address.";
 
 type Phase =
-  | { name: "form"; error?: unknown; fieldError?: boolean }
+  | { name: "form"; error?: unknown; fieldError?: string }
   | { name: "sending" }
   | { name: "sent"; delayed: boolean; to: string }
   | { name: "closed" };
@@ -23,7 +24,9 @@ export function Keys() {
   const closedRef = useRef<HTMLHeadingElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
   const name = phase.name;
-  const fieldError = phase.name === "form" && phase.fieldError;
+  const fieldError = phase.name === "form" ? phase.fieldError : undefined;
+  const formError = phase.name === "form" ? phase.error : undefined;
+  const errRef = useRef<HTMLDivElement>(null);
 
   // After a state change the focus goes to the new state's heading (or the field with the error).
   const first = useRef(true);
@@ -37,12 +40,17 @@ export function Keys() {
     else if (name === "form" && fieldError) emailRef.current?.focus();
   }, [name, fieldError]);
 
+  // A failed request: the focus goes to the message (the button was disabled meanwhile).
+  useEffect(() => {
+    if (formError !== undefined) errRef.current?.focus();
+  }, [formError]);
+
   const submit = async (e: Event) => {
     e.preventDefault();
     if (phase.name === "sending") return;
     const value = email.trim();
     if (!EMAIL.test(value)) {
-      setPhase({ name: "form", fieldError: true });
+      setPhase({ name: "form", fieldError: value ? EMAIL_HELP : EMAIL_EMPTY });
       return;
     }
     setPhase({ name: "sending" });
@@ -53,7 +61,7 @@ export function Keys() {
       if (err instanceof ApiError && err.status === 404) {
         setPhase({ name: "closed" });
       } else if (err instanceof ApiError && err.status === 422) {
-        setPhase({ name: "form", fieldError: true });
+        setPhase({ name: "form", fieldError: EMAIL_HELP });
       } else {
         setPhase({ name: "form", error: err });
       }
@@ -77,7 +85,7 @@ export function Keys() {
           <h2 id="form-title">Your email address</h2>
           {phase.name === "form" && phase.error !== undefined && (
             <div style={{ marginBottom: "var(--s4)" }}>
-              <KeyError error={phase.error} action="key" />
+              <KeyError error={phase.error} action="key" innerRef={errRef} />
             </div>
           )}
           <form class="stack" noValidate onSubmit={submit}>
@@ -107,7 +115,7 @@ export function Keys() {
               </span>
               {fieldError && (
                 <span id="email-err" class="field-err">
-                  {EMAIL_HELP}
+                  {fieldError}
                 </span>
               )}
             </div>

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { ApiError, keysApi } from "../api/client";
 import type { AccountInfo, KeyInfo } from "../api/types";
-import { KeyBox, KeyError, SaveNowWarning } from "../components/KeyParts";
+import { type KeyAction, KeyBox, KeyError, SaveNowWarning } from "../components/KeyParts";
 import { useTitle } from "../lib/hooks";
 import { fmtUtc } from "../lib/keys";
 import { Link } from "../router";
@@ -10,10 +10,12 @@ import { Link } from "../router";
 const MAX_KEYS = 2;
 
 type Phase =
-  | { name: "out"; error?: unknown; notice?: string }
+  | { name: "out"; error?: unknown; notice?: string; fieldError?: boolean }
   | { name: "loading" }
   | { name: "account" }
   | { name: "deleted" };
+
+const KNOWN_AUTH = ["invalid_api_key", "api_key_revoked", "account_blocked", "api_key_required"];
 
 const num = (n: number) => n.toLocaleString("en-US");
 
@@ -29,6 +31,8 @@ export function KeysManage() {
   const [revoking, setRevoking] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<unknown>(undefined);
+  const [actionKind, setActionKind] = useState<KeyAction>("other");
+  const [announce, setAnnounce] = useState("");
   const [limitHit, setLimitHit] = useState(false);
   const [delOpen, setDelOpen] = useState(false);
   const [delCheck, setDelCheck] = useState(false);
@@ -37,16 +41,23 @@ export function KeysManage() {
   const accTitle = useRef<HTMLHeadingElement>(null);
   const newTitle = useRef<HTMLHeadingElement>(null);
   const goneTitle = useRef<HTMLDivElement>(null);
-  const revokeGo = useRef<HTMLButtonElement>(null);
+  const cancelRevoke = useRef<HTMLButtonElement>(null);
+  const errRef = useRef<HTMLDivElement>(null);
   const delCheckRef = useRef<HTMLInputElement>(null);
   const delOpenBtn = useRef<HTMLButtonElement>(null);
-  const focusAfter = useRef<(() => void) | null>(null);
+  const focusAfter = useRef<(() => boolean) | null>(null);
+  // A focus target that may not be rendered yet: `false` makes the effect below retry after the next render.
+  const focusOn = (ref: { current: HTMLElement | null }) => (): boolean => {
+    ref.current?.focus();
+    return ref.current !== null;
+  };
 
   // Focus moves after the render that shows the new state.
   useEffect(() => {
     const f = focusAfter.current;
-    focusAfter.current = null;
-    f?.();
+    if (!f) return;
+    // `false`: the target is not on the page yet (this effect was a leftover of an earlier render).
+    if (f()) focusAfter.current = null;
   });
 
   const signOut = (state: Phase = { name: "out" }) => {
@@ -58,11 +69,12 @@ export function KeysManage() {
     setRevoking(null);
     setBusy(false);
     setActionError(undefined);
+    setAnnounce("");
     setLimitHit(false);
     setDelOpen(false);
     setDelCheck(false);
     setPhase(state);
-    focusAfter.current = () => inputRef.current?.focus();
+    focusAfter.current = focusOn(inputRef);
   };
 
   const login = async (e: Event) => {
@@ -70,14 +82,8 @@ export function KeysManage() {
     if (phase.name === "loading") return;
     const value = input.trim();
     if (!value) {
-      setPhase({
-        name: "out",
-        error: new ApiError({
-          status: 401,
-          code: "api_key_required",
-          message: "API key required",
-        }),
-      });
+      setPhase({ name: "out", fieldError: true });
+      focusAfter.current = focusOn(inputRef);
       return;
     }
     setPhase({ name: "loading" });
@@ -87,19 +93,24 @@ export function KeysManage() {
       setInput("");
       setAccount(acc);
       setPhase({ name: "account" });
-      focusAfter.current = () => accTitle.current?.focus();
+      focusAfter.current = focusOn(accTitle);
     } catch (err) {
       setPhase({ name: "out", error: err });
-      focusAfter.current = () => inputRef.current?.focus();
+      // Messages with their own wording leave the focus on the field; others take it.
+      const known = err instanceof ApiError && KNOWN_AUTH.includes(err.code);
+      focusAfter.current = focusOn(known ? inputRef : errRef);
     }
   };
 
   // A key problem during an action ends the session; anything else stays beside the action.
-  const failAction = (err: unknown) => {
+  const failAction = (err: unknown, kind: KeyAction = "other") => {
+    setActionKind(kind);
     if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
       signOut({ name: "out", error: err });
     } else {
       setActionError(err);
+      // The button that was pressed is disabled while the request runs: keep the focus on the message.
+      focusAfter.current = focusOn(errRef);
     }
   };
 
@@ -112,7 +123,7 @@ export function KeysManage() {
       const res = await keysApi.createKey(apiKey);
       setNewKey(res.key);
       setAccount({ ...account, keys: [res.key_info, ...account.keys] });
-      focusAfter.current = () => newTitle.current?.focus();
+      focusAfter.current = focusOn(newTitle);
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) setLimitHit(true);
       else failAction(err);
@@ -125,6 +136,7 @@ export function KeysManage() {
     if (!account || busy) return;
     setBusy(true);
     setActionError(undefined);
+    setAnnounce("");
     try {
       await keysApi.revokeKey(apiKey, k.id);
       setRevoking(null);
@@ -141,9 +153,10 @@ export function KeysManage() {
         ...account,
         keys: account.keys.map((x) => (x.id === k.id ? { ...x, revoked_at: at } : x)),
       });
-      focusAfter.current = () => accTitle.current?.focus();
+      setAnnounce(`Key ${k.prefix}… revoked`);
+      focusAfter.current = focusOn(accTitle);
     } catch (err) {
-      failAction(err);
+      failAction(err, "revoke");
     } finally {
       setBusy(false);
     }
@@ -162,7 +175,7 @@ export function KeysManage() {
       setDelOpen(false);
       setDelCheck(false);
       setPhase({ name: "deleted" });
-      focusAfter.current = () => goneTitle.current?.focus();
+      focusAfter.current = focusOn(goneTitle);
     } catch (err) {
       failAction(err);
     } finally {
@@ -173,6 +186,7 @@ export function KeysManage() {
   const active = account ? account.keys.filter((k) => !k.revoked_at).length : 0;
 
   const authError = phase.name === "out" ? phase.error : undefined;
+  const fieldError = phase.name === "out" && phase.fieldError === true;
   const authApi = authError instanceof ApiError ? authError : null;
 
   return (
@@ -238,14 +252,11 @@ export function KeysManage() {
               </div>
             </div>
           )}
-          {authError !== undefined &&
-            !["invalid_api_key", "api_key_revoked", "account_blocked", "api_key_required"].includes(
-              authApi?.code ?? "",
-            ) && (
-              <div style={{ marginBottom: "var(--s4)" }}>
-                <KeyError error={authError} />
-              </div>
-            )}
+          {authError !== undefined && !KNOWN_AUTH.includes(authApi?.code ?? "") && (
+            <div style={{ marginBottom: "var(--s4)" }}>
+              <KeyError error={authError} action="account" innerRef={errRef} />
+            </div>
+          )}
 
           <form class="stack" noValidate onSubmit={login}>
             <div class="field">
@@ -265,12 +276,18 @@ export function KeysManage() {
                 placeholder="si_EXAMPLE…"
                 disabled={phase.name === "loading"}
                 value={input}
-                aria-describedby="apikey-hint"
+                aria-invalid={fieldError ? "true" : undefined}
+                aria-describedby={fieldError ? "apikey-hint apikey-err" : "apikey-hint"}
                 onInput={(ev) => setInput((ev.currentTarget as HTMLInputElement).value)}
               />
               <span id="apikey-hint" class="hint">
                 Starts with <code>si_</code>.
               </span>
+              {fieldError && (
+                <span id="apikey-err" class="field-err">
+                  Enter your API key.
+                </span>
+              )}
             </div>
             <label class="check small">
               <input
@@ -293,13 +310,17 @@ export function KeysManage() {
           </form>
           <p class="small muted" style={{ marginTop: "var(--s4)" }}>
             No key yet? <Link href="/keys">Get an API key</Link>. Lost it?{" "}
-            <Link href="/keys/delete">Delete my data</Link> with just your email.
+            <Link href="/keys">Request a new key</Link> (if you already have two, the new one can
+            replace them). Or <Link href="/keys/delete">delete my data</Link> with just your email.
           </p>
         </section>
       )}
 
       {phase.name === "account" && account && (
         <div class="stack-lg">
+          <div class="visually-hidden" role="status" data-testid="keys-status">
+            {announce}
+          </div>
           <section class="card panel" aria-labelledby="acc-title">
             <div class="row" style={{ alignItems: "center" }}>
               <div>
@@ -363,7 +384,9 @@ export function KeysManage() {
                 You already have {MAX_KEYS} active keys.
               </p>
             )}
-            {actionError !== undefined && !delOpen && <KeyError error={actionError} />}
+            {actionError !== undefined && !delOpen && (
+              <KeyError error={actionError} action={actionKind} innerRef={errRef} />
+            )}
             <ul class="keys" aria-label="Your keys">
               {account.keys.map((k) => {
                 const revoked = !!k.revoked_at;
@@ -386,7 +409,8 @@ export function KeysManage() {
                           onClick={() => {
                             setRevoking(k.id);
                             setActionError(undefined);
-                            focusAfter.current = () => revokeGo.current?.focus();
+                            setAnnounce("");
+                            focusAfter.current = focusOn(cancelRevoke);
                           }}
                         >
                           Revoke
@@ -431,7 +455,6 @@ export function KeysManage() {
                           <button
                             class="btn btn-danger btn-sm"
                             type="button"
-                            ref={revokeGo}
                             disabled={busy}
                             onClick={() => revoke(k)}
                           >
@@ -440,14 +463,16 @@ export function KeysManage() {
                           <button
                             class="btn btn-sm"
                             type="button"
+                            ref={cancelRevoke}
                             onClick={() => {
                               setRevoking(null);
-                              focusAfter.current = () =>
-                                document
-                                  .querySelector<HTMLButtonElement>(
-                                    `button[aria-label="Revoke key ${k.prefix}, id ${k.id}"]`,
-                                  )
-                                  ?.focus();
+                              focusAfter.current = () => {
+                                const b = document.querySelector<HTMLButtonElement>(
+                                  `button[aria-label="Revoke key ${k.prefix}, id ${k.id}"]`,
+                                );
+                                b?.focus();
+                                return b !== null;
+                              };
                             }}
                           >
                             Cancel
@@ -508,7 +533,7 @@ export function KeysManage() {
               onClick={() => {
                 setDelOpen(true);
                 setActionError(undefined);
-                focusAfter.current = () => delCheckRef.current?.focus();
+                focusAfter.current = focusOn(delCheckRef);
               }}
             >
               Delete my account…
@@ -529,29 +554,29 @@ export function KeysManage() {
                 </label>
                 {actionError !== undefined && (
                   <div style={{ marginTop: "var(--s3)" }}>
-                    <KeyError error={actionError} />
+                    <KeyError error={actionError} action={actionKind} innerRef={errRef} />
                   </div>
                 )}
-                <div class="row" style={{ marginTop: "var(--s3)" }}>
+                <div class="btn-pair" style={{ marginTop: "var(--s3)" }}>
                   <button
-                    class="btn btn-danger"
-                    type="button"
-                    disabled={!delCheck || busy}
-                    onClick={deleteAccount}
-                  >
-                    Yes, delete everything
-                  </button>
-                  <button
-                    class="btn"
+                    class="btn btn-lg"
                     type="button"
                     onClick={() => {
                       setDelOpen(false);
                       setDelCheck(false);
                       setActionError(undefined);
-                      focusAfter.current = () => delOpenBtn.current?.focus();
+                      focusAfter.current = focusOn(delOpenBtn);
                     }}
                   >
                     Cancel
+                  </button>
+                  <button
+                    class="btn btn-danger btn-lg"
+                    type="button"
+                    disabled={!delCheck || busy}
+                    onClick={deleteAccount}
+                  >
+                    Yes, delete everything
                   </button>
                 </div>
               </div>

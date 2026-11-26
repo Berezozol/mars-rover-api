@@ -1,4 +1,4 @@
-import type { ComponentChildren } from "preact";
+import type { ComponentChildren, Ref } from "preact";
 import { useRef, useState } from "preact/hooks";
 import { ApiError } from "../api/client";
 import { describeError } from "../api/errors";
@@ -36,7 +36,7 @@ export function resetText(body: unknown): string | null {
 }
 
 /** What the visitor was doing, so that `503 mail_unavailable` can name it. */
-export type KeyAction = "key" | "deletion" | "other";
+export type KeyAction = "key" | "deletion" | "account" | "revoke" | "other";
 
 /**
  * A failed request of the key screens in words: `429` and `503` with the wait from `Retry-After`,
@@ -46,10 +46,13 @@ export function KeyError({
   error,
   action = "other",
   actions,
+  innerRef,
 }: {
   error: unknown;
   action?: KeyAction;
   actions?: ComponentChildren;
+  /** Lets the page move focus onto the message after a failed request. */
+  innerRef?: Ref<HTMLDivElement>;
 }) {
   const v = describeError(error);
   const e = error instanceof ApiError ? error : null;
@@ -76,16 +79,20 @@ export function KeyError({
   } else if (e?.status === 503) {
     title = "Service temporarily unavailable";
     message = `Please try again ${wait ? `in ${wait}` : "in a minute"}.`;
-  } else if (e?.code === "not_found" && e.status === 404) {
+  } else if (e?.status === 404 && action === "revoke" && e.code === "not_found") {
     title = "Key not found";
     message =
       "That key no longer exists on this account. Reload your account to see the current list.";
   } else if (e?.status === 404) {
-    title = "Not available yet";
-    message = "This part of Sol Index is not open yet. Please check back later.";
+    // Key endpoints answer 404 as well while the feature is switched off.
+    title = "Not available right now";
+    message = "This part of Sol Index is not open right now. Please check back later.";
+    if (action === "deletion") {
+      message += " Reply to any email we sent you and we will delete your data by hand.";
+    }
   }
   return (
-    <div class={`alert ${kind}`} role="alert">
+    <div class={`alert ${kind}`} role="alert" tabIndex={-1} ref={innerRef} data-testid="key-error">
       <div>
         <div class="alert-title">{title}</div>
         <p class="small">{message}</p>

@@ -6,6 +6,7 @@ import { unmatched } from "./helpers";
 beforeEach(() => {
   unmatched.length = 0;
   clearApiCache();
+  sessionStorage.clear();
   window.history.replaceState(null, "", "/");
   document.documentElement.removeAttribute("data-theme");
   window.scrollTo = vi.fn() as unknown as typeof window.scrollTo;

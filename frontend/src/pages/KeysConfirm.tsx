@@ -3,7 +3,7 @@ import { ApiError, keysApi } from "../api/client";
 import type { IssuedKey } from "../api/types";
 import { KeyBox, KeyError, SaveNowWarning } from "../components/KeyParts";
 import { useTitle } from "../lib/hooks";
-import { fmtUtc, takeToken, useNoReferrer } from "../lib/keys";
+import { clearLinkFlag, fmtUtc, takeLinkFlag, takeToken, useNoReferrer } from "../lib/keys";
 import { Link } from "../router";
 
 type Phase =
@@ -26,7 +26,9 @@ export function KeysConfirm() {
   // Read and removed once, on the first render; kept only in this component's state.
   const [link] = useState(() => {
     const hadHash = window.location.hash.length > 1;
-    return { hadHash, token: takeToken() };
+    // No hash, but the link was opened in this tab before: the page was reloaded.
+    const reloaded = !hadHash && takeLinkFlag();
+    return { hadHash, reloaded, token: takeToken() };
   });
   const token = link.token;
   const [phase, setPhase] = useState<Phase>(
@@ -48,11 +50,15 @@ export function KeysConfirm() {
     if (!token || phase.name === "loading") return;
     setPhase({ name: "loading", replacing });
     try {
-      setPhase({ name: "shown", issued: await keysApi.confirmKey(token, replacing) });
+      const issued = await keysApi.confirmKey(token, replacing);
+      clearLinkFlag();
+      setPhase({ name: "shown", issued });
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) setPhase({ name: "limit" });
-      else if (err instanceof ApiError && err.status === 400) setPhase({ name: "invalid" });
-      else if (err instanceof ApiError && err.status === 403) setPhase({ name: "blocked" });
+      else if (err instanceof ApiError && err.status === 400) {
+        clearLinkFlag();
+        setPhase({ name: "invalid" });
+      } else if (err instanceof ApiError && err.status === 403) setPhase({ name: "blocked" });
       else setPhase({ name: "failed", error: err, replacing });
     }
   };
@@ -67,10 +73,18 @@ export function KeysConfirm() {
         (phase.name === "loading" && !phase.replacing) ||
         phase.name === "failed") && (
         <section class="card panel stack" aria-labelledby="ready-title">
-          <h2 id="ready-title">Email confirmed</h2>
-          <p>The link in your email is valid. Press the button to create your API key.</p>
+          <h2 id="ready-title">
+            {phase.name === "failed" ? "Could not create your key" : "One step left"}
+          </h2>
+          <p>
+            Press the button to create your API key.
+            {phase.name !== "failed" &&
+              " If the link has expired or was already used, we will tell you here."}
+          </p>
           <p class="small muted">The key appears on this page only once. Be ready to copy it.</p>
-          {phase.name === "failed" && <KeyError error={phase.error} />}
+          {phase.name === "failed" && (
+            <KeyError error={phase.error} action="key" innerRef={headRef} />
+          )}
           <button
             class="btn btn-primary btn-lg btn-block"
             type="button"
@@ -189,10 +203,15 @@ export function KeysConfirm() {
 
       {phase.name === "nolink" && (
         <section class="card panel stack" aria-labelledby="nolink-title">
-          <h2 id="nolink-title">Open the link from your email</h2>
+          <h2 id="nolink-title">
+            {link.reloaded
+              ? "Your link is still valid — open it again from the email"
+              : "Open the link from your email"}
+          </h2>
           <p>
-            This page works only with the one-time link we email you. Open that link, or request a
-            new one.
+            {link.reloaded
+              ? "The page was reloaded, and for your safety the link is not kept in the address. Open it again from the email, or request a new one."
+              : "This page works only with the one-time link we email you. Open that link, or request a new one."}
           </p>
           <Link class="btn btn-primary btn-lg" href="/keys">
             Get an API key

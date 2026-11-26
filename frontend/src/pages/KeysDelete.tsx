@@ -2,14 +2,15 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { ApiError, keysApi } from "../api/client";
 import { DelayedNote, Honeypot, KeyError } from "../components/KeyParts";
 import { useTitle } from "../lib/hooks";
-import { takeToken, useNoReferrer } from "../lib/keys";
+import { clearLinkFlag, takeLinkFlag, takeToken, useNoReferrer } from "../lib/keys";
 import { Link } from "../router";
 
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const EMAIL_HELP = "Enter a valid address: one “@”, no spaces, a domain with a dot.";
+const EMAIL_EMPTY = "Enter your email address.";
 
 type Phase =
-  | { name: "form"; error?: unknown; fieldError?: boolean }
+  | { name: "form"; error?: unknown; fieldError?: string }
   | { name: "sending" }
   | { name: "sent"; delayed: boolean; to: string }
   | { name: "confirm"; error?: unknown }
@@ -24,11 +25,14 @@ type Phase =
 export function KeysDelete() {
   useTitle("Delete my data — Sol Index");
   useNoReferrer();
-  const [token] = useState<string | null>(() => {
+  const [link] = useState(() => {
     const hadHash = window.location.hash.length > 1;
+    // No hash, but the link was opened in this tab before: the page was reloaded.
+    const reloaded = !hadHash && takeLinkFlag();
     const t = takeToken();
-    return hadHash ? (t ?? "") : null;
+    return { token: hadHash ? (t ?? "") : null, reloaded };
   });
+  const token = link.token;
   const [email, setEmail] = useState("");
   const [trap, setTrap] = useState("");
   const [phase, setPhase] = useState<Phase>(() =>
@@ -37,7 +41,10 @@ export function KeysDelete() {
   const headRef = useRef<HTMLHeadingElement & HTMLDivElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
   const name = phase.name;
-  const fieldError = phase.name === "form" && phase.fieldError;
+  const fieldError = phase.name === "form" ? phase.fieldError : undefined;
+  const formError = phase.name === "form" ? phase.error : undefined;
+  const confirmError = phase.name === "confirm" ? phase.error : undefined;
+  const errRef = useRef<HTMLDivElement>(null);
 
   const first = useRef(true);
   useEffect(() => {
@@ -50,12 +57,17 @@ export function KeysDelete() {
     } else if (name === "form" && fieldError) emailRef.current?.focus();
   }, [name, fieldError]);
 
+  // A failed request: the focus goes to the message (the button was disabled meanwhile).
+  useEffect(() => {
+    if (formError !== undefined || confirmError !== undefined) errRef.current?.focus();
+  }, [formError, confirmError]);
+
   const submit = async (e: Event) => {
     e.preventDefault();
     if (phase.name === "sending") return;
     const value = email.trim();
     if (!EMAIL.test(value)) {
-      setPhase({ name: "form", fieldError: true });
+      setPhase({ name: "form", fieldError: value ? EMAIL_HELP : EMAIL_EMPTY });
       return;
     }
     setPhase({ name: "sending" });
@@ -64,7 +76,7 @@ export function KeysDelete() {
       setPhase({ name: "sent", delayed: res.mail_delayed === true, to: value });
     } catch (err) {
       if (err instanceof ApiError && err.status === 422) {
-        setPhase({ name: "form", fieldError: true });
+        setPhase({ name: "form", fieldError: EMAIL_HELP });
       } else {
         setPhase({ name: "form", error: err });
       }
@@ -76,9 +88,11 @@ export function KeysDelete() {
     setPhase({ name: "deleting" });
     try {
       await keysApi.confirmDeletion(token);
+      clearLinkFlag();
       setPhase({ name: "done" });
     } catch (err) {
       if (err instanceof ApiError && (err.status === 400 || err.status === 422)) {
+        clearLinkFlag();
         setPhase({ name: "invalid" });
       } else {
         setPhase({ name: "confirm", error: err });
@@ -98,12 +112,17 @@ export function KeysDelete() {
           <h2 id="form-title">Delete by email</h2>
           <p class="small muted">
             Use this if you no longer have your key. Have it? Delete in{" "}
-            <Link href="/keys/manage">My keys</Link> with one click. We email a link to the address;
-            opening it deletes your email, keys and usage counters.
+            <Link href="/keys/manage">My keys</Link>. We email you a link; on the page it opens you
+            confirm the deletion. It removes your email, keys and usage counters.
           </p>
+          {link.reloaded && (
+            <p class="small" role="status">
+              Your link is still valid — open it again from the email.
+            </p>
+          )}
           {phase.name === "form" && phase.error !== undefined && (
             <div style={{ marginBottom: "var(--s4)" }}>
-              <KeyError error={phase.error} action="deletion" />
+              <KeyError error={phase.error} action="deletion" innerRef={errRef} />
             </div>
           )}
           <form class="stack" noValidate onSubmit={submit}>
@@ -132,7 +151,7 @@ export function KeysDelete() {
               </span>
               {fieldError && (
                 <span id="email-err" class="field-err">
-                  {EMAIL_HELP}
+                  {fieldError}
                 </span>
               )}
             </div>
@@ -184,23 +203,28 @@ export function KeysDelete() {
             Scripts that use your keys will start getting <code>401 invalid_api_key</code>. The API
             itself keeps working without a key.
           </p>
+          <p>
+            <strong>This cannot be undone.</strong>
+          </p>
           {phase.name === "confirm" && phase.error !== undefined && (
-            <KeyError error={phase.error} action="deletion" />
+            <KeyError error={phase.error} action="deletion" innerRef={errRef} />
           )}
-          <button
-            class="btn btn-danger btn-lg btn-block"
-            type="button"
-            disabled={deleting}
-            onClick={confirm}
-          >
-            {deleting ? "Deleting…" : "Yes, delete my data"}
-          </button>
+          <div class="btn-pair">
+            <Link class="btn btn-lg" href="/">
+              No, keep everything
+            </Link>
+            <button
+              class="btn btn-danger btn-lg"
+              type="button"
+              disabled={deleting}
+              onClick={confirm}
+            >
+              {deleting ? "Deleting…" : "Yes, delete my data"}
+            </button>
+          </div>
           <p class="xsmall muted" role="status">
             {deleting ? "Deleting…" : ""}
           </p>
-          <Link class="btn" href="/">
-            No, keep everything
-          </Link>
         </section>
       )}
 
