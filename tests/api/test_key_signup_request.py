@@ -523,21 +523,24 @@ async def test_ac5_the_request_is_also_charged_to_the_ordinary_ip_limit(
 
 
 @pytest.mark.parametrize(
-    ("first", "second", "third_ip_blocked"),
+    ("first", "second", "second_blocked"),
     [
         pytest.param("2001:db8:1:2::1", "2001:db8:1:2:ffff::5", True, id="same-64"),
-        pytest.param("2001:db8:1:2::1", "2001:db8:1:3::1", False, id="different-64"),
+        pytest.param("2001:db8:1:2::1", "2001:db8:1:3::1", True, id="different-64-same-48"),
+        pytest.param("2001:db8:1:2::1", "2001:db8:1:ffff::1", True, id="48-edge"),
+        pytest.param("2001:db8:1:2::1", "2001:db8:2:2::1", False, id="different-48"),
     ],
 )
-async def test_ac5_ipv6_is_counted_per_64_network(
-    make_keys_app: MakeApp, first: str, second: str, third_ip_blocked: bool
+async def test_ac5_ipv6_is_counted_per_48_network(
+    make_keys_app: MakeApp, first: str, second: str, second_blocked: bool
 ) -> None:
+    """HIGH-2 (2026-11-26): "one IP" of an IPv6 client is a whole /48 network."""
     se = await make_signup_app(make_keys_app, key_signup_per_ip_per_hour=1)
     assert (await se.request_key("a@example.org", first)).status_code == 202
 
     other = await se.request_key("b@example.org", second)
 
-    assert (other.status_code == 429) is third_ip_blocked
+    assert (other.status_code == 429) is second_blocked
 
 
 # --- AC-6: global daily limit ---

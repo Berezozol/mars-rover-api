@@ -22,6 +22,7 @@ same limiter and key as the request itself.
 import logging
 import math
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Any
 from urllib.parse import unquote
 
@@ -40,6 +41,7 @@ from app.api.apikeys import (
     client_key,
     extract_api_key,
     rate_identity,
+    site_key,
 )
 from app.api.caching import API_PREFIXES, RESPONSE_SIZE_SCOPE_KEY
 from app.core.apikeys import is_our_key_format
@@ -59,7 +61,7 @@ from app.core.errors import (
     rate_limited_content,
     rate_limited_headers,
 )
-from app.core.ratelimit import RateLimiter
+from app.core.ratelimit import RateLimiter, RateState
 
 logger = logging.getLogger(__name__)
 
@@ -112,31 +114,33 @@ class RateLimitMiddleware:
             return
         ip = RateIdentity(kind="ip", key=client_key(scope))
         scope[IDENTITY_SCOPE_KEY] = ip
+        site = site_pair(scope, ip)
         # The address slot is taken before the key is looked up: a flood of requests with
         # unknown keys cannot start more lookups than the address may have requests in flight.
-        if not ip_limiter.enter(ip.key):
+        held = _enter_all([(ip_limiter, ip.key), *([site] if site else [])])
+        if held is None:
             await self._too_many_in_flight(scope, receive, send, ip_limiter, ip)
             return
-        held: tuple[RateLimiter, str] | None = (ip_limiter, ip.key)
         try:
             identity, rejection = await _identify(scope)
             if identity.kind == "account":
-                # A valid key counts against its account: the address slot is given back.
-                ip_limiter.leave(ip.key)
-                held = None
+                # A valid key counts against its account: the address slots are given back.
+                _leave_all(held)
+                held = []
+                site = None
                 limiter = _pick(limiter_of(scope, identity), ip_limiter)
                 scope[IDENTITY_SCOPE_KEY] = identity
-                if not limiter.enter(identity.key):
+                held = _enter_all([(limiter, identity.key)])
+                if held is None:
                     await self._too_many_in_flight(scope, receive, send, limiter, identity)
                     return
-                held = (limiter, identity.key)
             else:
                 limiter = ip_limiter
-            await self._serve(scope, receive, send, limiter, identity, rejection)
+            await self._serve(scope, receive, send, limiter, identity, rejection, site)
         finally:
-            # The slot is held until the response is complete, also on errors and disconnects.
-            if held is not None:
-                held[0].leave(held[1])
+            # The slots are held until the response is complete, also on errors and disconnects.
+            if held:
+                _leave_all(held)
 
     async def _too_many_in_flight(
         self,
@@ -161,8 +165,9 @@ class RateLimitMiddleware:
         limiter: RateLimiter,
         identity: RateIdentity,
         rejection: Rejection | None,
+        site: tuple[RateLimiter, str] | None = None,
     ) -> None:
-        state = limiter.acquire(identity.key)
+        state = _acquire(limiter, identity.key, site)
         extra = rate_limit_headers(state.limit, state.remaining, state.reset)
         if state.wait is not None:
             logger.debug("Rate limited client=%s api=%s", identity.key, _api_label(scope))
@@ -184,6 +189,48 @@ def limiter_of(scope: Scope, identity: RateIdentity) -> RateLimiter | None:
     if identity.kind == "account":
         return getattr(state, "key_rate_limiter", None)
     return getattr(state, "rate_limiter", None)
+
+
+def site_pair(scope: Scope, identity: RateIdentity) -> tuple[RateLimiter, str] | None:
+    """The /48 limiter and key an address identity also counts against; None for accounts,
+    IPv4 clients (their site key is the address itself) and without a site limiter."""
+    if identity.kind != "ip":
+        return None
+    limiter = getattr(scope["app"].state, "site_rate_limiter", None)
+    key = site_key(scope)
+    if limiter is None or key == identity.key:
+        return None
+    return limiter, key
+
+
+def _enter_all(pairs: list[tuple[RateLimiter, str]]) -> list[tuple[RateLimiter, str]] | None:
+    """Take a concurrency slot in every limiter, or in none (None when one is full)."""
+    taken: list[tuple[RateLimiter, str]] = []
+    for limiter, key in pairs:
+        if not limiter.enter(key):
+            _leave_all(taken)
+            return None
+        taken.append((limiter, key))
+    return taken
+
+
+def _leave_all(pairs: list[tuple[RateLimiter, str]]) -> None:
+    for limiter, key in pairs:
+        limiter.leave(key)
+
+
+def _acquire(limiter: RateLimiter, key: str, site: tuple[RateLimiter, str] | None) -> RateState:
+    """Count the request; with a site limiter in both, or in neither when either rejects.
+    The state describes ``limiter``; a rejection by the site carries its wait time."""
+    if site is None:
+        return limiter.acquire(key)
+    site_limiter, site_key_ = site
+    waits = [w for w in (limiter.check(key), site_limiter.check(site_key_)) if w is not None]
+    if waits:
+        return replace(limiter.peek(key), wait=max(waits))
+    state = limiter.acquire(key)
+    site_limiter.acquire(site_key_)
+    return state
 
 
 def _pick(preferred: RateLimiter | None, fallback: RateLimiter) -> RateLimiter:
@@ -235,7 +282,7 @@ async def _identify(scope: Scope) -> tuple[RateIdentity, Rejection | None]:
     # An address that failed too often is not served any key that needs a lookup (nor one of
     # a foreign format); the refusal is not counted as one more failure. Keys verified
     # recently (positive cache) are still answered from memory.
-    wait = state.api_key_auth_limiter.check(ip.key)
+    wait = state.api_key_auth_limiter.check(site_key(scope))
     if wait is not None:
         cached = resolver.peek(value) if is_our_key_format(value) else None
         if cached is None:
@@ -278,15 +325,15 @@ def _key_failure(
     """The answer to a bad key. Wrong and revoked keys also count as failures of the address
     (the key of a blocked account is genuine, so it does not)."""
     if count and not isinstance(error, AccountBlocked):
-        _record_failure(state, ip.key)
+        _record_failure(state, site_key(scope))
     status, content = api_key_error_content(scope["path"], error)
     headers = {"Cache-Control": NO_STORE}
     return lambda extra: _json_response(scope, status, content, {**headers, **extra})
 
 
 def _record_failure(state: Any, ip_key: str) -> None:
-    """Count a failed key of the address; log once when it becomes locked out (the address
-    only, never the key)."""
+    """Count a failed key of the site (IPv6: the /48 network); log once when it becomes locked
+    out (the address only, never the key)."""
     limiter: RateLimiter = state.api_key_auth_limiter
     was_open = limiter.check(ip_key) is None
     limiter.record(ip_key)
@@ -429,6 +476,9 @@ class ResponseSizeMiddleware:
             # Set by RateLimitMiddleware further in (the scope dict is shared).
             identity = rate_identity(scope)
             _pick(limiter_of(scope, identity), limiter).charge(identity.key, cost - 1)
+            site = site_pair(scope, identity)
+            if site is not None:
+                site[0].charge(site[1], cost - 1)
 
 
 def _raw_bytes_unit(scope: Scope) -> int:

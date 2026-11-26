@@ -173,6 +173,9 @@ class Settings(BaseSettings):
     rate_limit_per_hour: int = Field(default=2000, ge=1)
     # Requests of one IP served at the same time; an extra one gets 429 at once.
     rate_limit_concurrent: int = Field(default=4, ge=1)
+    # All IPv6 addresses of one /48 network share a budget this many times larger than one
+    # client's (per minute, per hour and concurrent); a request counts in both.
+    rate_limit_ipv6_site_factor: int = Field(default=8, ge=1)
     # A v1 response costs one request per started chunk of this many bytes (after gzip).
     rate_limit_v1_bytes_per_request: int = Field(default=262_144, ge=1024)
     # ...or per started chunk of this many bytes of the uncompressed body (also for HEAD and
@@ -203,7 +206,7 @@ class Settings(BaseSettings):
 
     # Self-service keys by e-mail (stage 20B); works only with API_KEYS_ENABLED and SMTP_HOST.
     key_signup_enabled: bool = False
-    # Requests for a key or a deletion link per client address (IPv6: per /64) and hour.
+    # Requests for a key or a deletion link per client address (IPv6: per /48 network) and hour.
     key_signup_per_ip_per_hour: int = Field(default=5, ge=1)
     # Mails per address and 24 hours (key and deletion mails together).
     key_signup_per_email_per_day: int = Field(default=3, ge=1)

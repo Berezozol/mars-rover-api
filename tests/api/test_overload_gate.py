@@ -12,8 +12,8 @@ Margins are generous: a slot holder sleeps 30 s in the database (the test cancel
 heavy requests 2 s, light requests may take up to 1 s, a refusal is timed as the best of three.
 
 Per-client limit (docs/API.md "Перегрузка"): one heavy search at a time per client address
-(IPv6 by /64). The default test client is 10.0.0.1; tests that need a second heavy request
-running at the same time use another address (`make_client(app, ip=...)`).
+(IPv6 by /48, HIGH-2 2026-11-26). The default test client is 10.0.0.1; tests that need a
+second heavy request running at the same time use another address (`make_client(app, ip=...)`).
 """
 
 import asyncio
@@ -742,10 +742,12 @@ SAME_CLIENT = [
     pytest.param("10.0.0.1", "10.0.0.1", id="ipv4-same-address"),
     pytest.param("2001:db8:1:2::1", "2001:db8:1:2::2", id="ipv6-same-64"),
     pytest.param("2001:db8:1:2::1", "2001:db8:1:2:ffff:ffff:ffff:ffff", id="ipv6-64-edges"),
+    pytest.param("2001:db8:1:2::1", "2001:db8:1:3::1", id="ipv6-two-64-networks-of-one-48"),
+    pytest.param("2001:db8:1:2::1", "2001:db8:1:ffff::1", id="ipv6-48-edges"),
 ]
 OTHER_CLIENT = [
     pytest.param("10.0.0.1", "10.0.0.2", id="ipv4-two-addresses"),
-    pytest.param("2001:db8:1:2::1", "2001:db8:1:3::1", id="ipv6-two-64-networks"),
+    pytest.param("2001:db8:1:2::1", "2001:db8:2:2::1", id="ipv6-two-48-networks"),
 ]
 
 

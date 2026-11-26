@@ -23,6 +23,14 @@ Clock = Callable[[], float]
 _BUCKETS_PER_WINDOW = 360
 _MIN_GRANULARITY = 1.0
 DEFAULT_MAX_KEYS = 100_000
+# Tracked keys of the request limiters (two windows, up to 60 + 360 buckets per key). Measured:
+# a key with full windows is about 45.7 KB, so 20 000 keys are about 873 MiB per limiter.
+# The per-address limiter and the /48 site limiter together can reach about 1.7 GB (the
+# container has mem_limit 3g), so the site limiter gets a smaller table: only IPv6 /48
+# networks are written to it, and there are far fewer of them than addresses.
+# The failure counters stay at the default.
+REQUEST_MAX_KEYS = 20_000
+SITE_MAX_KEYS = 5_000
 
 
 @dataclass

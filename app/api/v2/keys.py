@@ -8,7 +8,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.apikeys import client_key
+from app.api.apikeys import site_key
 from app.api.v2.bodies import body_schema, read_json_body
 from app.api.v2.key_schemas import (
     ConfirmKeyIn,
@@ -46,7 +46,7 @@ async def queue_mail(request: Request, session: AsyncSession, purpose: str) -> M
     """The shared flow of ``/keys/requests`` and ``/account/deletion-requests``: the answer
     does not depend on the address."""
     body = await read_json_body(request, MailRequestIn)
-    wait = request.app.state.signup_limiter.hit(client_key(request.scope))
+    wait = request.app.state.signup_limiter.hit(site_key(request.scope))
     if wait is not None:
         raise RateLimited(wait)
     outcome = await signup_service(request).request(session, body.email, purpose, body.website)

@@ -16,7 +16,7 @@ from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.apikeys import client_key
+from app.api.apikeys import site_key
 from app.api.v2.key_schemas import KeyMailOut, key_mail_out
 from app.api.v2.params import Pagination
 from app.api.v2.schemas import (
@@ -67,8 +67,8 @@ async def require_admin(
 ) -> None:
     """429 for an IP with too many failures, else 401 unless the header equals ADMIN_TOKEN."""
     limiter: RateLimiter = request.app.state.admin_auth_limiter
-    # The same key as the rate limiter: IPv6 reduced to its /64.
-    ip = client_key(request.scope)
+    # IPv6 reduced to its /48 network (a subscriber may own 65 536 /64 networks).
+    ip = site_key(request.scope)
     wait = limiter.check(ip)
     if wait is not None:
         raise RateLimited(wait)
@@ -85,7 +85,13 @@ def _token_matches(settings: Settings, token: str | None) -> bool:
     return secrets.compare_digest(token.encode("utf-8"), expected.encode("utf-8"))
 
 
-router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
+# Admin routes are never part of the public schema, docs or generated clients.
+router = APIRouter(
+    prefix="/admin",
+    tags=["admin"],
+    dependencies=[Depends(require_admin)],
+    include_in_schema=False,
+)
 
 Session = Annotated[AsyncSession, Depends(get_session)]
 
@@ -154,7 +160,12 @@ async def list_runs(
 
 
 # Accounts and API keys (stage 20): mounted by create_app only with API_KEYS_ENABLED.
-accounts_router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
+accounts_router = APIRouter(
+    prefix="/admin",
+    tags=["admin"],
+    dependencies=[Depends(require_admin)],
+    include_in_schema=False,
+)
 
 _ACCOUNT_ERRORS: dict[int | str, dict[str, Any]] = {
     **_ERRORS,

@@ -37,7 +37,7 @@ from app.core.config import (
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging
 from app.core.overload import HeavyQueryGate
-from app.core.ratelimit import RateLimiter
+from app.core.ratelimit import REQUEST_MAX_KEYS, SITE_MAX_KEYS, RateLimiter
 from app.db.session import create_engine, create_session_factory
 from app.services.admin import AdapterFactory, cancel_background
 from app.services.alerts import AlertMonitor, TelegramNotifier
@@ -68,8 +68,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     - ``adapter_factory``: ``Callable[[str], SourceAdapter]`` used by the admin sync;
       the default builds the real adapter with the shared upstream client (lifespan).
     - ``sync_tasks``: set of the running background sync tasks (await them in tests).
-    - ``rate_limiter`` (only with RATE_LIMIT_ENABLED) and ``admin_auth_limiter`` (only with
-      admin enabled): ``RateLimiter`` instances; tests may replace their ``clock``.
+    - ``rate_limiter`` and ``site_rate_limiter`` (the /48 budget of IPv6 clients; only with
+      RATE_LIMIT_ENABLED) and ``admin_auth_limiter`` (only with admin enabled):
+      ``RateLimiter`` instances; tests may replace their ``clock``.
     - ``v1_bytes_per_request`` (only with RATE_LIMIT_ENABLED): bytes of a v1 response per charged
       request; tests may change it. ``v1_raw_bytes_per_request``: same for the uncompressed body.
     - ``key_rate_limiter``, ``api_key_auth_limiter``, ``api_key_resolver``, ``api_key_usage``,
@@ -189,6 +190,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.rate_limiter = RateLimiter(
             [(settings.rate_limit_per_minute, 60), (settings.rate_limit_per_hour, 3600)],
             max_concurrent=settings.rate_limit_concurrent,
+            max_keys=REQUEST_MAX_KEYS,
+        )
+        # IPv6 only: the /48 network of the client shares a larger budget.
+        factor = settings.rate_limit_ipv6_site_factor
+        app.state.site_rate_limiter = RateLimiter(
+            [
+                (settings.rate_limit_per_minute * factor, 60),
+                (settings.rate_limit_per_hour * factor, 3600),
+            ],
+            max_concurrent=settings.rate_limit_concurrent * factor,
+            max_keys=SITE_MAX_KEYS,
         )
         if settings.api_keys_enabled:
             _setup_key_limiters(app, settings)
@@ -303,6 +315,7 @@ def _setup_key_limiters(app: FastAPI, settings: Settings) -> None:
     app.state.key_rate_limiter = RateLimiter(
         [(settings.rate_limit_key_per_minute, 60), (settings.rate_limit_key_per_hour, 3600)],
         max_concurrent=settings.rate_limit_key_concurrent,
+        max_keys=REQUEST_MAX_KEYS,
     )
     app.state.api_key_auth_limiter = RateLimiter(
         [(settings.api_key_auth_max_failures, settings.api_key_auth_window_minutes * 60)]

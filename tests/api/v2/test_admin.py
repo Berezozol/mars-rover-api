@@ -992,39 +992,4 @@ async def test_admin_token_of_16_chars_enables_admin(settings: Settings) -> None
     assert response.status_code == 200, response.text
 
 
-# --- OpenAPI -------------------------------------------------------------------------------
-
-
-def _documents_admin_header(schema: dict[str, Any], operation: dict[str, Any]) -> bool:
-    for parameter in operation.get("parameters", []):
-        if parameter.get("in") == "header" and parameter.get("name", "").lower() == "x-admin-token":
-            return True
-    schemes = schema.get("components", {}).get("securitySchemes", {})
-    for requirement in operation.get("security", []):
-        for name in requirement:
-            scheme = schemes.get(name, {})
-            if scheme.get("in") == "header" and scheme.get("name", "").lower() == "x-admin-token":
-                return True
-    return False
-
-
-@pytest.mark.parametrize(
-    ("path", "method", "codes"),
-    [
-        ("/api/v2/admin/sync", "post", {"202", "401", "404", "409", "422"}),
-        ("/api/v2/admin/sync/runs", "get", {"200", "401", "422"}),
-    ],
-    ids=["sync", "runs"],
-)
-async def test_admin_routes_documented_in_openapi(
-    admin: httpx.AsyncClient, path: str, method: str, codes: set[str]
-) -> None:
-    schema = (await admin.get("/openapi.json")).json()
-
-    operation = schema["paths"][path][method]
-    assert codes <= set(operation["responses"]), operation["responses"].keys()
-    assert _documents_admin_header(schema, operation), operation
-    for code in codes - {"200", "202"}:
-        content = operation["responses"][code].get("content", {})
-        ref = content.get("application/json", {}).get("schema", {}).get("$ref", "")
-        assert ref.endswith("/ErrorResponse"), (code, operation["responses"][code])
+# Admin routes are absent from the public schema: see tests/api/test_admin_not_public.py.

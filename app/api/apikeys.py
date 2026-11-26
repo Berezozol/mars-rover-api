@@ -86,6 +86,17 @@ def _query_value(scope: Scope) -> str | None:
 def client_key(scope: Scope) -> str:
     """The client address; an IPv6 one is reduced to its /64 network (one subscriber owns a
     whole /64, so per-address keys would make the limit free to evade)."""
+    return _network_key(scope, 64)
+
+
+def site_key(scope: Scope) -> str:
+    """The key of the subscriber's site: an IPv6 address is reduced to its /48 network (a
+    subscriber may own 65 536 /64 networks); an IPv4 address (also an IPv4-mapped one) is
+    the same as ``client_key``."""
+    return _network_key(scope, 48)
+
+
+def _network_key(scope: Scope, prefix: int) -> str:
     client = scope.get("client")
     if not client:
         return UNKNOWN_CLIENT
@@ -93,13 +104,14 @@ def client_key(scope: Scope) -> str:
     try:
         parsed = ipaddress.ip_address(address.partition("%")[0])
     except ValueError:
-        return address
+        # Not an address (a proxy placeholder, a test client): all such clients share one key.
+        return UNKNOWN_CLIENT
     if parsed.version == 6:
         # IPv4-mapped addresses are IPv4 clients.
         mapped = parsed.ipv4_mapped
         if mapped is not None:
             return str(mapped)
-        return str(ipaddress.ip_network(f"{parsed}/64", strict=False))
+        return str(ipaddress.ip_network(f"{parsed}/{prefix}", strict=False))
     return address
 
 
