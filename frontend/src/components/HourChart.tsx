@@ -1,6 +1,6 @@
 import { useRef } from "preact/hooks";
 import { type ChartDef, hourLabel, readoutOf } from "../lib/solReport";
-import { niceTicks } from "../lib/weather";
+import { niceTicks, QUALITY_NOTE } from "../lib/weather";
 import { useWidth } from "./BarChart";
 
 interface Props {
@@ -44,6 +44,11 @@ function runs<T>(values: (T | null | undefined)[]): { h: number; v: T }[][] {
  */
 export function HourChart({ def, sol, night, hour, onHour }: Props) {
   const host = useRef<HTMLDivElement>(null);
+  /** Id of the touch pointer that is dragging the cursor, or `null`. */
+  const scrub = useRef<number | null>(null);
+  const endScrub = (e: PointerEvent) => {
+    if (scrub.current === e.pointerId) scrub.current = null;
+  };
   const W = Math.max(useWidth(host, 360), 240);
   const H = W < 480 ? 175 : 195;
   const pw = W - L - R;
@@ -144,6 +149,11 @@ export function HourChart({ def, sol, night, hour, onHour }: Props) {
           </span>
         )}
       </div>
+      {badge && (
+        <p class="pc-q" data-testid="quality-note">
+          {QUALITY_NOTE[badge] ?? `Quality: ${badge}.`}
+        </p>
+      )}
       <div class="pc-sum">{summary}</div>
       {def.noData ? null : (
         <>
@@ -156,11 +166,27 @@ export function HourChart({ def, sol, night, hour, onHour }: Props) {
               role="img"
               aria-label={label}
               onPointerMove={(e) => {
-                if (e.pointerType === "mouse" || e.buttons) {
+                if (e.pointerType === "mouse" || e.buttons || scrub.current === e.pointerId) {
                   onHour(at(e.clientX, e.currentTarget as SVGSVGElement));
                 }
               }}
-              onPointerDown={(e) => onHour(at(e.clientX, e.currentTarget as SVGSVGElement))}
+              onPointerDown={(e) => {
+                const svg = e.currentTarget as SVGSVGElement;
+                if (e.pointerType === "touch") {
+                  // Hold the finger's moves on this chart: a horizontal drag scrubs the cursor, a
+                  // vertical one is taken by the browser (touch-action: pan-y) and ends with pointercancel.
+                  scrub.current = e.pointerId;
+                  try {
+                    svg.setPointerCapture?.(e.pointerId);
+                  } catch {
+                    /* the pointer is already gone */
+                  }
+                }
+                onHour(at(e.clientX, svg));
+              }}
+              onPointerUp={endScrub}
+              onPointerCancel={endScrub}
+              onLostPointerCapture={endScrub}
               onPointerLeave={(e) => {
                 if (e.pointerType === "mouse") onHour(null);
               }}

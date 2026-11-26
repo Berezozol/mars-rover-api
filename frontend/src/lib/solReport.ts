@@ -63,7 +63,7 @@ function bandOf(hours: WeatherHour[], key: string): ChartDef["hourBand"] {
   return band.some((b) => b !== null) ? band : undefined;
 }
 
-const fmtNum = (v: number, d: number): string =>
+export const fmtNum = (v: number, d: number): string =>
   `${v < 0 && Number(Math.abs(v).toFixed(d)) !== 0 ? "−" : ""}${Math.abs(v).toFixed(d)}`;
 
 interface Spec {

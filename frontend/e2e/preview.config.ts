@@ -6,7 +6,12 @@ import base from "../playwright.config";
 export default defineConfig({
   ...base,
   testDir: ".",
-  testMatch: ["sol-report.spec.ts", "sol-range.spec.ts", "small-fixes.spec.ts"],
+  testMatch: [
+    "sol-report.spec.ts",
+    "sol-report-polish.spec.ts",
+    "sol-range.spec.ts",
+    "small-fixes.spec.ts",
+  ],
   use: { ...base.use, baseURL: "http://127.0.0.1:4173" },
   webServer: {
     command: "npm run preview -- --port 4173 --strictPort",

@@ -68,7 +68,7 @@
   box-shadow: var(--shadow);
 }
 .hour-bar input[type="range"] {
-  flex: 1 1 200px;
+  flex: 1 1 120px;
   min-width: 0;
   accent-color: var(--accent);
   min-height: 32px;
@@ -84,20 +84,138 @@
   letter-spacing: 0.05em;
   color: var(--text-muted);
 }
-.hour-bar output {
+.hour-bar input[type="range"].is-idle {
+  accent-color: var(--text-muted);
+  opacity: 0.8;
+}
+.hb-val {
+  display: flex;
+  gap: var(--s2);
+  align-items: center;
+  flex: 0 0 auto;
+  width: 15rem; /* fixed: the slider does not change width between "No hour selected" and an hour */
+}
+.hb-val output {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  min-width: 9ch;
 }
-.hour-bar .chk {
+.hb-clear {
+  flex: 0 0 auto;
+}
+.chart-opts {
+  display: flex;
+  gap: var(--s1) var(--s3);
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: var(--s2);
+}
+.chk {
   display: inline-flex;
   gap: 6px;
   align-items: center;
   font-size: var(--fs-sm);
   color: var(--text-muted);
-  text-transform: none;
-  letter-spacing: 0;
+}
+.chk input {
+  width: 20px;
+  height: 20px;
+}
+/* Phones: the pinned bar is one row (label, slider, readout, clear) and at most 64 px high. */
+@media (max-width: 640px) {
+  .hb-i {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .hour-bar {
+    flex-wrap: nowrap;
+    gap: var(--s2);
+    padding: 6px 10px;
+  }
+  .hb-lmst {
+    display: none;
+  }
+  .hour-bar input[type="range"] {
+    flex: 1 1 0;
+    min-height: 44px;
+  }
+  .hb-val {
+    width: 10rem;
+    gap: var(--s1);
+  }
+  .hb-val output {
+    font-size: var(--fs-xs);
+  }
+  .hb-clear {
+    min-height: 44px;
+    padding: 0 var(--s2);
+    font-size: var(--fs-xs);
+  }
+  .chk {
+    min-height: 44px;
+  }
+}
+/* Short screens (a phone on its side): the bar would eat the page, so it scrolls with it. */
+@media (max-height: 500px) {
+  .hour-bar {
+    position: static;
+  }
+}
+/* Anchors and focused elements stay clear of the header and the pinned bar. */
+html:has(.hour-bar) {
+  scroll-padding-top: calc(var(--header-h, 57px) + 72px);
+}
+@media (max-height: 500px) {
+  html:has(.hour-bar) {
+    scroll-padding-top: calc(var(--header-h, 57px) + 8px);
+  }
+}
+.sr-sum {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
+  gap: var(--s3) var(--s4);
+  margin: var(--s3) 0 0;
+}
+.sr-sum dt {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.sr-sum dd {
+  margin: 2px 0 0;
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.sr-sum dd small {
+  font-size: var(--fs-xs);
   font-weight: 400;
+  color: var(--text-muted);
+}
+.sr-facts-2 {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  padding: var(--s2) var(--s3);
+}
+.sr-facts-2 dd {
+  font-weight: 400;
+}
+.sr-note {
+  display: block;
+  margin-top: 2px;
+  font-weight: 400;
+}
+.pc-q {
+  margin: 2px 0 0;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
 }
 .charts {
   display: grid;

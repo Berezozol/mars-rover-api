@@ -70,6 +70,12 @@ export function paramKeys(parameters: Record<string, WeatherParameter>): string[
 export const qualityBadge = (p: WeatherParameter | undefined): string | null =>
   p && p.quality !== "measured" ? p.quality : null;
 
+/** One-line explanation of a quality badge, shown as visible text (no hover needed). */
+export const QUALITY_NOTE: Record<string, string> = {
+  preliminary: "Preliminary: the instrument team may still revise this calibration.",
+  estimate: "Estimate: derived from an infrared sensor, not a direct thermometer reading.",
+};
+
 // ---- numbers ----
 
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);

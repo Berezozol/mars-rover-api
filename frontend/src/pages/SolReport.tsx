@@ -1,6 +1,7 @@
-import { useMemo, useState } from "preact/hooks";
+import type { Dispatch, StateUpdater } from "preact/hooks";
+import { useMemo, useRef, useState } from "preact/hooks";
 import { api, ApiError } from "../api/client";
-import type { WeatherHour, WeatherSolDetail } from "../api/types";
+import type { RadiationHour, WeatherHour, WeatherSolDetail } from "../api/types";
 import { FlagPill } from "../components/FlagPill";
 import { HourChart } from "../components/HourChart";
 import {
@@ -13,7 +14,7 @@ import { EmptyState, ErrorAlert } from "../components/States";
 import { useAsync, useRovers, useTitle } from "../lib/hooks";
 import { fallbackLat, hemisphereOf, hhmm, seasonOf, sunTimes } from "../lib/marsSeason";
 import { RAD_ROVER } from "../lib/radiation";
-import { type ChartDef, chartDefs, hourLabel, readoutOf } from "../lib/solReport";
+import { type ChartDef, chartDefs, fmtNum, hourLabel, readoutOf } from "../lib/solReport";
 import { WEATHER_ROVERS, isPartial } from "../lib/weather";
 import { Link } from "../router";
 import { NotFound } from "./NotFound";
@@ -30,6 +31,63 @@ const CREDIT_NEUTRAL =
 const MAX_SOL = 2147483647;
 const reportPath = (rover: string, sol: number) => `/rovers/${rover}/sols/${sol}/conditions`;
 const pad2 = (n: number) => String(n).padStart(2, "0");
+
+/** The shared hour cursor: `active` false = no hour selected (the slider's position is then only a resting place). */
+interface Cursor {
+  hour: number;
+  active: boolean;
+  live: boolean;
+}
+const IDLE_CURSOR: Cursor = { hour: 13, active: false, live: false };
+
+/** Cursor updates from the charts (`null` = leave): same hour keeps the state object, so nothing re-renders. */
+const hourSetter = (setCur: Dispatch<StateUpdater<Cursor>>) => (h: number | null) =>
+  setCur((c) => {
+    if (h === null) return c.active ? { ...c, active: false, live: false } : c;
+    return c.active && c.hour === h && !c.live ? c : { hour: h, active: true, live: false };
+  });
+
+/** The pinned bar: one row (label, slider, readout, clear button); the readout has a fixed width. */
+function HourBar({ cur, setCur }: { cur: Cursor; setCur: Dispatch<StateUpdater<Cursor>> }) {
+  const slider = useRef<HTMLInputElement>(null);
+  const clear = () => {
+    setCur((c) => ({ ...c, active: false, live: false }));
+    slider.current?.focus();
+  };
+  return (
+    <div class="hour-bar" style={{ marginTop: 16 }} role="group" aria-label="Shared hour cursor">
+      <label for="hourIn">
+        <span class="hb-i">Inspect </span>hour<span class="hb-lmst"> (LMST)</span>
+      </label>
+      <input
+        ref={slider}
+        type="range"
+        id="hourIn"
+        class={cur.active ? "" : "is-idle"}
+        min={0}
+        max={23}
+        step={1}
+        value={cur.hour}
+        aria-valuetext={cur.active ? `${hourLabel(cur.hour)} LMST` : "No hour selected"}
+        onInput={(e) =>
+          setCur({
+            hour: Number((e.currentTarget as HTMLInputElement).value),
+            active: true,
+            live: true,
+          })
+        }
+      />
+      <div class="hb-val">
+        <output for="hourIn">{cur.active ? hourLabel(cur.hour) : "No hour selected"}</output>
+        {cur.active && (
+          <button type="button" class="btn btn-sm hb-clear" aria-label="Clear hour" onClick={clear}>
+            Clear
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 /** Sol report: the hours of one sol, a chart per parameter (stage 22, phase B). */
 export function SolReport({ rover, sol }: Props) {
@@ -176,16 +234,8 @@ function NoWeatherRadiation({
   void name;
   const rad = useHourlyRadiation(rover, sol);
   const daily = useDailyRadiation(rover, sol);
-  const [cur, setCur] = useState<{ hour: number; active: boolean; live: boolean }>({
-    hour: 13,
-    active: false,
-    live: false,
-  });
-  const onHour = (h: number | null) =>
-    setCur((c) => {
-      if (h === null) return c.active ? { ...c, active: false, live: false } : c;
-      return c.active && c.hour === h && !c.live ? c : { hour: h, active: true, live: false };
-    });
+  const [cur, setCur] = useState<Cursor>(IDLE_CURSOR);
+  const onHour = hourSetter(setCur);
 
   const isMissing = (e: unknown) =>
     e instanceof ApiError && (e.code === "sol_not_found" || e.status === 404);
@@ -234,33 +284,7 @@ function NoWeatherRadiation({
           for the sol is shown below where it exists.
         </EmptyState>
       </div>
-      {rad.defs.length > 0 && (
-        <div
-          class="hour-bar"
-          style={{ marginTop: 16 }}
-          role="group"
-          aria-label="Shared hour cursor"
-        >
-          <label for="hourIn">Inspect hour (LMST)</label>
-          <input
-            type="range"
-            id="hourIn"
-            min={0}
-            max={23}
-            step={1}
-            value={cur.hour}
-            aria-valuetext={`${hourLabel(cur.hour)} LMST`}
-            onInput={(e) =>
-              setCur({
-                hour: Number((e.currentTarget as HTMLInputElement).value),
-                active: true,
-                live: true,
-              })
-            }
-          />
-          <output for="hourIn">{cur.active ? hourLabel(cur.hour) : "none selected"}</output>
-        </div>
-      )}
+      {rad.defs.length > 0 && <HourBar cur={cur} setCur={setCur} />}
       <div class="visually-hidden" role="status" aria-live="polite" data-testid="hour-announce">
         {announce}
       </div>
@@ -288,12 +312,15 @@ function Head({
   sol,
   detail,
   lat,
+  dose,
 }: {
   rover: string;
   name: string;
   sol: number;
   detail: WeatherSolDetail | null;
   lat: number | null;
+  /** Daily dose of detector E (µGy/day): `"loading"`, a number or `null` (no value); `undefined` = no tile. */
+  dose?: "loading" | number | null;
 }) {
   const hemi = hemisphereOf(rover);
   const season = detail && hemi ? seasonOf(detail.ls, hemi) : null;
@@ -322,6 +349,7 @@ function Head({
       </div>
       {detail && (
         <>
+          <SolSummary detail={detail} dose={dose} />
           <dl class="facts sr-facts" aria-label="Sol summary">
             <div>
               <dt>Earth date</dt>
@@ -350,9 +378,14 @@ function Head({
                 </dt>
                 <dd>
                   ~{hhmm(sun[0])} / ~{hhmm(sun[1])} <small class="muted">LMST, approximate</small>
+                  <small class="muted sr-note">
+                    Computed in the browser from Ls and the rover's latitude; not from the API.
+                  </small>
                 </dd>
               </div>
             )}
+          </dl>
+          <dl class="facts sr-facts sr-facts-2" aria-label="Data coverage">
             <div>
               <dt>Coverage</dt>
               <dd>{Math.round(detail.coverage * 100)} % of the sol</dd>
@@ -397,6 +430,55 @@ function Head({
   );
 }
 
+/** The key figures of the sol, straight from the response (same rounding as the charts); `—` = no value. */
+function SolSummary({
+  detail,
+  dose,
+}: {
+  detail: WeatherSolDetail;
+  dose?: "loading" | number | null;
+}) {
+  const range = (s: { min?: number | null; max?: number | null } | null | undefined, d: number) =>
+    s && typeof s.min === "number" && typeof s.max === "number"
+      ? `${fmtNum(s.min, d)}…${fmtNum(s.max, d)}`
+      : null;
+  const one = (v: number | null | undefined, d: number) =>
+    typeof v === "number" && Number.isFinite(v) ? fmtNum(v, d) : null;
+  type Tile = { label: string; value: string | null; unit: string; pending?: boolean };
+  const tiles: Tile[] = [
+    { label: "Air temperature", value: range(detail.air_temp_c, 1), unit: "°C" },
+    { label: "Pressure, mean", value: one(detail.pressure_pa?.mean, 1), unit: "Pa" },
+  ];
+  // Which tiles exist follows the response: a parameter the rover has no sensor for has no key.
+  if (detail.uv_wm2 !== undefined) {
+    tiles.push({ label: "UV, max", value: one(detail.uv_wm2?.max, 2), unit: "W/m²" });
+  }
+  if (detail.ground_temp_c !== undefined) {
+    tiles.push({ label: "Ground temperature", value: range(detail.ground_temp_c, 1), unit: "°C" });
+  }
+  if (dose !== undefined) {
+    tiles.push({
+      label: "Dose E, mean",
+      value: dose === "loading" ? null : one(dose, 1),
+      unit: "µGy/day",
+      pending: dose === "loading",
+    });
+  }
+  return (
+    <dl class="sr-sum" data-testid="sol-summary" aria-label="Key figures">
+      {tiles.map((t) => (
+        <div key={t.label}>
+          <dt>{t.label}</dt>
+          <dd>
+            {t.value === null ? (t.pending ? "…" : "—") : t.value}
+            {t.value !== null && <small> {t.unit}</small>}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 function HourStrip({ hours, covered }: { hours: WeatherHour[]; covered: number }) {
   const cov = Array.from({ length: 24 }, (_, h) => hours.find((x) => x.hour === h)?.coverage ?? 0);
   return (
@@ -435,23 +517,28 @@ function Loaded({
   lat: number | null;
   credit: string;
 }) {
-  const [cur, setCur] = useState<{ hour: number; active: boolean; live: boolean }>({
-    hour: 13,
-    active: false,
-    live: false,
-  });
+  const [cur, setCur] = useState<Cursor>(IDLE_CURSOR);
   const [night, setNight] = useState(true);
   const defs = useMemo(() => chartDefs(detail), [detail]);
   const rad = useHourlyRadiation(rover, sol);
   const sun = sunTimes(detail.ls, lat ?? fallbackLat(rover));
   const clamp24 = (v: number) => Math.min(24, Math.max(0, v));
   const shade: [number, number] | null = night && sun ? [clamp24(sun[0]), clamp24(sun[1])] : null;
-  const onHour = (h: number | null) =>
-    setCur((c) => {
-      if (h === null) return c.active ? { ...c, active: false, live: false } : c;
-      // Same hour: keep the state object, so nothing re-renders on every mouse move.
-      return c.active && c.hour === h && !c.live ? c : { hour: h, active: true, live: false };
-    });
+  const onHour = hourSetter(setCur);
+  const dose: "loading" | number | null | undefined =
+    rover !== RAD_ROVER
+      ? undefined
+      : rad.state.status === "loading"
+        ? "loading"
+        : rad.state.status === "ok"
+          ? rad.state.data
+            ? (rad.state.data.dose_e_ugy_day?.mean ?? null)
+            : undefined
+          : // Error: a missing sol (404) has no tile; any other failure keeps it, with "—".
+            rad.state.error instanceof ApiError &&
+              (rad.state.error.code === "sol_not_found" || rad.state.error.status === 404)
+            ? undefined
+            : null;
   const hasHourlyBand = defs.some((d) => d.hourBand);
   const hasSolBand = defs.some((d) => !d.hourBand && d.solBand);
   const announce =
@@ -464,7 +551,7 @@ function Loaded({
 
   return (
     <>
-      <Head rover={rover} name={name} sol={sol} detail={detail} lat={lat} />
+      <Head rover={rover} name={name} sol={sol} detail={detail} lat={lat} dose={dose} />
       {isPartial(detail) && (
         <div class="alert alert-warn" role="note" style={{ marginTop: 16 }}>
           <div>
@@ -477,26 +564,15 @@ function Loaded({
           </div>
         </div>
       )}
-      <div class="hour-bar" style={{ marginTop: 16 }} role="group" aria-label="Shared hour cursor">
-        <label for="hourIn">Inspect hour (LMST)</label>
-        <input
-          type="range"
-          id="hourIn"
-          min={0}
-          max={23}
-          step={1}
-          value={cur.hour}
-          aria-valuetext={`${hourLabel(cur.hour)} LMST`}
-          onInput={(e) =>
-            setCur({
-              hour: Number((e.currentTarget as HTMLInputElement).value),
-              active: true,
-              live: true,
-            })
-          }
-        />
-        <output for="hourIn">{cur.active ? hourLabel(cur.hour) : "none selected"}</output>
-        {sun && (
+      <HourBar cur={cur} setCur={setCur} />
+      <div class="visually-hidden" role="status" aria-live="polite" data-testid="hour-announce">
+        {announce}
+      </div>
+      <div class="sec-head" style={{ marginTop: 24 }}>
+        <h2 id="weatherHourH">Weather by hour</h2>
+      </div>
+      {sun && (
+        <div class="chart-opts">
           <label class="chk">
             <input
               type="checkbox"
@@ -505,11 +581,9 @@ function Loaded({
             />{" "}
             Shade night <span class="opt">approx.</span>
           </label>
-        )}
-      </div>
-      <div class="visually-hidden" role="status" aria-live="polite" data-testid="hour-announce">
-        {announce}
-      </div>
+          <span class="hint">Approximate, see Sunrise / sunset above.</span>
+        </div>
+      )}
       <p class="hint" style={{ margin: "8px 0 0" }}>
         Horizontal axis of every chart: local mean solar time (LMST), hours 0–24. Dots are hourly
         means and the line breaks where an hour has no readings (nothing is interpolated).{" "}
@@ -554,7 +628,13 @@ function Loaded({
         </p>
       )}
       <div style={{ marginTop: 16 }}>
-        <HoursTable defs={defs} hour={cur.active ? cur.hour : null} />
+        <HoursTable
+          defs={defs}
+          hours={detail.hours ?? []}
+          radDefs={rad.defs}
+          radHours={rad.state.status === "ok" ? (rad.state.data?.hours ?? null) : null}
+          hour={cur.active ? cur.hour : null}
+        />
       </div>
       <section class="card panel sr-sources" aria-labelledby="srcH" style={{ marginTop: 16 }}>
         <h2 id="srcH" style={{ fontSize: "var(--fs-md)" }}>
@@ -582,16 +662,66 @@ function Loaded({
   );
 }
 
-function HoursTable({ defs, hour }: { defs: ChartDef[]; hour: number | null }) {
-  const cols = defs.flatMap((d) =>
-    d.noData
-      ? []
-      : d.series.map((s) => ({
-          head: `${d.title}${d.series.length > 1 ? ` ${s.name}` : ""} (${d.unit})`,
-          values: s.values,
-          digits: d.digits,
-        })),
-  );
+const DASH = "–";
+const cell = (v: number | null | undefined, d: number): string =>
+  v === null || v === undefined ? DASH : fmtNum(v, d);
+const pct = (v: number | null | undefined): string =>
+  v === null || v === undefined ? DASH : `${Math.round(v * 100)} %`;
+
+function HoursTable({
+  defs,
+  hours,
+  radDefs,
+  radHours,
+  hour,
+}: {
+  defs: ChartDef[];
+  hours: WeatherHour[];
+  radDefs: ChartDef[];
+  radHours: RadiationHour[] | null;
+  hour: number | null;
+}) {
+  type Col = { head: string; cells: string[] };
+  const cols: Col[] = [];
+  for (const d of defs) {
+    if (d.noData) continue;
+    for (const s of d.series) {
+      cols.push({
+        head: `${d.title}${d.series.length > 1 ? ` ${s.name}` : d.hourBand ? " mean" : ""} (${d.unit})`,
+        cells: s.values.map((v) => cell(v, d.digits)),
+      });
+    }
+    const band = d.hourBand;
+    if (band) {
+      cols.push({
+        head: `${d.title} min (${d.unit})`,
+        cells: Array.from({ length: 24 }, (_, h) => cell(band[h]?.lo, d.digits)),
+      });
+      cols.push({
+        head: `${d.title} max (${d.unit})`,
+        cells: Array.from({ length: 24 }, (_, h) => cell(band[h]?.hi, d.digits)),
+      });
+    }
+  }
+  const byHour = <T extends { hour: number }>(rows: T[] | null, h: number) =>
+    rows?.find((r) => r.hour === h);
+  cols.push({
+    head: "Weather coverage",
+    cells: Array.from({ length: 24 }, (_, h) => pct(byHour(hours, h)?.coverage)),
+  });
+  const dose = radDefs.find((d) => d.id === "rad-dose");
+  if (radHours && dose && !dose.noData) {
+    for (const s of dose.series) {
+      cols.push({
+        head: `Dose rate ${s.name} (µGy/h)`,
+        cells: s.values.map((v) => cell(v, dose.digits)),
+      });
+    }
+    cols.push({
+      head: "Radiation coverage",
+      cells: Array.from({ length: 24 }, (_, h) => pct(byHour(radHours, h)?.coverage)),
+    });
+  }
   return (
     <details class="tbl card panel">
       <summary>Hourly values as a table</summary>
@@ -611,16 +741,9 @@ function HoursTable({ defs, hour }: { defs: ChartDef[]; hour: number | null }) {
             {Array.from({ length: 24 }, (_, h) => (
               <tr key={h} class={hour === h ? "cur" : ""}>
                 <th scope="row">{pad2(h)}:00</th>
-                {cols.map((c) => {
-                  const v = c.values[h];
-                  return (
-                    <td key={c.head}>
-                      {v === null || v === undefined
-                        ? "–"
-                        : `${v < 0 && Number(Math.abs(v).toFixed(c.digits)) !== 0 ? "−" : ""}${Math.abs(v).toFixed(c.digits)}`}
-                    </td>
-                  );
-                })}
+                {cols.map((c) => (
+                  <td key={c.head}>{c.cells[h]}</td>
+                ))}
               </tr>
             ))}
           </tbody>
