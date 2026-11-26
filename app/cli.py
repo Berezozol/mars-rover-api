@@ -29,17 +29,19 @@
   columns local_time_s, width and height of stored photos from ``extra`` (all rovers by
   default), sol batches upwards, one commit per batch; offline and idempotent, safe to rerun
   or resume with --from-sol. Exit codes: 0 done, 1 failed, 2 invalid input.
-- ``rad sync [--from-sol N] [--to-sol M] [--reprocess]``: load the MSL RAD radiation summaries
-  (Curiosity) from the PDS volume into the database, streaming the files without writing them
-  to disk; the whole history without bounds (resumable, files that left the listing are
-  forgotten), else only the sols in the range. Exit codes: 0 done, 1 some files stay unloaded
-  (or the listing shrank), 2 invalid input or another ``rad sync`` / ``rad import`` holds the
-  lock, 3 the server stayed unavailable after the cooldown, 130 interrupted (rerun to
-  continue). ``--reprocess`` reads
-  again the stored files of the sols whose hours (stage 22) are not calculated yet
-  (``rad_daily.hourly_revision`` below the code's), without probes of duplicates and without
-  forgetting files; run it by hand only (the monthly timer never passes it), interrupt and
-  rerun at will: finished sols are not read again.
+- ``rad sync [--from-sol N] [--to-sol M] [--reprocess] [--workers N]``: load the MSL RAD
+  radiation summaries (Curiosity) from the PDS volume into the database, streaming the files
+  without writing them to disk; the whole history without bounds (resumable, files that left
+  the listing are forgotten), else only the sols in the range. Exit codes: 0 done, 1 some
+  files stay unloaded (or the listing shrank), 2 invalid input or another ``rad sync`` /
+  ``rad import`` holds the lock, 3 the server stayed unavailable after the cooldown, 130
+  interrupted (rerun to continue). ``--reprocess`` reads again the stored files of the sols
+  whose hours (stage 22) are not calculated yet (``rad_daily.hourly_revision`` below the
+  code's), without probes of duplicates and without forgetting files; run it by hand only
+  (the monthly timer never passes it), interrupt and rerun at will: finished sols are not
+  read again. ``--workers N`` (1..8, default 1) loads up to N sols at once, each in its own
+  transaction; a server failure or Ctrl+C rolls back the sols in progress, and a cooldown
+  after failures pauses all workers.
 - ``rad status``: the state of the RAD data (files by status, sols, last check and error).
 - ``rad export --output PATH``: write the RAD tables to a gzip JSON Lines file. Exit codes:
   0 written, 2 the file cannot be written.
@@ -99,7 +101,7 @@ from app.services.backfill import (
 from app.services.location_sync import DatasetResult, LocationSyncService
 from app.services.mer_download import download_indexes
 from app.services.meta_backfill import DEFAULT_BATCH_SOLS, MetaBackfillService
-from app.services.rad_sync import RadLoader, RadRunResult, build_rad_client
+from app.services.rad_sync import MAX_WORKERS, RadLoader, RadRunResult, build_rad_client
 from app.services.rad_transfer import (
     RadBusy,
     RadImportError,
@@ -199,6 +201,12 @@ def _add_rad_parser(commands: Any) -> None:
         action="store_true",
         help="read again the stored files of sols whose hourly values are not calculated yet "
         "(downloads the files again; run by hand)",
+    )
+    sync.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="sols loaded at the same time, 1-8 (default 1)",
     )
     actions.add_parser("status", help="show the state of the RAD data")
     export = actions.add_parser("export", help="write the RAD tables to a gzip JSON Lines file")
@@ -568,8 +576,13 @@ def _main_rad_sync(args: argparse.Namespace, settings: Settings) -> int:
     if None not in (args.from_sol, args.to_sol) and args.from_sol > args.to_sol:
         print("error: --from-sol must not be greater than --to-sol", file=sys.stderr)
         return EXIT_USAGE
+    if not 1 <= args.workers <= MAX_WORKERS:
+        print(f"error: --workers must be between 1 and {MAX_WORKERS}", file=sys.stderr)
+        return EXIT_USAGE
     return asyncio.run(
-        run_rad_sync_command(args.from_sol, args.to_sol, settings, reprocess=args.reprocess)
+        run_rad_sync_command(
+            args.from_sol, args.to_sol, settings, reprocess=args.reprocess, workers=args.workers
+        )
     )
 
 
@@ -753,7 +766,12 @@ def _samples_line(result: SampleSyncResult) -> str:
 
 
 async def run_rad_sync_command(
-    from_sol: int | None, to_sol: int | None, settings: Settings, *, reprocess: bool = False
+    from_sol: int | None,
+    to_sol: int | None,
+    settings: Settings,
+    *,
+    reprocess: bool = False,
+    workers: int = 1,
 ) -> int:
     """Run ``rad sync`` and return the exit code (see the module docstring)."""
     engine = create_engine(
@@ -761,7 +779,9 @@ async def run_rad_sync_command(
     )
     try:
         async with build_rad_client(settings) as client:
-            result = await RadLoader(engine, client, settings).run(from_sol, to_sol, reprocess)
+            result = await RadLoader(engine, client, settings).run(
+                from_sol, to_sol, reprocess, workers
+            )
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_USAGE

@@ -13,6 +13,11 @@ the tail are the same as the main file's; only a file that differs is read in fu
 into the sol by observation (docs/proposals/stage-21-rad.md, ADR-3).
 
 The whole run holds the advisory lock ``RAD_LOCK_NAMESPACE`` (shared with ``rad import``).
+
+``run(workers=N)`` (1..``MAX_WORKERS``) loads up to N sols at once: each worker takes the next
+sol of the plan, in order, and stores it in its own session and transaction. The request pause
+of the client still spaces the starts of the requests; ``_ServerDown`` in one worker cancels
+the others (their transactions are rolled back); a failed sol does not stop the rest.
 """
 
 import asyncio
@@ -68,6 +73,8 @@ EXIT_OK = 0
 EXIT_REMAINING = 1
 EXIT_USAGE = 2
 EXIT_SERVER_DOWN = 3
+# The most sols loaded at once (``rad sync --workers``).
+MAX_WORKERS = 8
 
 CHECKSUMS_NAME = "CHECKSUMS.TXT"
 TIMING_NAME = "DOCUMENT/TIMING_ERRORS.TXT"
@@ -542,10 +549,16 @@ class RadLoader:
         self._client = client
         self._settings = settings
         self._sleep: Sleep = sleep or _default_sleep
+        # Set (unset event) while a cooldown after repeated failures runs: all workers wait.
+        self._cooling: asyncio.Event | None = None
         self._base = settings.rad_base_url.rstrip("/") + "/"
 
     async def run(
-        self, from_sol: int | None = None, to_sol: int | None = None, reprocess: bool = False
+        self,
+        from_sol: int | None = None,
+        to_sol: int | None = None,
+        reprocess: bool = False,
+        workers: int = 1,
     ) -> RadRunResult:
         """Load the sols in ``[from_sol, to_sol]`` (all without bounds; only then do files that
         left the listing disappear). Exit codes: 0 done, 1 some files stay unloaded, 2 the lock
@@ -554,8 +567,12 @@ class RadLoader:
         ``reprocess``: instead of the files that are new or changed, read again the ``loaded``
         files of the sols whose ``hourly_revision`` is below ``RAD_HOURLY_REVISION`` (no probes
         of duplicates, nothing forgotten, the listing validators are left as they were). Every
-        sol is one transaction, so an interrupted run is continued by running it again."""
+        sol is one transaction, so an interrupted run is continued by running it again.
+
+        ``workers``: how many sols are loaded at the same time (1..``MAX_WORKERS``)."""
         _check_range(from_sol, to_sol)
+        if not 1 <= workers <= MAX_WORKERS:
+            raise ValueError(f"workers must be between 1 and {MAX_WORKERS}")
         async with advisory_lock(self._engine) as acquired:
             if not acquired:
                 logger.warning("Another RAD sync or import is running; nothing done")
@@ -563,7 +580,7 @@ class RadLoader:
             result = RadRunResult()
             before = self._client.stats.snapshot()
             try:
-                await self._run(result, from_sol, to_sol, reprocess)
+                await self._run(result, from_sol, to_sol, reprocess, workers)
             except _ListingFailed as exc:
                 transient = _is_transient(exc.cause)
                 result.exit_code = EXIT_SERVER_DOWN if transient else EXIT_REMAINING
@@ -595,7 +612,12 @@ class RadLoader:
         )
 
     async def _run(
-        self, result: RadRunResult, lo: int | None, hi: int | None, reprocess: bool
+        self,
+        result: RadRunResult,
+        lo: int | None,
+        hi: int | None,
+        reprocess: bool,
+        workers: int = 1,
     ) -> None:
         now = datetime.now(UTC)
         pending: list[int] = []
@@ -629,8 +651,8 @@ class RadLoader:
             result.notes.append(timing.error)
         if timing.names is not None and timing.response and not timing.response.not_modified:
             await self._refresh_timing_flags(timing.names)
-        for sol in todo:
-            await self._load_sol(result, sol, groups[sol], known, timing.names, reprocess)
+        await self._load_sols(result, todo, groups, known, timing.names, reprocess, workers)
+        result.sols_failed.sort()
         if entries is not None and lo is None and hi is None and not reprocess:
             await self._prune(result, known, groups, len(entries))
         if result.sols_failed or result.files_failed:
@@ -713,6 +735,43 @@ class RadLoader:
             await session.commit()
         if changed:
             logger.info("Timing error flags changed for %d sols", changed)
+
+    # --- the sols
+
+    async def _load_sols(
+        self,
+        result: RadRunResult,
+        todo: Sequence[int],
+        groups: Mapping[int, Sequence[ChecksumEntry]],
+        known: Mapping[str, RadFileRow],
+        timing: set[str] | None,
+        reprocess: bool,
+        workers: int,
+    ) -> None:
+        """Load the sols with at most ``workers`` at a time, taking them in order. The first
+        error that is not a failed sol (``_ServerDown``, a crash) cancels the other workers (their
+        transactions are rolled back) and is raised (the one that failed first in time); so is a
+        cancellation of the run. A worker cancelled while its commit has already gone through on
+        the server leaves consistent data, but ``sols_loaded`` may then be one too low."""
+        queue = iter(todo)
+
+        async def worker() -> None:
+            # ``next`` and the counting in ``_load_sol`` have no await inside: no races.
+            for sol in queue:
+                await self._load_sol(result, sol, groups[sol], known, timing, reprocess)
+
+        done: set[asyncio.Task[None]] = set()
+        tasks = [asyncio.create_task(worker()) for _ in range(min(workers, len(todo)))]
+        try:
+            if tasks:
+                done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
+        finally:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+        failed = [task for task in done if not task.cancelled() and task.exception() is not None]
+        if failed:
+            raise failed[0].exception()  # type: ignore[misc]
 
     # --- one sol
 
@@ -925,19 +984,39 @@ class RadLoader:
         attempts cannot cure is a ``_FileFailed``."""
         attempts = self._settings.rad_file_attempts
         for number in range(1, attempts + 1):
+            await self._wait_cooldown()
             try:
                 return await call()
             except Exception as exc:
                 self._check_transient(label, exc, number)
             if number < attempts:
                 await self._sleep(RETRY_PAUSES[min(number - 1, len(RETRY_PAUSES) - 1)])
-        logger.warning("%s: cooling down for %.0f s", label, self._settings.rad_cooldown_seconds)
-        await self._sleep(self._settings.rad_cooldown_seconds)
+        await self._cool_down(label)
         try:
             return await call()
         except Exception as exc:
             self._check_transient(label, exc, attempts + 1)
             raise _ServerDown(f"{label}: {_describe(exc)}") from exc
+
+    async def _wait_cooldown(self) -> None:
+        """Wait while any worker's cooldown runs (no new requests hit a failing server)."""
+        if self._cooling is not None:
+            await self._cooling.wait()
+
+    async def _cool_down(self, label: str) -> None:
+        """The cooldown after the attempts failed; one is shared by all workers: the first to
+        get here sleeps, the others wait for it to end."""
+        active = self._cooling
+        if active is not None:
+            await active.wait()
+            return
+        event = self._cooling = asyncio.Event()
+        logger.warning("%s: cooling down for %.0f s", label, self._settings.rad_cooldown_seconds)
+        try:
+            await self._sleep(self._settings.rad_cooldown_seconds)
+        finally:
+            self._cooling = None
+            event.set()
 
     @staticmethod
     def _check_transient(label: str, exc: Exception, number: int) -> None:
