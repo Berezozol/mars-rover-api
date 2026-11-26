@@ -472,6 +472,7 @@ export interface WeatherSol {
 export interface WeatherSolDetail {
   air_temp_c: Stat3 | null;
   coverage: number;
+  credit: string;
   earth_date: string;
   flags: WeatherFlag[];
   ground_temp_c?: Stat3 | null;

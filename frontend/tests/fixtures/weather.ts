@@ -172,6 +172,8 @@ export function weatherDetail(rover: "perseverance" | "curiosity", item: WItem) 
   const file = `data_calibrated_env/sol_0090_0179/sol_${item.sol}/WE__${item.sol}_CAL_ATS_P02.CSV`;
   return {
     rover,
+    // `credit` is in the answer of `/weather/{sol}` too (docs/API.md, 2026-11-26)
+    credit: rover === "perseverance" ? PER_CREDIT : CUR_CREDIT,
     ...item,
     hours: hoursFor(rover, item),
     source: { files: [{ product: "CAL_ATS", version: "P02", file, link: `${PER_SOURCE_URL}${file}` }] },

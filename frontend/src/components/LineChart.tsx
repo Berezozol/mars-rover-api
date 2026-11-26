@@ -29,6 +29,8 @@ interface Props {
   zone?: { from: number; to: number; label: string } | null;
   /** The inspected position: a vertical line and one dot per series. */
   cursor?: { x: number; dots: { y: number; cls: string }[] } | null;
+  /** Sols whose value is above the top of the scale: an up arrow at the top edge of each. */
+  offScale?: number[] | null;
   /** A click on the plot: the sol under the pointer. */
   onPick?: (sol: number) => void;
   testId?: string;
@@ -142,11 +144,26 @@ export function LineChart(p: Props) {
             <path key={l.cls} class={`ln ${l.cls}`} d={path(l, X, Y, x0, p.xmax)} />
           ))}
         </g>
+        {p.offScale && p.offScale.length > 0 && (
+          <g class="off-scale" data-testid="off-scale">
+            {p.offScale
+              .filter((s) => s >= x0 && s <= p.xmax)
+              .map((s) => (
+                <path key={s} class="off-arrow" d={`M${X(s)} ${T - 1}l-4.5 8h9z`} />
+              ))}
+          </g>
+        )}
         {p.cursor && p.cursor.x >= x0 && p.cursor.x <= p.xmax && (
           <g>
             <line class="cursor" x1={X(p.cursor.x)} x2={X(p.cursor.x)} y1={T} y2={h - B} />
             {p.cursor.dots.map((d) => (
-              <circle key={d.cls} class={d.cls} cx={X(p.cursor!.x)} cy={Y(d.y)} r={4.5} />
+              <circle
+                key={d.cls}
+                class={d.cls}
+                cx={X(p.cursor!.x)}
+                cy={Y(Math.min(d.y, p.ymax))}
+                r={4.5}
+              />
             ))}
           </g>
         )}

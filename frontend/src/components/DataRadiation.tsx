@@ -10,6 +10,7 @@ import {
   overviewOf,
   parseRangeQuery,
   rangeTicks,
+  offScaleText,
   type ScaleMode,
   type SolRange,
   valueScale,
@@ -103,7 +104,7 @@ function RadiationView({
     () => data.items.filter((x) => x.sol >= range[0] && x.sol <= range[1]),
     [data.items, range[0], range[1]], // eslint-disable-line react-hooks/exhaustive-deps
   );
-  // The inspected sol stays inside the range: it snaps to the nearest sol with data in it.
+  // The picked sol (chart click) stays inside the range.
   const lo = Math.max(range[0], v.first);
   const hi = Math.max(lo, Math.min(range[1], v.last));
   const shown = Math.min(Math.max(sol, lo), hi);
@@ -119,12 +120,17 @@ function RadiationView({
     [data.items, v.first, now],
   );
   const zero = zeroBasedScale(mode, range);
-  const doses = inRange
-    .flatMap((x) => [x.dose_e_ugy_day?.mean, x.dose_b_ugy_day?.mean])
-    .filter(num);
-  const rates = inRange.map((x) => x.count_rate_b_per_s).filter(num);
-  const dScale = valueScale(doses, zero);
-  const rScale = valueScale(rates, zero);
+  const dosePts = inRange.flatMap((x): [number, number][] => [
+    ...(num(x.dose_e_ugy_day?.mean) ? [[x.sol, x.dose_e_ugy_day.mean] as [number, number]] : []),
+    ...(num(x.dose_b_ugy_day?.mean) ? [[x.sol, x.dose_b_ugy_day.mean] as [number, number]] : []),
+  ]);
+  const ratePts = inRange.flatMap((x): [number, number][] =>
+    num(x.count_rate_b_per_s) ? [[x.sol, x.count_rate_b_per_s]] : [],
+  );
+  const dScale = valueScale(dosePts, zero, mode !== "zero");
+  const rScale = valueScale(ratePts, zero, mode !== "zero");
+  const dOff = offScaleText(dScale.outliers, dose, "µGy/day");
+  const rOff = offScaleText(rScale.outliers, rate, "events/s");
   const xticks = rangeTicks(range, narrow ? 2 : 4);
   const zone =
     source < range[1] ? { from: source + 0.5, to: range[1], label: "not published yet" } : null;
@@ -205,7 +211,7 @@ function RadiationView({
         </div>
         <LineChart
           testId="radiation-chart"
-          label={`Daily absorbed dose rate at Curiosity, micrograys per day, sols ${range[0]} to ${range[1]}. Detector E is solid, detector B dashed. ${scaleText}${zone ? ` Sols ${source + 1} to ${range[1]} are not published yet.` : ""}`}
+          label={`Daily absorbed dose rate at Curiosity, micrograys per day, sols ${range[0]} to ${range[1]}. Detector E is solid, detector B dashed. ${scaleText}${zone ? ` Sols ${source + 1} to ${range[1]} are not published yet.` : ""}${dOff ? ` ${dOff}.` : ""}`}
           height={narrow ? 200 : 230}
           xmin={range[0]}
           xmax={range[1]}
@@ -215,6 +221,7 @@ function RadiationView({
           xticks={xticks}
           fy={(t) => fmt(t)}
           zone={zone}
+          offScale={dOff ? dScale.outliers.map(([x]) => x) : null}
           onPick={pick}
           cursor={
             cur
@@ -237,6 +244,12 @@ function RadiationView({
           ]}
         />
 
+        {dOff && (
+          <p class="off-note" data-testid="off-scale-note">
+            <span aria-hidden="true">↑</span> {dOff}
+          </p>
+        )}
+
         <div class="chart-title chart-title-2">
           <h3>Detector B count rate (raw), events/s</h3>
           <span class="legend">
@@ -245,7 +258,7 @@ function RadiationView({
         </div>
         <LineChart
           testId="count-rate-chart"
-          label={`Raw count rate of detector B, events per second, sols ${range[0]} to ${range[1]}. ${scaleText}`}
+          label={`Raw count rate of detector B, events per second, sols ${range[0]} to ${range[1]}. ${scaleText}${rOff ? ` ${rOff}.` : ""}`}
           height={150}
           xmin={range[0]}
           xmax={range[1]}
@@ -254,6 +267,7 @@ function RadiationView({
           yticks={rScale.ticks}
           xticks={xticks}
           zone={zone ? { ...zone, label: "" } : null}
+          offScale={rOff ? rScale.outliers.map(([x]) => x) : null}
           onPick={pick}
           cursor={
             cur
@@ -267,6 +281,12 @@ function RadiationView({
           }
           lines={[{ cls: "ln-s", pts: pts((x) => x.count_rate_b_per_s), breakAfter: 10 }]}
         />
+
+        {rOff && (
+          <p class="off-note" data-testid="off-scale-note">
+            <span aria-hidden="true">↑</span> {rOff}
+          </p>
+        )}
 
         <SolRangeSlider
           bounds={bounds}
@@ -293,32 +313,6 @@ function RadiationView({
           }
         />
 
-        <div class="inspect">
-          <label for="rad-sol" class="small muted">
-            Inspect a sol (arrow keys move one sol)
-          </label>
-          <input
-            type="range"
-            id="rad-sol"
-            min={lo}
-            max={hi}
-            step={1}
-            value={shown}
-            aria-describedby="rad-readout"
-            onInput={(e) => setSol(Number((e.currentTarget as HTMLInputElement).value))}
-          />
-          <div class="readout" id="rad-readout" aria-live="polite" aria-atomic="true">
-            {cur ? (
-              <>
-                <b>Sol {cur.sol}</b> · {cur.earth_date} · E <b>{dose(cur.dose_e_ugy_day?.mean)}</b>{" "}
-                · B <b>{dose(cur.dose_b_ugy_day?.mean)}</b> µGy/day · B count rate{" "}
-                <b>{rate(cur.count_rate_b_per_s)}</b> events/s
-              </>
-            ) : (
-              <b>No data for sol {shown}</b>
-            )}
-          </div>
-        </div>
         <p class="chart-note">
           Absorbed dose rate, not equivalent dose (sieverts): the source has none. Solar events are
           not smoothed. The count rate is a raw detector counter, useful for comparing sols with

@@ -590,8 +590,8 @@ async def test_detail_has_the_sol_fields_and_24_hours_ac31(
 
     assert response.status_code == 200
     body = response.json()
-    assert list(body)[:1] == ["rover"] and list(body)[-2:] == ["hours", "source"]
-    assert list(body) == ["rover", *P_ITEM_KEYS, "hours", "source"]
+    assert list(body)[:1] == ["rover"] and list(body)[-3:] == ["credit", "hours", "source"]
+    assert list(body) == ["rover", *P_ITEM_KEYS, "credit", "hours", "source"]
     assert body["rover"] == "perseverance"
     for key, value in P100_EXPECTED.items():
         assert body[key] == value, key
@@ -611,6 +611,40 @@ async def test_detail_has_the_sol_fields_and_24_hours_ac31(
     }
     assert hours[12]["air_temp_c"] == -23.0
     assert hours[12]["wind_speed_ms"] is None and hours[12]["wind_direction_deg"] is None
+
+
+@pytest.mark.parametrize(
+    ("rover", "sol", "expected"),
+    [
+        pytest.param("perseverance", 100, CREDIT_PERSEVERANCE, id="perseverance-meda"),
+        pytest.param("curiosity", 30, CREDIT_CURIOSITY, id="curiosity-rems"),
+    ],
+)
+async def test_detail_credit_equals_the_list_credit_small_fixes_ac1(
+    client: httpx.AsyncClient, clean_db: Factory, rover: str, sol: int, expected: str
+) -> None:
+    """AC-1: `credit` of /weather/{sol} is a non-empty string equal to `credit` of the list."""
+    await seed(clean_db, rover, sol)
+
+    listing = await client.get(f"{V2}/rovers/{rover}/weather")
+    detail = await client.get(f"{V2}/rovers/{rover}/weather/{sol}")
+
+    assert detail.status_code == 200
+    credit = detail.json()["credit"]
+    assert isinstance(credit, str) and credit
+    assert credit == listing.json()["credit"] == expected
+
+
+async def test_detail_credit_is_present_for_a_sol_with_null_wind_small_fixes_ac1(
+    client: httpx.AsyncClient, clean_db: Factory
+) -> None:
+    """AC-1: `credit` is always present, also when the sol has no wind data."""
+    await seed(clean_db, "perseverance", 400, wind_mean_ms=None, wind_gust_ms=None,
+               wind_dir_mode_deg=None, n_wind=0)  # fmt: skip
+
+    body = (await client.get(f"{P}/400")).json()
+
+    assert body["credit"] == CREDIT_PERSEVERANCE
 
 
 async def test_hours_without_data_have_null_values_and_zero_coverage_ac31(
@@ -659,7 +693,7 @@ async def test_curiosity_hours_have_ground_and_uv_and_no_wind_ac32(
     response = await client.get(f"{C}/30")
 
     body = response.json()
-    assert list(body) == ["rover", *C_ITEM_KEYS, "hours", "source"]
+    assert list(body) == ["rover", *C_ITEM_KEYS, "credit", "hours", "source"]
     assert all(list(h) == C_HOUR_KEYS for h in body["hours"])
     assert body["hours"][3] == {
         "hour": 3,
@@ -973,7 +1007,11 @@ def _check_schema(document: dict[str, Any]) -> None:
     for part in detail.get("allOf", []):
         ref = part.get("$ref", "").rsplit("/", 1)[-1]
         props |= set(schemas.get(ref, {}).get("properties", {}))
-    assert {"rover", "hours", "source", "sol"} <= props
+    assert {"rover", "hours", "source", "sol", "credit"} <= props
+    # AC-1/AC-2: `credit` is a required string on the detail response.
+    credit = detail["properties"]["credit"] if "credit" in detail.get("properties", {}) else None
+    assert credit is not None and credit.get("type") == "string"
+    assert "credit" in detail.get("required", [])
 
 
 def test_openapi_has_the_weather_routes_and_optional_keys_ac36(app: Any) -> None:

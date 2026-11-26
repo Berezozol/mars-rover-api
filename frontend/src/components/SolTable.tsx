@@ -383,10 +383,9 @@ export function SolTable<T extends { sol: number }>(p: Props<T>) {
               class="btn btn-sm"
               type="button"
               disabled={cur <= 1}
-              aria-label="Previous page"
               onClick={() => setPage(cur - 1)}
             >
-              ‹ Prev
+              <span aria-hidden="true">‹</span> Previous page
             </button>
             {pageWindow(cur, pages).map((n, i) =>
               n === "gap" ? (
@@ -410,10 +409,9 @@ export function SolTable<T extends { sol: number }>(p: Props<T>) {
               class="btn btn-sm"
               type="button"
               disabled={cur >= pages}
-              aria-label="Next page"
               onClick={() => setPage(cur + 1)}
             >
-              Next ›
+              Next page <span aria-hidden="true">›</span>
             </button>
           </nav>
         )}

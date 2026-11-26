@@ -89,21 +89,20 @@ test("header 'Data' -> 'Radiation' opens the radiation page with the range slide
   expect(w.consoleErrors).toEqual([]);
 });
 
-test("the slider moves with the arrow keys, one sol at a time", async ({ page }) => {
+test("AC-8 the radiation page has the range handles only: no 'Inspect a sol' slider", async ({
+  page,
+}) => {
   await mockRadiation(page);
   await page.goto("/data/radiation");
-  const slider = page.getByRole("slider", { name: /Inspect a sol/ });
-  await expect(slider).toBeVisible();
-  await expect(slider).toHaveValue("200");
-  const panel = page.getByRole("main");
-  await expect(panel).toContainText("Sol 200");
-  await slider.focus();
+  await expect(page.getByRole("table")).toBeVisible();
+  await expect(page.getByRole("slider", { name: /Inspect a sol/ })).toHaveCount(0);
+  await expect(page.getByRole("slider")).toHaveCount(2);
+  // a handle moves with the arrow keys, one sol at a time
+  const end = page.getByRole("slider", { name: /range end/i });
+  await end.focus();
+  const before = Number(await end.getAttribute("aria-valuenow"));
   await page.keyboard.press("ArrowLeft");
-  await expect(slider).toHaveValue("199");
-  await expect(panel).toContainText("Sol 199");
-  await page.keyboard.press("ArrowRight");
-  await expect(slider).toHaveValue("200");
-  await expect(panel).toContainText(/µGy\/day|events\/s/);
+  await expect(end).toHaveAttribute("aria-valuenow", String(before - 1));
 });
 
 test("'not loaded yet' when the API has no data", async ({ page }) => {

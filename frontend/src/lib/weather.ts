@@ -96,26 +96,6 @@ export function niceTicks(lo: number, hi: number, n: number): number[] {
   return out;
 }
 
-const COMPASS = [
-  "N",
-  "NNE",
-  "NE",
-  "ENE",
-  "E",
-  "ESE",
-  "SE",
-  "SSE",
-  "S",
-  "SSW",
-  "SW",
-  "WSW",
-  "W",
-  "WNW",
-  "NW",
-  "NNW",
-];
-export const compass = (deg: number): string => COMPASS[Math.round(deg / 22.5) % 16] ?? "N";
-
 // ---- reading a parameter of a sol ----
 
 /** What the chart draws for one sol: an optional lower edge, an upper edge and the mean line. */
@@ -147,19 +127,6 @@ export function bandOf(sol: WeatherSol, key: string): Band | null {
 /** The upper edge of the wind chart is a gust line, not a band. */
 export const hasGustLine = (key: string): boolean => key === "wind";
 
-/** The key of the hourly values of a parameter in `GET /weather/{sol}`. */
-export const hourKey = (key: string): string => (key === "wind" ? "wind_speed_ms" : key);
-
-const HOUR_TITLE: Record<string, string> = {
-  air_temp_c: "Air temperature",
-  pressure_pa: "Pressure",
-  humidity_pct: "Humidity",
-  wind_speed_ms: "Wind speed",
-  ground_temp_c: "Ground temperature",
-  uv_wm2: "UV",
-};
-export const hourTitle = (hk: string): string => HOUR_TITLE[hk] ?? paramLabel(hk);
-
 // ---- flags ----
 
 const FLAG_SHORT: Record<string, string> = {
@@ -167,7 +134,6 @@ const FLAG_SHORT: Record<string, string> = {
   humidity_over_100: "humidity above 100 %",
   out_of_range: "out of range",
 };
-export const FLAG_ORDER = ["partial_coverage", "humidity_over_100", "out_of_range"];
 
 /** A short plain-words name of a flag; an unknown code is shown as the code itself. */
 export const flagShort = (f: WeatherFlag): string => FLAG_SHORT[f.code] ?? f.code;
@@ -190,9 +156,6 @@ export function flagWords(f: WeatherFlag): string {
   return `A note from the data source (code ${f.code}${f.parameter ? `, ${paramName(f.parameter)}` : ""}${n !== null ? `, ${n}` : ""}). Values are shown as published.`;
 }
 
-/** Flags that point at a problem with the values (everything except incomplete coverage). */
-export const isAnomaly = (s: WeatherSol): boolean =>
-  s.flags.some((f) => f.code !== "partial_coverage");
 export const isPartial = (s: WeatherSol): boolean =>
   s.flags.some((f) => f.code === "partial_coverage");
 

@@ -1,3 +1,4 @@
+import type { ComponentChildren } from "preact";
 import { useId, useState } from "preact/hooks";
 import { Link, navigate } from "../router";
 
@@ -22,19 +23,25 @@ export function pageWindow(page: number, pages: number): (number | "gap")[] {
 
 export function Pager({ page, pages, hrefFor }: Props) {
   if (pages <= 1) return null;
-  const nav = (label: string, target: number, disabled: boolean, aria: string) =>
+  const nav = (label: ComponentChildren, target: number, disabled: boolean) =>
     disabled ? (
-      <span class="btn btn-sm" aria-disabled="true" aria-label={aria}>
+      <span class="btn btn-sm" aria-disabled="true">
         {label}
       </span>
     ) : (
-      <Link class="btn btn-sm" href={hrefFor(target)} aria-label={aria}>
+      <Link class="btn btn-sm" href={hrefFor(target)}>
         {label}
       </Link>
     );
   return (
     <nav class="pager" aria-label="Pagination">
-      {nav("‹ Prev", page - 1, page <= 1, "Previous page")}
+      {nav(
+        <>
+          <span aria-hidden="true">‹</span> Previous page
+        </>,
+        page - 1,
+        page <= 1,
+      )}
       {pageWindow(page, pages).map((n, i) =>
         n === "gap" ? (
           <span key={`g${i}`} class="muted" aria-hidden="true">
@@ -52,7 +59,13 @@ export function Pager({ page, pages, hrefFor }: Props) {
           </Link>
         ),
       )}
-      {nav("Next ›", page + 1, page >= pages, "Next page")}
+      {nav(
+        <>
+          Next page <span aria-hidden="true">›</span>
+        </>,
+        page + 1,
+        page >= pages,
+      )}
       <span class="xsmall muted">
         Page {page} of {pages}
       </span>{" "}

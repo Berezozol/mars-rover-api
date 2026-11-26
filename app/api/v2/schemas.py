@@ -425,6 +425,7 @@ class WeatherSource(BaseModel):
 
 class WeatherSolDetail(WeatherSol):
     rover: str
+    credit: str
     hours: list[WeatherHour]
     source: WeatherSource
 
@@ -846,6 +847,7 @@ def weather_detail_body(detail: WeatherDetail) -> Json:
     return {
         "rover": detail.rover,
         **detail.item,
+        "credit": detail.credit,
         "hours": detail.hours,
         "source": {"files": detail.files},
     }

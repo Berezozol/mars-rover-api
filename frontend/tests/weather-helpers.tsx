@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/preact";
+import { render, screen, waitFor, within } from "@testing-library/preact";
 import { expect } from "vitest";
 import { App } from "../src/App";
 import { curiosity, mockApi, perseverance } from "./helpers";
@@ -47,20 +47,6 @@ export async function readyPanel() {
   return panel;
 }
 
-/**
- * The inspector slider (a native range input that picks one loaded sol). Since stage 22 the section has
- * more sliders: the two handles of the sol range ("Range start" / "Range end").
- */
-export const inspectorSlider = (panel: HTMLElement) =>
-  within(panel)
-    .getAllByRole("slider")
-    .find(
-      (el) =>
-        el instanceof HTMLInputElement &&
-        el.type === "range" &&
-        !/^range (start|end)/i.test(el.getAttribute("aria-label") ?? ""),
-    ) as HTMLInputElement;
-
 /** The section with the rover card loaded too: the lag in words appears once Rover.max_sol is known. */
 export async function readyPanelWithRover() {
   const panel = await readyPanel();
@@ -84,31 +70,6 @@ export const hasChip = (panel: HTMLElement, name: RegExp | string) =>
 
 export const callsTo = (m: ReturnType<typeof mockApi>, path: string) =>
   m.calls.filter((c) => c.pathname === path);
-
-/**
- * Move the inspector to a sol and wait until `/weather/{sol}` was asked. The slider may count sols or
- * loaded rows (the mockup counts rows), so both are tried; a value out of range is clamped by the input.
- */
-export async function pickSol(
-  panel: HTMLElement,
-  m: ReturnType<typeof mockApi>,
-  rover: Rover,
-  sol: number,
-  rows: number[],
-) {
-  const slider = inspectorSlider(panel);
-  const path = `${WX(rover)}/${sol}`;
-  for (const value of [sol, rows.indexOf(sol)]) {
-    fireEvent.input(slider, { target: { value: String(value) } });
-    try {
-      await waitFor(() => expect(callsTo(m, path).length).toBeGreaterThan(0), { timeout: 400 });
-      return;
-    } catch {
-      // try the other reading of the slider value
-    }
-  }
-  throw new Error(`could not move the inspector to sol ${sol}`);
-}
 
 /** The row of a sol in the table (the sol may be written with a thousands separator). */
 export const rowOf = (panel: HTMLElement, sol: number) =>

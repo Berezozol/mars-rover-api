@@ -538,10 +538,11 @@ describe("AC-31 links to the photos and from the tables", () => {
     ).toBe(reportPath(CUR, 4843));
   });
 
-  it("AC-31 the inspector 'Inspect a sol' of the weather page stays", async () => {
+  it("AC-8 the weather page has no 'Inspect a sol' slider any more: the report is the way to one sol", async () => {
     openWeatherRange({ per: [perSol(100), perSol(101)] });
     await readyTable();
-    expect(document.body.textContent).toMatch(/Inspect a sol/i);
+    expect(screen.queryByRole("slider", { name: /inspect a sol/i })).toBeNull();
+    expect(document.body.textContent).not.toMatch(/Inspect a sol/i);
   });
 });
 
@@ -708,15 +709,36 @@ describe("the credit and the sources", () => {
     expect(link, "a link to the source file").toBeTruthy();
   });
 
-  it("the credit request is not the whole list: sol_min and sol_max equal the sol, and the credit is shown", async () => {
+  it("AC-3 the credit comes from the answer of /weather/{sol}: no request for the list", async () => {
     const m = await openCuriosity();
     await waitFor(() => expect(mainText()).toContain("Gomez-Elvira"));
-    const asked = m.calls.filter((c) => c.pathname === "/api/v2/rovers/curiosity/weather");
-    expect(asked.length, "the credit is read from the list").toBeGreaterThan(0);
-    for (const c of asked) {
-      expect(c.searchParams.get("sol_min")).toBe(String(CUR_SOL));
-      expect(c.searchParams.get("sol_max")).toBe(String(CUR_SOL));
-    }
+    expect(m.calls.filter((c) => c.pathname === "/api/v2/rovers/curiosity/weather")).toEqual([]);
+    expect(m.calls.some((c) => c.pathname === `/api/v2/rovers/curiosity/weather/${CUR_SOL}`)).toBe(
+      true,
+    );
+  });
+
+  it("AC-3 the credit line shows the `credit` of the sol answer, word for word", async () => {
+    const credit = "Test credit of the sol answer (REMS) / archive";
+    openReport(reportPath(CUR, CUR_SOL), {
+      [WXD(CUR, CUR_SOL)]: { ...reportDetail(CUR, CUR_SOL, { ls: 356.7 }), credit },
+    });
+    await reportHeading("Curiosity", CUR_SOL);
+    expect(mainText()).toContain(`Credit: ${credit}`);
+  });
+
+  it("AC-3 Perseverance: the same, no request for the list", async () => {
+    const m = await openPerseverance();
+    await waitFor(() => expect(mainText()).toContain("Rodriguez-Manfredi"));
+    expect(m.calls.filter((c) => c.pathname === "/api/v2/rovers/perseverance/weather")).toEqual([]);
+  });
+
+  it("AC-3 an answer without `credit` still shows a credit line (the neutral one), no crash", async () => {
+    const { credit: _credit, ...bare } = reportDetail(CUR, CUR_SOL, { ls: 356.7 });
+    void _credit;
+    openReport(reportPath(CUR, CUR_SOL), { [WXD(CUR, CUR_SOL)]: bare });
+    await reportHeading("Curiosity", CUR_SOL);
+    expect(mainText()).toMatch(/Credit:\s*\S+/);
   });
 
   it("the credit of MEDA is shown on the report of Perseverance", async () => {

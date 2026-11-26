@@ -72,6 +72,7 @@ class WeatherDetail:
     """One sol: the summary, its 24 hours and the files it was computed from."""
 
     rover: str
+    credit: str
     item: Json
     hours: list[Json]
     files: list[Json]
@@ -219,6 +220,7 @@ class WeatherService:
         base = self._link_base(rover)
         return WeatherDetail(
             rover,
+            CREDITS[rover],
             self.item(rover, row),
             self.hours(rover, hours),
             [

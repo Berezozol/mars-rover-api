@@ -12,7 +12,6 @@ import {
   reportDetail,
   type ReportRover,
 } from "./fixtures/solreport";
-import { curItems, perItems, weatherList } from "./fixtures/weather";
 
 // Helpers of the stage-22 sol report tests (docs/proposals/sol-conditions.md, AC-25 ... AC-32). They look
 // for things the way a user does: headings, links, charts by their accessible name, the "Inspect hour" slider.
@@ -28,12 +27,6 @@ export const reportPath = (rover: string, sol: number) => `/rovers/${rover}/sols
 
 export const MAX_SOL = 2147483647;
 
-const inRange = <T extends { sol: number }>(items: T[], url: URL): T[] => {
-  const lo = Number(url.searchParams.get("sol_min") ?? 0);
-  const hi = Number(url.searchParams.get("sol_max") ?? Number.MAX_SAFE_INTEGER);
-  return items.filter((i) => i.sol >= lo && i.sol <= hi);
-};
-
 const noSol = (sol: number) =>
   apiError(404, "sol_not_found", `No weather data for sol ${sol}`, null);
 
@@ -48,11 +41,8 @@ export function reportRoutes(over: Record<string, Handler> = {}): Record<string,
     "/api/v2/rovers/perseverance": perseverance,
     "/api/v2/rovers/curiosity": curiosity,
     "/api/v2/rovers/opportunity": pending,
-    // the credit comes from the list, asked for the one sol of the report (`sol_min` = `sol_max` = sol)
-    "/api/v2/rovers/perseverance/weather": (url: URL) =>
-      weatherList("perseverance", inRange(perItems, url)),
-    "/api/v2/rovers/curiosity/weather": (url: URL) =>
-      weatherList("curiosity", inRange(curItems, url)),
+    // no list route on purpose: the credit is in the answer of `/weather/{sol}`, a request for the list is
+    // a request without a mock and fails the test (AC-3 of small-fixes-2026-11-26)
     "/api/v2/rovers/foo": apiError(404, "rover_not_found", "No such rover", null),
     [WXD("foo", 1)]: apiError(404, "rover_not_found", "No such rover", null),
     [LOC("perseverance")]: latestLocation("perseverance"),

@@ -12,7 +12,6 @@ import {
   curSol,
   perItems,
   perSol,
-  weatherDetail,
   weatherList,
 } from "./fixtures/weather";
 import { perLong } from "./fixtures/range";
@@ -22,10 +21,8 @@ import {
   chip,
   dailyChart,
   hasChip,
-  inspectorSlider,
   openWeather,
   panelOf,
-  pickSol,
   readyPanel,
   readyPanelWithRover,
   rowOf,
@@ -35,8 +32,6 @@ import {
 // mockup design/mockups/data.html#weather. Test names carry the stage-17 criteria AC-41 ... AC-46
 // (the Data page of stage 21 numbers its own criteria in data.test.tsx).
 
-const PER_SOLS = perItems.map((i) => i.sol);
-const CUR_SOLS = curItems.map((i) => i.sol);
 const label = (el: Element | undefined) => el?.getAttribute("aria-label") ?? "";
 
 describe("Weather AC-41: the section and the daily chart of Perseverance", () => {
@@ -426,177 +421,38 @@ describe("Weather AC-43: flags", () => {
   });
 });
 
-describe("Weather AC-44: the inspector and hourly charts", () => {
-  it("AC-44 choosing a sol asks for /weather/{sol} and shows its readout", async () => {
-    const m = openWeather();
+describe("Weather AC-8: the old inspector is gone", () => {
+  it("AC-8 no 'Inspect a sol' slider, no readout, no hourly charts, no anomaly buttons on the weather page", async () => {
+    openWeather();
     const panel = await readyPanel();
-    await pickSol(panel, m, "perseverance", 100, PER_SOLS);
-    await waitFor(() => expect(panel.textContent).toMatch(/Sol 100\b/));
-    expect(panel.textContent).toMatch(/2021-06-01/);
-    expect(panel.textContent).toMatch(/24 of 24/);
-    expect(callsTo(m, `${WX("perseverance")}/100`)[0]!.search).toBe("");
+    expect(
+      within(panel).queryByRole("slider", { name: /inspect a sol|next loaded sol/i }),
+    ).toBeNull();
+    expect(panel.textContent).not.toMatch(/Inspect a sol/i);
+    expect(within(panel).queryAllByRole("img", { name: /by local hour/i })).toHaveLength(0);
+    expect(within(panel).queryByRole("button", { name: /anomaly/i })).toBeNull();
+    // only the two handles of the sol range remain
+    expect(within(panel).getAllByRole("slider")).toHaveLength(2);
   });
 
-  it("AC-44 the slider has a label, a range type and a text value with the sol and its flags", async () => {
+  it("AC-8 the page asks for the list only: no /weather/{sol} request until the visitor opens a report", async () => {
     const m = openWeather();
-    const panel = await readyPanel();
-    const slider = inspectorSlider(panel);
-    expect(slider.type).toBe("range");
-    expect(slider.step === "1" || slider.step === "").toBe(true);
-    await pickSol(panel, m, "perseverance", 106, PER_SOLS);
-    await waitFor(() => expect(slider.getAttribute("aria-valuetext")).toMatch(/Sol 106/));
-    expect(slider.getAttribute("aria-valuetext")).toMatch(/humidity above 100/i);
+    await readyPanel();
+    expect(m.calls.filter((c) => /\/weather\/\d+$/.test(c.pathname))).toEqual([]);
   });
 
-  it("AC-44 hourly charts: one per parameter of the rover, with a text alternative", async () => {
-    const m = openWeather();
+  it("AC-8 flags are shown as pills in the table rows (FlagPill stays)", async () => {
+    openWeather();
     const panel = await readyPanel();
-    await pickSol(panel, m, "perseverance", 100, PER_SOLS);
-    await waitFor(() =>
-      expect(within(panel).queryAllByRole("img", { name: /by local hour/i }).length).toBe(4),
-    );
-    const names = within(panel)
-      .getAllByRole("img", { name: /by local hour/i })
-      .map((c) => label(c));
-    expect(names[0]).toMatch(/Air temperature.*24 of 24/i);
-    expect(names[1]).toMatch(/Pressure/i);
-    expect(names[2]).toMatch(/Humidity/i);
-    expect(names[3]).toMatch(/Wind/i);
+    const row = rowOf(panel, 106)!;
+    expect(row.textContent).toMatch(/humidity above 100/i);
   });
 
-  it("AC-44 wind direction is an azimuth from north: degrees and compass point, never from/to/blowing", async () => {
-    const m = openWeather();
+  it("AC-8 a sol has a link to its report from the table", async () => {
+    openWeather();
     const panel = await readyPanel();
-    fireEvent.click(chip(panel, /^Wind/));
-    await pickSol(panel, m, "perseverance", 100, PER_SOLS);
-    await waitFor(() => expect(panel.textContent).toMatch(/112\.5\s*°/));
-    // everything a user can read: text, tooltips (title) and accessible names
-    const texts = [
-      panel.textContent ?? "",
-      ...[...panel.querySelectorAll("[title],[aria-label]")].flatMap((e) => [
-        e.getAttribute("title") ?? "",
-        e.getAttribute("aria-label") ?? "",
-      ]),
-      ...[...panel.querySelectorAll("title")].map((e) => e.textContent ?? ""),
-    ].join("\n");
-    expect(texts).toMatch(/ESE/);
-    expect(texts).toMatch(/azimuth from north/i);
-    expect(texts).not.toMatch(/blowing/i);
-    // "from"/"to" before a direction (compass point or degrees) would claim a wind side
-    expect(texts).not.toMatch(/\b(from|to|toward|towards)\s+(?:[NSEW]{1,3}\b|\d+(?:\.\d+)?\s*°)/);
-    expect(texts).not.toMatch(/\bdirection\s+(from|to)\b/i);
-  });
-
-  it("AC-44 the hourly axis is labelled in LMST hours", async () => {
-    const m = openWeather();
-    const panel = await readyPanel();
-    await pickSol(panel, m, "perseverance", 100, PER_SOLS);
-    await waitFor(() =>
-      expect(within(panel).queryAllByRole("img", { name: /by local hour/i }).length).toBe(4),
-    );
-    expect(panel.textContent).toMatch(/LMST hours/i);
-  });
-
-  it("AC-44 a null hour breaks the line: no interpolation across the gap", async () => {
-    const m = openWeather();
-    const panel = await readyPanel();
-    await pickSol(panel, m, "perseverance", 105, PER_SOLS); // hours 3..12 have no data
-    await waitFor(() =>
-      expect(within(panel).queryAllByRole("img", { name: /by local hour/i }).length).toBe(4),
-    );
-    const air = within(panel).getByRole("img", { name: /Air temperature by local hour/i });
-    expect(label(air)).toMatch(/14 of 24/);
-    const moves = (svg: Element) =>
-      Math.max(
-        0,
-        ...Array.from(svg.querySelectorAll("path")).map(
-          (p) => (p.getAttribute("d")?.match(/M/g) ?? []).length,
-        ),
-      );
-    expect(moves(air), "two separate pieces of line").toBeGreaterThanOrEqual(2);
-    // a sol with all 24 hours is one piece
-    await pickSol(panel, m, "perseverance", 100, PER_SOLS);
-    await waitFor(() =>
-      expect(
-        label(within(panel).getByRole("img", { name: /Air temperature by local hour/i })),
-      ).toMatch(/24 of 24/),
-    );
-    expect(moves(within(panel).getByRole("img", { name: /Air temperature by local hour/i }))).toBe(
-      1,
-    );
-  });
-
-  it("AC-44 humidity is marked 'preliminary' in the inspector, with a 100 % line above 100", async () => {
-    const m = openWeather();
-    const panel = await readyPanel();
-    await pickSol(panel, m, "perseverance", 106, PER_SOLS);
-    const hum = await within(panel).findByRole("img", { name: /Humidity by local hour/i });
-    // Air temp is the chosen chip, so the only 'preliminary' badges are the chip of Humidity and the
-    // one on the hourly Humidity chart.
-    expect(chip(panel, /^Air temp/).getAttribute("aria-pressed")).toBe("true");
-    expect((panel.textContent?.match(/preliminary/gi) ?? []).length).toBeGreaterThanOrEqual(2);
-    expect(label(hum)).toMatch(/12\d/); // the published hourly values above 100 are not cut
-  });
-
-  it("AC-44 the hours-with-readings strip says how many hours of 24 have data", async () => {
-    const m = openWeather();
-    const panel = await readyPanel();
-    await pickSol(panel, m, "perseverance", 105, PER_SOLS);
-    await waitFor(() => expect(panel.textContent).toMatch(/Hours with air-temperature readings/i));
-    expect(within(panel).getByRole("img", { name: /14 of 24 local hours/ })).toBeTruthy();
-  });
-
-  it("AC-44 flags of the chosen sol are listed with words", async () => {
-    const m = openWeather();
-    const panel = await readyPanel();
-    await pickSol(panel, m, "perseverance", 106, PER_SOLS);
-    const list = await within(panel).findByRole("list", { name: /Flags for sol 106/ });
-    expect(list.textContent).toMatch(/humidity above 100/i);
-    expect(list.textContent).toMatch(/12/);
-    await pickSol(panel, m, "perseverance", 100, PER_SOLS);
-    await waitFor(() =>
-      expect(within(panel).queryByRole("list", { name: /Flags for sol/ })).toBeNull(),
-    );
-    expect(panel.textContent).toMatch(/No flags for this sol/i);
-  });
-
-  it("AC-44 Curiosity: five hourly charts, none for wind", async () => {
-    const m = openWeather();
-    const panel = await readyPanel();
-    fireEvent.click(within(panel).getByRole("radio", { name: /Curiosity/ }));
-    await waitFor(() => expect(hasChip(panel, /^UV/)).toBe(true));
-    await pickSol(panel, m, "curiosity", 13, CUR_SOLS);
-    await waitFor(() =>
-      expect(within(panel).queryAllByRole("img", { name: /by local hour/i }).length).toBe(5),
-    );
-    const all = within(panel)
-      .getAllByRole("img", { name: /by local hour/i })
-      .map((c) => label(c))
-      .join("|");
-    expect(all).toMatch(/Ground temperature/i);
-    expect(all).toMatch(/UV/);
-    expect(all).not.toMatch(/Wind/i);
-  });
-
-  it("AC-44 Previous / Next anomaly jump over sols with humidity above 100 % or readings left out", async () => {
-    const m = openWeather();
-    const panel = await readyPanel();
-    await pickSol(panel, m, "perseverance", 100, PER_SOLS);
-    const next = within(panel).getByRole("button", { name: /Next anomaly/ }) as HTMLButtonElement;
-    const prev = within(panel).getByRole("button", {
-      name: /Previous anomaly/,
-    }) as HTMLButtonElement;
-    await waitFor(() => expect(panel.textContent).toMatch(/Sol 100\b/));
-    expect(prev.disabled).toBe(true);
-    fireEvent.click(next); // 105 is partial coverage only: not an anomaly, so 106
-    await waitFor(() => expect(panel.textContent).toMatch(/Sol 106\b/));
-    await waitFor(() => expect(callsTo(m, `${WX("perseverance")}/106`).length).toBeGreaterThan(0));
-    fireEvent.click(next);
-    await waitFor(() => expect(panel.textContent).toMatch(/Sol 107\b/));
-    await waitFor(() => expect(next.disabled).toBe(true));
-    fireEvent.click(prev);
-    await waitFor(() => expect(panel.textContent).toMatch(/Sol 106\b/));
-    await waitFor(() => expect(prev.disabled).toBe(true));
+    const link = within(rowOf(panel, 100)!).getByRole("link", { name: /sol report/i });
+    expect(link.getAttribute("href")).toBe("/rovers/perseverance/sols/100/conditions");
   });
 });
 
@@ -693,59 +549,6 @@ describe("Weather AC-45: states", () => {
     expect(panel.textContent).toContain(PER_CREDIT);
   });
 
-  it("AC-45 404 sol_not_found in the inspector: 'No data for sol N', no alert, the chart stays", async () => {
-    const m = openWeather({
-      over: {
-        [`${WX("perseverance")}/104`]: apiError(
-          404,
-          "sol_not_found",
-          "No weather data for sol 104",
-        ),
-      },
-    });
-    const panel = await readyPanel();
-    await pickSol(panel, m, "perseverance", 104, PER_SOLS);
-    expect(await within(panel).findByText(/No data for sol 104/i)).toBeTruthy();
-    expect(within(panel).queryByRole("alert")).toBeNull();
-    expect(dailyChart(panel)).toBeTruthy();
-    expect(within(panel).getAllByRole("slider").length).toBeGreaterThan(0);
-    // choosing another sol recovers the inspector
-    await pickSol(panel, m, "perseverance", 100, PER_SOLS);
-    await waitFor(() => expect(panel.textContent).toMatch(/Sol 100\b/));
-    expect(within(panel).queryByText(/No data for sol 104/i)).toBeNull();
-  });
-
-  it("AC-45 inspector loading: a status named after the sol, the rest of the section stays", async () => {
-    const m = openWeather({
-      over: { [`${WX("perseverance")}/102`]: () => new Promise(() => {}) },
-    });
-    const panel = await readyPanel();
-    await pickSol(panel, m, "perseverance", 102, PER_SOLS);
-    expect(await within(panel).findByRole("status", { name: /Loading sol 102/ })).toBeTruthy();
-    expect(dailyChart(panel)).toBeTruthy();
-  });
-
-  it("AC-45 inspector error: alert with 'Try again' inside the inspector, the chart stays, retry works", async () => {
-    let n = 0;
-    const m = openWeather({
-      over: {
-        [`${WX("perseverance")}/102`]: () =>
-          ++n === 1
-            ? apiError(503, "db_unavailable", "Database is unavailable")
-            : // second answer: the real detail of sol 102
-              weatherDetail("perseverance", perSol(102)),
-      },
-    });
-    const panel = await readyPanel();
-    await pickSol(panel, m, "perseverance", 102, PER_SOLS);
-    const alert = await within(panel).findByRole("alert");
-    expect(dailyChart(panel)).toBeTruthy();
-    expect(within(panel).getAllByRole("slider").length).toBeGreaterThan(0);
-    fireEvent.click(within(alert).getByRole("button", { name: "Try again" }));
-    await waitFor(() => expect(within(panel).queryByRole("alert")).toBeNull());
-    expect(callsTo(m, `${WX("perseverance")}/102`)).toHaveLength(2);
-  });
-
   it("AC-45 unexpected nulls and extra fields in the list and in a sol do not break the section", async () => {
     const odd = [
       perSol(100, { air_temp_c: null, surprise: { nested: true }, ls: null }),
@@ -753,20 +556,13 @@ describe("Weather AC-45: states", () => {
       perSol(102, { flags: [{ code: "new_code", parameter: null, count: null, extra: 1 }] }),
       perSol(103, { wind: null }),
     ];
-    const m = openWeather({ per: odd });
+    openWeather({ per: odd });
     const panel = await readyPanel();
     expect(screen.queryByRole("alert")).toBeNull();
     for (const p of [/^Pressure/, /^Humidity/, /^Wind/, /^Air temp/]) {
       fireEvent.click(chip(panel, p));
       await waitFor(() => expect(chip(panel, p).getAttribute("aria-pressed")).toBe("true"));
     }
-    await pickSol(
-      panel,
-      m,
-      "perseverance",
-      100,
-      odd.map((i) => i.sol),
-    );
     expect(screen.queryByRole("alert")).toBeNull();
   });
 

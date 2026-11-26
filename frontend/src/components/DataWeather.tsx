@@ -31,7 +31,7 @@ import {
 import { About, dateOnly, Facts } from "./DataAbout";
 import { SolRangeSlider } from "./SolRangeSlider";
 import { SolTable, type SolColumn } from "./SolTable";
-import { FlagPill, WeatherInspector } from "./WeatherInspector";
+import { FlagPill } from "./FlagPill";
 import { WeatherChart, WeatherLegend } from "./WeatherChart";
 import { EmptyState, ErrorAlert } from "./States";
 
@@ -155,12 +155,7 @@ function WeatherView({
     keys.includes("air_temp_c") ? "air_temp_c" : (keys[0] ?? "air_temp_c"),
   );
   const [sel, setSel] = useState<number | null>(null);
-  const [dragging, setDragging] = useState(false);
   const [jump, setJump] = useState<{ sol: number; n: number } | null>(null);
-  const select = (sol: number, fromSlider = false) => {
-    setSel(sol);
-    setDragging(fromSlider);
-  };
 
   // The range the visitor chose (or the address gave); null = the default, which follows the data.
   const bounds = { first, max: now };
@@ -271,13 +266,13 @@ function WeatherView({
           roverName={rover.name}
           selected={sel ?? lastRow?.sol ?? last}
           onSelect={(sol) => {
-            select(sol);
+            setSel(sol);
             setJump((j) => ({ sol, n: (j?.n ?? 0) + 1 }));
           }}
         />
         <p class="chart-note">
-          {paramNote(k)} Hover the chart to read a sol; click it to inspect it and to find it in the
-          table below.
+          {paramNote(k)} Hover the chart to read a sol; click it to find that sol in the table
+          below.
         </p>
         <SolRangeSlider
           bounds={bounds}
@@ -304,17 +299,6 @@ function WeatherView({
           }
         />
       </div>
-
-      <WeatherInspector
-        rover={rover.id}
-        items={inRange}
-        parameters={parameters}
-        k={k}
-        selected={sel ?? lastRow?.sol ?? last}
-        picked={sel !== null}
-        dragging={dragging}
-        onSelect={select}
-      />
 
       <SolTable
         rows={items}

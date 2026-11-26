@@ -113,7 +113,7 @@ other rovers answer `404 not_found`. Optional `sol_min` and `sol_max` (inclusive
   the sol has no valid value.
 - The archive lags the mission by 6-8 months and is updated in batches, so the latest sols are missing
   (compare `source_max_sol` with `max_sol` from `/api/v2/rovers/{rover}`).
-- The response always has `credit`: keep it when you show or redistribute the data. Perseverance:
+- Both `/weather` and `/weather/{sol}` always have `credit`: keep it when you show or redistribute the data. Perseverance:
   "Rodriguez-Manfredi, J. A.; de la Torre Juarez, M. (MEDA, Mars 2020) / NASA PDS Atmospheres Node,
   urn:nasa:pds:mars2020_meda". Curiosity: "REMS team (Centro de Astrobiologia) / NASA PDS Atmospheres Node,
   urn:nasa:pds:msl_rems". This project is unofficial.

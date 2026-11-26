@@ -6691,6 +6691,10 @@
             "type": "string",
             "title": "Rover"
           },
+          "credit": {
+            "type": "string",
+            "title": "Credit"
+          },
           "hours": {
             "items": {
               "$ref": "#/components/schemas/WeatherHour"
@@ -6715,6 +6719,7 @@
           "flags",
           "source_version",
           "rover",
+          "credit",
           "hours",
           "source"
         ],

@@ -112,28 +112,10 @@ test("AC-46 header -> Data -> Weather -> Curiosity: the parameters follow the ro
   ).toHaveCount(0);
   expect(hits).toContain("/api/v2/rovers/curiosity/weather");
 
-  // the inspector slider moves with the keyboard, one loaded sol at a time
-  const slider = panel.getByRole("slider", { name: /next loaded sol/i });
-  await slider.focus();
-  const before = await slider.getAttribute("aria-valuetext");
-  await page.keyboard.press("ArrowLeft");
-  await expect(slider).not.toHaveAttribute("aria-valuetext", before ?? "");
-  await expect
-    .poll(() => hits.filter((h) => /\/curiosity\/weather\/\d+$/.test(h)).length)
-    .toBeGreaterThan(0);
-  await expect(panel.getByRole("img", { name: /by local hour/i })).toHaveCount(5);
-  await expect(panel).toContainText(/LMST hours/i);
-
-  // a click on the daily chart asks for that sol's hours too
-  const asked = hits.filter((h) => /\/curiosity\/weather\/\d+$/.test(h)).length;
-  const chart = panel.getByRole("img", { name: /daily/i });
-  await chart.scrollIntoViewIfNeeded();
-  const box = (await chart.boundingBox())!;
-  await page.mouse.click(box.x + box.width * 0.3, box.y + box.height * 0.5);
-  await expect
-    .poll(() => hits.filter((h) => /\/curiosity\/weather\/\d+$/.test(h)).length)
-    .toBeGreaterThan(asked);
-  await expect(panel.getByRole("img", { name: /by local hour/i })).toHaveCount(5);
+  // the old inspector is gone (small fixes 2026-11-26): the page asks for the list only
+  await expect(panel.getByRole("slider", { name: /next loaded sol/i })).toHaveCount(0);
+  await expect(panel.getByRole("img", { name: /by local hour/i })).toHaveCount(0);
+  expect(hits.filter((h) => /\/weather\/\d+$/.test(h))).toEqual([]);
   expect(w.consoleErrors).toEqual([]);
 });
 
@@ -153,16 +135,17 @@ test("AC-46 a flagged sol has a marker, and hovering it shows the flag in words"
   await expect(page.getByTestId("weather-tooltip")).toContainText(/humidity above 100/i);
 });
 
-test("AC-46 Previous / Next anomaly move the inspector by keyboard", async ({ page }) => {
+test("AC-46 no Previous / Next anomaly buttons and no inspector on the weather page (AC-8)", async ({
+  page,
+}) => {
   await mockWeather(page);
   await page.goto("/data/weather");
   const panel = page.getByRole("main");
-  await expect(panel.getByRole("slider").first()).toBeVisible();
-  const prev = panel.getByRole("button", { name: /Previous anomaly/ });
-  await prev.focus();
-  await page.keyboard.press("Enter");
-  await expect(panel).toContainText(/Sol 140\b/);
-  await expect(panel.getByRole("list", { name: /Flags for sol 140/ })).toContainText(
+  await expect(panel.getByRole("table")).toBeVisible();
+  await expect(panel.getByRole("button", { name: /anomaly/i })).toHaveCount(0);
+  await expect(panel.getByText(/Inspect a sol/i)).toHaveCount(0);
+  // the flagged sol is still named in its row, in words
+  await expect(panel.getByRole("row").filter({ hasText: "140" }).first()).toContainText(
     /humidity above 100/i,
   );
 });
@@ -175,20 +158,16 @@ test("AC-46 the lag follows the rover's current sol", async ({ page }) => {
 });
 
 for (const scheme of ["light", "dark"] as const) {
-  test.describe(`AC-46 360 px, ${scheme} theme, hourly charts open`, () => {
+  test.describe(`AC-46 360 px, ${scheme} theme, charts`, () => {
     test.use({ viewport: { width: 360, height: 800 }, colorScheme: scheme });
 
-    test(`AC-46 /data/weather at 360 px (${scheme}): hourly charts open, no horizontal scroll, no nested scroll areas, credit visible`, async ({
+    test(`AC-46 /data/weather at 360 px (${scheme}): no horizontal scroll, no nested scroll areas, credit visible`, async ({
       page,
     }) => {
       await mockWeather(page);
       await page.goto("/data/weather");
       const panel = page.getByRole("main");
-      const slider = panel.getByRole("slider", { name: /next loaded sol/i });
-      await expect(slider).toBeVisible();
-      await slider.focus();
-      await page.keyboard.press("ArrowLeft");
-      await expect(panel.getByRole("img", { name: /by local hour/i }).first()).toBeVisible();
+      await expect(panel.getByRole("table")).toBeVisible();
       await settle(page);
       for (const r of ["Perseverance", "Curiosity"]) {
         await panel.locator("label", { hasText: new RegExp(`^${r} `) }).click();

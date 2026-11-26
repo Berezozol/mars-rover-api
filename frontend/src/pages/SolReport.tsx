@@ -1,7 +1,7 @@
 import { useMemo, useState } from "preact/hooks";
 import { api, ApiError } from "../api/client";
 import type { WeatherHour, WeatherSolDetail } from "../api/types";
-import { FlagPill } from "../components/WeatherInspector";
+import { FlagPill } from "../components/FlagPill";
 import { HourChart } from "../components/HourChart";
 import {
   SolRadiationDaily,
@@ -84,18 +84,8 @@ function Crumbs({ rover, name, sol }: { rover: string; name: string; sol: number
 function Report({ rover, name, sol }: { rover: string; name: string; sol: number }) {
   const [detail, retry] = useAsync((signal) => api.weatherSol(rover, sol, signal), [rover, sol]);
   const [loc] = useAsync((signal) => api.locationLatest(rover, signal).catch(() => null), [rover]);
-  const [list] = useAsync(
-    (signal) => {
-      void signal;
-      // The header of the list (credit, source_url) does not depend on the range: ask for one sol.
-      return api.weatherRange(rover, sol, sol).catch(() => null);
-    },
-    [rover, sol],
-  );
-
   const lat = loc.status === "ok" ? (loc.data?.items?.[0]?.lat ?? null) : null;
-  const credit = (list.status === "ok" && list.data?.credit) || CREDIT_NEUTRAL;
-  const sourceUrl = list.status === "ok" ? list.data?.source_url : undefined;
+  const credit = (detail.status === "ok" && detail.data.credit) || CREDIT_NEUTRAL;
 
   const head = (d: WeatherSolDetail | null) => (
     <Head rover={rover} name={name} sol={sol} detail={d} lat={lat} />
@@ -159,15 +149,7 @@ function Report({ rover, name, sol }: { rover: string; name: string; sol: number
       );
   } else {
     body = (
-      <Loaded
-        rover={rover}
-        name={name}
-        sol={sol}
-        detail={detail.data}
-        lat={lat}
-        credit={credit}
-        sourceUrl={sourceUrl}
-      />
+      <Loaded rover={rover} name={name} sol={sol} detail={detail.data} lat={lat} credit={credit} />
     );
   }
 
@@ -445,7 +427,6 @@ function Loaded({
   detail,
   lat,
   credit,
-  sourceUrl,
 }: {
   rover: string;
   name: string;
@@ -453,7 +434,6 @@ function Loaded({
   detail: WeatherSolDetail;
   lat: number | null;
   credit: string;
-  sourceUrl?: string;
 }) {
   const [cur, setCur] = useState<{ hour: number; active: boolean; live: boolean }>({
     hour: 13,
@@ -580,19 +560,7 @@ function Loaded({
         <h2 id="srcH" style={{ fontSize: "var(--fs-md)" }}>
           Credit and source files
         </h2>
-        <p class="credit-line">
-          Credit: {credit}
-          {sourceUrl && (
-            <>
-              {" "}
-              (
-              <a href={sourceUrl} rel="noopener noreferrer">
-                archive
-              </a>
-              )
-            </>
-          )}
-        </p>
+        <p class="credit-line">Credit: {credit}</p>
         <p>
           Hours are averages over local mean solar time (LMST). Gaps are hours without readings:
           lines are broken there, nothing is interpolated.

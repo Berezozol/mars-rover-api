@@ -1,3 +1,4 @@
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { CUR_NOW, PER_NOW, weatherList } from "../tests/fixtures/weather";
 import { radiationResponse } from "../tests/fixtures/radiation";
@@ -396,30 +397,14 @@ test.describe("AC-33 desktop", () => {
     await mockApi(page);
     await page.goto(CUR_URL);
     await expect(heading(page, "Curiosity", 344)).toBeVisible();
-    await expect(page.getByRole("heading", { name: /radiation/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /radiation.*daily/i })).toBeVisible();
     await expect(page.getByRole("main")).toContainText("231.4");
     await expect(page.getByRole("main")).toContainText("MSL RAD (SwRI)");
   });
 });
 
-// AC-33: no accessibility violation of level serious or higher. This needs `@axe-core/playwright`, which is not
-// a dependency yet (a request to frontend-dev is in the report); until it is installed these tests are skipped.
-async function loadAxe(): Promise<null | (new (opts: { page: Page }) => AxeRunner)> {
-  const name = "@axe-core/playwright";
-  try {
-    const mod = (await import(/* @vite-ignore */ name)) as {
-      default?: unknown;
-      AxeBuilder?: unknown;
-    };
-    return (mod.AxeBuilder ?? mod.default) as new (opts: { page: Page }) => AxeRunner;
-  } catch {
-    return null;
-  }
-}
-interface AxeRunner {
-  analyze: () => Promise<{ violations: { id: string; impact?: string | null; help: string }[] }>;
-}
-
+// AC-33 / AC-9 of small-fixes-2026-11-26: no accessibility violation of level serious or higher. These tests
+// must run, never skip: `@axe-core/playwright` is a dev dependency.
 for (const scheme of ["light", "dark"] as const) {
   test.describe(`AC-33 axe, ${scheme} theme`, () => {
     test.use({ colorScheme: scheme });
@@ -428,21 +413,24 @@ for (const scheme of ["light", "dark"] as const) {
       ["Curiosity", CUR_URL, "Curiosity", 344],
       ["Perseverance", PER_URL, "Perseverance", 100],
     ] as const) {
-      test(`AC-33 ${name} report (${scheme}): no serious or critical axe violation`, async ({
+      test(`AC-33 AC-9 ${name} report (${scheme}): no serious or critical axe violation`, async ({
         page,
       }) => {
-        const Axe = await loadAxe();
-        test.skip(Axe === null, "needs the dev dependency @axe-core/playwright");
         await mockApi(page);
         await page.goto(url);
         await expect(heading(page, who, sol)).toBeVisible();
         await expect(charts(page).first()).toBeVisible();
         await settle(page);
-        const result = await new Axe!({ page }).analyze();
+        const result = await new AxeBuilder({ page }).analyze();
         const bad = result.violations.filter(
           (v) => v.impact === "serious" || v.impact === "critical",
         );
-        expect(bad.map((v) => `${v.impact} ${v.id}: ${v.help}`)).toEqual([]);
+        expect(
+          bad.map(
+            (v) =>
+              `${v.impact} ${v.id}: ${v.help} -> ${v.nodes.map((n) => n.html.slice(0, 160)).join(" | ")}`,
+          ),
+        ).toEqual([]);
       });
     }
   });

@@ -73,6 +73,19 @@ svg.chart text {
     display: none;
   }
 }
+svg.chart .off-arrow {
+  fill: var(--warn);
+}
+.off-note {
+  margin: var(--s1, 4px) 0 0;
+  font-size: var(--fs-xs);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.off-note span {
+  color: var(--warn);
+  font-weight: 700;
+}
 svg.chart .grid {
   stroke: var(--chart-grid);
   stroke-width: 1;
@@ -115,31 +128,6 @@ svg.chart .dot-b {
   stroke-width: 2;
 }
 
-.inspect {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--s2);
-  margin-top: var(--s3);
-  font-size: var(--fs-sm);
-}
-.inspect input[type="range"] {
-  width: 100%;
-  accent-color: var(--accent);
-  min-height: 32px;
-}
-.inspect input[type="range"]:focus-visible {
-  outline: 3px solid var(--focus);
-  outline-offset: 2px;
-}
-.inspect .readout {
-  font-variant-numeric: tabular-nums;
-  color: var(--text-muted);
-  min-height: 3em;
-  overflow-wrap: anywhere;
-}
-.inspect .readout b {
-  color: var(--text);
-}
 .chart-note {
   margin: var(--s2) 0 0;
   font-size: var(--fs-xs);
@@ -334,42 +322,6 @@ svg.chart.wxc {
   background: var(--err-soft);
   border-color: var(--err);
 }
-.flag-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: var(--s2);
-  font-size: var(--fs-sm);
-}
-.flag-list li {
-  display: flex;
-  gap: var(--s2);
-  align-items: baseline;
-  flex-wrap: wrap;
-}
-.flag-list li span:last-child {
-  flex: 1 1 220px;
-  min-width: 0;
-}
-.wx-nav {
-  display: flex;
-  gap: var(--s2);
-  flex-wrap: wrap;
-  align-items: center;
-}
-.wx-inspect-body {
-  margin-top: var(--s3);
-}
-.wx-inspect-body > * + * {
-  margin-top: var(--s3);
-}
-.hours-strip {
-  display: flex;
-  gap: var(--s3);
-  flex-wrap: wrap;
-  align-items: center;
-}
 .hc-row {
   display: inline-grid;
   grid-template-columns: repeat(24, 9px);
@@ -387,41 +339,6 @@ svg.chart.wxc {
   border: 1px dashed var(--border-strong);
   opacity: 1;
   box-sizing: border-box;
-}
-.wx-minis {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: var(--s3);
-}
-.mini {
-  padding: var(--s3);
-  min-width: 0;
-  box-shadow: none;
-}
-.mini .k {
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  color: var(--text-muted);
-}
-.mini .k .badge {
-  text-transform: none;
-  letter-spacing: 0;
-  margin-left: 4px;
-}
-.mini .v {
-  font-size: var(--fs-md);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-.mini .v small {
-  color: var(--text-muted);
-  font-weight: 400;
-}
-.mini-empty {
-  display: grid;
-  place-items: center;
-  font-size: var(--fs-xs);
-  color: var(--text-muted);
 }
 table.wx-table small {
   color: var(--text-muted);

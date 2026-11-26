@@ -155,7 +155,7 @@ export function Layout({ route, pathname, children }: Props) {
       </a>
       <header class="site-header" ref={headerRef}>
         <div class="container">
-          <Link class="brand" href="/" aria-label="Sol Index home">
+          <Link class="brand" href="/">
             <svg width="34" height="34" viewBox="0 0 64 64" aria-hidden="true">
               <defs>
                 <clipPath id="brand-clip">

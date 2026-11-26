@@ -12,6 +12,7 @@ import {
   radSol,
   radiationResponse,
 } from "./fixtures/radiation";
+import { rowFor } from "./range-helpers";
 import { WX, weatherRoutes } from "./weather-helpers";
 import { weatherList } from "./fixtures/weather";
 
@@ -404,58 +405,29 @@ describe("Data: Radiation section (AC-42)", () => {
   });
 });
 
-describe("Data: Inspect a sol slider (AC-43)", () => {
-  async function slider() {
+describe("Data: no 'Inspect a sol' slider on the radiation page (AC-8)", () => {
+  it("AC-8 no 'Inspect a sol' slider and no sol readout block; the range handles are still there", async () => {
     routes();
     open("/data/radiation");
-    return (await screen.findByRole("slider", { name: /Inspect a sol/ })) as HTMLInputElement;
-  }
-  const readout = () => screen.getByRole("main");
-
-  it("AC-43 starts at the newest sol and shows sol, date, E, B and rate", async () => {
-    const s = await slider();
-    expect(s.value).toBe("13");
-    const t = readout().textContent ?? "";
-    expect(t).toMatch(/Sol 13/);
-    expect(t).toMatch(/2012-08-18/);
-    expect(t).toMatch(/160\.4/);
-    expect(t).toMatch(/167\.9/);
-    expect(t).toMatch(/9\.437|9\.44/);
-    expect(t).toMatch(/events\/s/);
+    await screen.findByRole("table");
+    expect(screen.queryByRole("slider", { name: /Inspect a sol/i })).toBeNull();
+    expect(screen.getByRole("main").textContent).not.toMatch(/Inspect a sol/i);
+    expect(screen.getAllByRole("slider").length).toBe(2);
+    expect(screen.getByRole("slider", { name: /range start/i })).toBeTruthy();
+    expect(screen.getByRole("slider", { name: /range end/i })).toBeTruthy();
   });
 
-  it("AC-43 moving the slider updates the readout", async () => {
-    const s = await slider();
-    fireEvent.input(s, { target: { value: "11" } });
-    await waitFor(() => expect(readout().textContent).toMatch(/Sol 11\b/));
-    const t = readout().textContent ?? "";
-    expect(t).toMatch(/2012-08-16/);
-    expect(t).toMatch(/171\.5/);
-    expect(t).toMatch(/180\.25|180\.3/);
-    expect(t).toMatch(/8\.5/);
-  });
-
-  it("AC-43 a sol without data says 'No data for sol N'", async () => {
-    const s = await slider();
-    fireEvent.input(s, { target: { value: "12" } });
-    expect(await screen.findByText(/No data for sol 12/)).toBeTruthy();
-  });
-
-  it("AC-43 the slider has a label, a numeric range and a description", async () => {
-    const s = await slider();
-    expect(s.type).toBe("range");
-    expect(s.step === "1" || s.step === "").toBe(true);
-    expect(Number(s.min)).toBeLessThanOrEqual(10);
-    expect(Number(s.max)).toBeGreaterThanOrEqual(13);
-    expect(s.getAttribute("aria-describedby") || s.getAttribute("aria-valuetext")).toBeTruthy();
-  });
-
-  it("AC-43 an arrow key moves by one sol (jsdom has no native range keys: keydown must be handled or this is covered in e2e)", async () => {
-    const s = await slider();
-    s.focus();
-    fireEvent.keyDown(s, { key: "ArrowLeft" });
-    // Either the component handles the key itself, or the browser does it natively: the e2e test covers the latter.
-    if (s.value !== "13") expect(s.value).toBe("12");
+  it("AC-8 the values of a sol are in the table, in a row with a link to the sol report", async () => {
+    routes();
+    open("/data/radiation");
+    await screen.findByRole("table");
+    const row = rowFor(13)!;
+    expect(row).toBeTruthy();
+    expect(row.textContent).toMatch(/2012-08-18/);
+    expect(row.textContent).toMatch(/160\.4/);
+    expect(row.textContent).toMatch(/167\.9/);
+    expect(row.textContent).toMatch(/9\.44/);
+    expect(within(row).getByRole("link", { name: /sol report/i })).toBeTruthy();
   });
 });
 

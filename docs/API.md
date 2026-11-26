@@ -500,6 +500,7 @@
 `sol` — целое от 0 до 2 147 483 647, иначе `422`. Сол без данных → `404 sol_not_found`. Ответ — WeatherSol и дополнительно:
 ```json
 {"rover": "perseverance", "sol": 100, "...": "поля WeatherSol",
+ "credit": "Rodriguez-Manfredi, J. A.; de la Torre Juarez, M. (MEDA, Mars 2020) / NASA PDS Atmospheres Node, urn:nasa:pds:mars2020_meda",
  "hours": [{"hour": 0, "coverage": 0.5,
             "air_temp_c": -71.2, "air_temp_c_min": -73.9, "air_temp_c_max": -68.4,
             "pressure_pa": 735.4, "pressure_pa_min": 734.1, "pressure_pa_max": 736.8,
@@ -519,6 +520,7 @@
 - `hours` — всегда 24 элемента, `hour` 0…23 — час местного среднего солнечного времени (LMST). Ключ параметра без суффикса — среднее за час; `_min` и `_max` — наименьшее и наибольшее годное значение за час (то же правило, что у `min`/`max` сола: влажность выше 100 % входит, значения с флагом `out_of_range` — нет). Единицы и округление — как у сола. Час без измерений параметра — `null` во всех трёх ключах; `coverage` часа — доля его 10-минутных интервалов с измерениями температуры воздуха. Суточные `min`/`max` равны наименьшему из почасовых `_min` и наибольшему из почасовых `_max`.
 - Ключи часов следуют ключам марсохода: Curiosity — `air_temp_c`, `pressure_pa`, `humidity_pct`, `ground_temp_c`, `uv_wm2`, у каждого `_min` и `_max`; Perseverance — `air_temp_c`, `pressure_pa`, `humidity_pct`, `ground_temp_c` с `_min` и `_max`, а также `wind_speed_ms` (средняя скорость часа), `wind_gust_ms` (99-й перцентиль скорости за час) и `wind_direction_deg` (самое частое направление часа); вне солов 36–313 все три ключа ветра `null`. Новые ключи (этап 22) добавлены к прежним: клиенты, читающие только средние, не затронуты.
 - `source.files` — файлы архива, из которых посчитан сол (путь от корня набора и ссылка в архиве NASA PDS).
+- `credit` — как у списка: есть всегда, при использовании данных указывайте его.
 - `200` · `404 rover_not_found` · `404 not_found` (как у списка) · `404 sol_not_found` · `422 validation_error`.
 
 ### `GET /api/v2/rovers/{rover}/feed.xml` (этап 16)

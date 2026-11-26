@@ -472,6 +472,8 @@ export interface WeatherHour {
 
 export interface WeatherSolDetail extends WeatherSol {
   rover: string;
+  /** Credit line of the data, same as in the list; always present. */
+  credit: string;
   hours: WeatherHour[];
   source: { files: { product: string; version: string; file: string; link: string }[] };
 }

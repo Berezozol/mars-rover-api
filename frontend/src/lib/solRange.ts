@@ -160,15 +160,39 @@ export function rangeTicks(range: SolRange, count: number): number[] {
   return [x0, ...niceTicks(x0, x1, count).filter((t) => t > x0 + keep && t < x1 - keep), x1];
 }
 
-/** Bottom, top and ticks of a value axis: from zero, or fitted to `values`. */
+/** A series needs at least this many points before its extreme values may be cut off the scale. */
+export const OUTLIER_MIN_POINTS = 20;
+const OUTLIER_FACTOR = 3;
+
+/**
+ * Bottom, top and ticks of a value axis: from zero, or fitted to the values of `points`
+ * (`[sol, value]`). With at least 20 points, values above three times the median are outliers: when `clip` is set (default: unless `zero`), they are left out of the scale and
+ * returned in `outliers` (one `[sol, value]` per sol, the highest value of it, by sol).
+ */
 export function valueScale(
-  values: number[],
+  points: [number, number][],
   zero: boolean,
-): { bottom: number; top: number; ticks: number[] } {
-  const ok = values.filter((v) => Number.isFinite(v));
+  clip: boolean = !zero,
+): { bottom: number; top: number; ticks: number[]; outliers: [number, number][] } {
+  const pts = points.filter(([, v]) => Number.isFinite(v));
+  let outliers: [number, number][] = [];
+  if (clip && pts.length >= OUTLIER_MIN_POINTS) {
+    const sorted = pts.map(([, v]) => v).sort((a, b) => a - b);
+    const mid = sorted.length >> 1;
+    const p = sorted.length % 2 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
+    if (p > 0) {
+      const bySol = new Map<number, number>();
+      for (const [sol, v] of pts) {
+        if (v > OUTLIER_FACTOR * p) bySol.set(sol, Math.max(bySol.get(sol) ?? v, v));
+      }
+      outliers = [...bySol].sort((a, b) => a[0] - b[0]);
+    }
+  }
+  const out = new Set(outliers.map(([sol]) => sol));
+  const ok = pts.filter(([sol]) => !out.has(sol)).map(([, v]) => v);
   if (zero || ok.length === 0) {
     const s = niceScale(ok.length ? Math.max(...ok) : 0);
-    return { bottom: 0, top: s.top, ticks: s.ticks };
+    return { bottom: 0, top: s.top, ticks: s.ticks, outliers };
   }
   let lo = Math.min(...ok);
   let hi = Math.max(...ok);
@@ -177,5 +201,19 @@ export function valueScale(
     hi += Math.abs(hi) * 0.05 || 1;
   }
   const ticks = niceTicks(lo, hi, 4);
-  return { bottom: ticks[0] ?? lo, top: ticks[ticks.length - 1] ?? hi, ticks };
+  return { bottom: ticks[0] ?? lo, top: ticks[ticks.length - 1] ?? hi, ticks, outliers };
+}
+
+/** The sentence about sols off the scale (`""` for none); `fmtValue` and `unit` follow the chart. */
+export function offScaleText(
+  outliers: [number, number][],
+  fmtValue: (v: number) => string,
+  unit: string,
+): string {
+  if (outliers.length === 0) return "";
+  let [sol, v] = outliers[0]!;
+  for (const o of outliers) if (o[1] > v) [sol, v] = o;
+  return outliers.length === 1
+    ? `Sol ${sol}: ${fmtValue(v)} ${unit}, off scale`
+    : `${outliers.length} sols off scale, highest sol ${sol}: ${fmtValue(v)} ${unit}`;
 }

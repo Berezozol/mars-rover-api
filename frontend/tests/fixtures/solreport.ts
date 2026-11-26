@@ -108,6 +108,8 @@ export function reportDetail(rover: ReportRover, sol: number, opts: DetailOpts =
       : []);
   return {
     rover,
+    // `credit` is in the answer of `/weather/{sol}` (docs/API.md, 2026-11-26): the report reads it from here
+    credit: CREDIT[rover],
     ...item,
     hours: reportHours(rover, {
       missing,
