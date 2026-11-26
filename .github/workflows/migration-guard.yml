@@ -1,0 +1,63 @@
+name: migration-guard
+
+# Puts the label `needs-owner` on PRs with destructive migrations or API contract changes.
+# The job is a required check, so automerge.yml never merges before this verdict.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: migration-guard-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  migration-guard:
+    name: migration-guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write # label and comment (issues API needs it on PRs)
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR: ${{ github.event.pull_request.number }}
+      BASE: ${{ github.event.pull_request.base.sha }}
+      HEAD: ${{ github.event.pull_request.head.sha }}
+      SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Scan migrations and contracts
+        id: scan
+        run: |
+          set +e
+          python3 .github/scripts/migration_guard.py --base "$BASE" --head "$HEAD" --markdown "$RUNNER_TEMP/comment.md"
+          rc=$?
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          [ "$rc" -le 1 ] || exit "$rc"
+
+      - name: Label and comment
+        if: steps.scan.outputs.rc == '1' && env.SAME_REPO == 'true'
+        run: |
+          gh label create needs-owner --repo "$GITHUB_REPOSITORY" --color B60205 \
+            --description "Needs the owner's decision before merge" 2>/dev/null || true
+          gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --add-label needs-owner
+          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/comment.md"
+          # automerge.yml may have switched auto-merge on before this verdict (a label added
+          # with GITHUB_TOKEN does not start that workflow again): switch it off here.
+          gh pr merge --disable-auto "$PR" --repo "$GITHUB_REPOSITORY" || true
+
+      # A PR from a fork gets a read-only token: it cannot be labelled, so it must not pass.
+      - name: Fail for a fork PR with findings
+        if: steps.scan.outputs.rc == '1' && env.SAME_REPO != 'true'
+        run: |
+          echo "::error::The PR needs the owner (see the reasons above)"
+          exit 1
