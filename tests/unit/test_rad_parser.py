@@ -400,8 +400,10 @@ def test_parse_checksums_returns_only_surface_daily_files_with_their_sol_ac9() -
     assert sorted(pairs) == sorted(
         [
             (10, "DATA/SOL_00000_00089/RAD_RDR_2012_228_20_41_0010_V00.TXT"),
+            (120, "DATA/SOL_00090_00179/RAD_RDR_2012_341_21_28_0120_V00.TXT"),
             (222, "DATA/SOL_00180_00269/RAD_RDR_2013_081_04_32_0222_V00.TXT"),
             (222, "DATA/SOL_00180_00269/RAD_RDR_2013_123_21_52_0222_V00.TXT"),
+            (350, "DATA/SOL_00270_00359/RAD_RDR_2013_212_05_04_0350_V00.TXT"),
             (1649, "DATA/SOL_01649_01772/RAD_RDR_2017_085_15_54_1649_V00.TXT"),
             (1649, "DATA/SOL_01649_01772/RAD_RDR_2017_085_16_28_1649_V00.TXT"),
             (4842, "DATA/SOL_04710_04843/RAD_RDR_2026_079_17_02_4842_V00.TXT"),
@@ -443,14 +445,14 @@ def test_parse_checksums_skips_a_broken_line_with_a_warning_ac9(
     with caplog.at_level(logging.WARNING):
         entries = parse_checksums(checksums_text())
 
-    assert len(entries) == 7
+    assert len(entries) == 9
     assert any(r.levelno >= logging.WARNING for r in caplog.records)
 
 
 def test_parse_checksums_accepts_crlf_line_ends_ac9() -> None:
     text = checksums_text().replace("\n", "\r\n")
 
-    assert len(parse_checksums(text)) == 7
+    assert len(parse_checksums(text)) == 9
 
 
 def test_parse_checksums_empty_list_gives_no_entries_ac9() -> None:

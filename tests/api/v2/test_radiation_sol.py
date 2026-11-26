@@ -15,7 +15,7 @@ from typing import Any
 import httpx
 import pytest
 
-from tests._rad import CREDIT_RAD, Factory, insert_daily, insert_hours
+from tests._rad import CREDIT_RAD, REV, Factory, insert_daily, insert_hours
 from tests.api.v2.conftest import V2, assert_error
 from tests.api.v2.test_radiation import CITATION, EXPECTED_4843, ITEM_KEYS, seed_4843
 
@@ -69,8 +69,8 @@ EXPECTED_HOUR_0_4843 = {
 
 
 async def seed_hours_4843(factory: Factory) -> None:
-    """The fixture base: sol 4843 with `hourly_revision` 1, `hourly_dropped` 1 and hour 0."""
-    await seed_4843(factory, hourly_revision=1, hourly_dropped=1)
+    """The fixture base: sol 4843 with the current revision, `hourly_dropped` 1 and hour 0."""
+    await seed_4843(factory, hourly_revision=REV, hourly_dropped=1)
     await insert_hours(factory, 4843, [HOUR_0_4843])
 
 
@@ -149,7 +149,7 @@ async def test_radiation_sol_numbers_are_json_numbers_ac38(
 async def test_radiation_sol_coverage_is_live_time_over_an_lmst_hour_capped_at_one_ac38(
     client: httpx.AsyncClient, clean_db: Factory, live_s: float, coverage: float
 ) -> None:
-    await insert_daily(clean_db, 100, hourly_revision=1)
+    await insert_daily(clean_db, 100, hourly_revision=REV)
     await insert_hours(
         clean_db,
         100,
@@ -191,7 +191,7 @@ async def test_radiation_sol_rounding_of_hour_values_ac38(
     expected: tuple[float, float, float],
 ) -> None:
     """Dose to 0.01, count rate = bu_count / live_s to 0.001; the doses stay uGy/h (no x24)."""
-    await insert_daily(clean_db, 100, hourly_revision=1)
+    await insert_daily(clean_db, 100, hourly_revision=REV)
     await insert_hours(
         clean_db,
         100,
@@ -215,7 +215,7 @@ async def test_radiation_sol_rounding_of_hour_values_ac38(
 async def test_radiation_sol_hours_of_a_sol_with_many_hours_are_in_order_ac38(
     client: httpx.AsyncClient, clean_db: Factory
 ) -> None:
-    await insert_daily(clean_db, 100, hourly_revision=1)
+    await insert_daily(clean_db, 100, hourly_revision=REV)
     rows = [
         {
             "hour": h,
@@ -240,7 +240,7 @@ async def test_radiation_sol_hours_of_a_sol_with_many_hours_are_in_order_ac38(
 async def test_radiation_sol_carries_the_timing_flag_and_the_source_of_the_sol_ac38(
     client: httpx.AsyncClient, clean_db: Factory
 ) -> None:
-    await insert_daily(clean_db, 10, timing_caveat=True, hourly_revision=1)
+    await insert_daily(clean_db, 10, timing_caveat=True, hourly_revision=REV)
 
     body = (await client.get(url(10))).json()
 
@@ -252,7 +252,7 @@ async def test_radiation_sol_carries_the_timing_flag_and_the_source_of_the_sol_a
 async def test_radiation_sol_zero_is_a_valid_sol_ac38(
     client: httpx.AsyncClient, clean_db: Factory
 ) -> None:
-    await insert_daily(clean_db, 0, hourly_revision=1)
+    await insert_daily(clean_db, 0, hourly_revision=REV)
 
     response = await client.get(url(0))
 
@@ -264,7 +264,7 @@ async def test_radiation_sol_zero_is_a_valid_sol_ac38(
 async def test_radiation_sol_rover_id_is_case_insensitive_ac38(
     client: httpx.AsyncClient, clean_db: Factory
 ) -> None:
-    await insert_daily(clean_db, 100, hourly_revision=1)
+    await insert_daily(clean_db, 100, hourly_revision=REV)
 
     response = await client.get(url(100, "CURIOSITY"))
 
@@ -295,7 +295,7 @@ async def test_radiation_sol_rover_without_radiation_is_not_found_ac39(
     client: httpx.AsyncClient, clean_db: Factory, rover: str
 ) -> None:
     """AC-39: `/rovers/perseverance/radiation/1` -> `404 not_found`."""
-    await insert_daily(clean_db, 1, hourly_revision=1)
+    await insert_daily(clean_db, 1, hourly_revision=REV)
 
     assert_error(await client.get(url(1, rover)), 404, "not_found")
 
@@ -364,8 +364,8 @@ async def test_radiation_sol_without_hours_has_null_hours_ac40(
 async def test_radiation_sol_with_a_rejected_time_has_null_hours_ac40(
     client: httpx.AsyncClient, clean_db: Factory, reason: str
 ) -> None:
-    """AC-40: `hourly_revision` 1 and `hourly_reject` set (ADR-7) -> `200`, `hours: null`."""
-    await seed_4843(clean_db, hourly_revision=1, hourly_reject=reason, hourly_dropped=3)
+    """AC-40: the current revision and `hourly_reject` set (ADR-7) -> `200`, `hours: null`."""
+    await seed_4843(clean_db, hourly_revision=REV, hourly_reject=reason, hourly_dropped=3)
 
     response = await client.get(url(4843))
 
@@ -378,8 +378,8 @@ async def test_radiation_sol_with_a_rejected_time_has_null_hours_ac40(
 async def test_radiation_sol_calculated_but_without_hour_rows_has_24_empty_hours_ac40(
     client: httpx.AsyncClient, clean_db: Factory
 ) -> None:
-    """AC-40: `hourly_revision` 1, no reject, no rows -> 24 empty hours (not `null`)."""
-    await seed_4843(clean_db, hourly_revision=1, hourly_dropped=3)
+    """AC-40: the current `hourly_revision`, no reject, no rows -> 24 empty hours (not `null`)."""
+    await seed_4843(clean_db, hourly_revision=REV, hourly_dropped=3)
 
     body = (await client.get(url(4843))).json()
 
@@ -390,7 +390,7 @@ async def test_radiation_sol_hours_are_null_for_a_rejected_sol_even_with_stale_r
     client: httpx.AsyncClient, clean_db: Factory
 ) -> None:
     """A rejected sol has no hours: stray rows are not shown (ADR-7: no half pictures)."""
-    await seed_4843(clean_db, hourly_revision=1, hourly_reject="overlap", hourly_dropped=3)
+    await seed_4843(clean_db, hourly_revision=REV, hourly_reject="overlap", hourly_dropped=3)
     await insert_hours(clean_db, 4843, [HOUR_0_4843])
 
     assert (await client.get(url(4843))).json()["hours"] is None
@@ -409,7 +409,7 @@ async def test_radiation_sol_success_is_cacheable_for_an_hour_ac47(
     elif state == "null-hours":
         await seed_4843(clean_db)
     else:
-        await seed_4843(clean_db, hourly_revision=1)
+        await seed_4843(clean_db, hourly_revision=REV)
 
     response = await client.get(url(4843))
 

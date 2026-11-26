@@ -13,6 +13,7 @@ from sqlalchemy import text
 from tests._rad import (
     F_4842,
     F_4843,
+    REV,
     Factory,
     RadHost,
     fixture_host,
@@ -69,7 +70,7 @@ async def test_export_has_version_2_hourly_lines_and_the_new_daily_keys_ac46(
     dailies = {d["sol"]: d for d in lines if d["t"] == "daily"}
     for daily in dailies.values():
         assert {"hourly_revision", "hourly_reject", "hourly_dropped"} <= set(daily)
-    assert dailies[4843]["hourly_revision"] == 1 and dailies[4843]["hourly_reject"] is None
+    assert dailies[4843]["hourly_revision"] == REV and dailies[4843]["hourly_reject"] is None
     assert dailies[4842]["hourly_reject"] == "off_sol"
 
 

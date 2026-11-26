@@ -1,6 +1,6 @@
 """Hourly RAD radiation in the loader: `rad sync` and `rad sync --reprocess` (stage 22, phase C).
 
-Spec: docs/proposals/sol-conditions.md, AC-41 ... AC-44, AC-52 (offline part), AC-58 (loader
+Spec: docs/proposals/sol-conditions.md, AC-41 ... AC-44, AC-59, AC-52 (offline part), AC-58 (loader
 part). The PDS host is the respx-based `tests/_rad.RadHost`; asyncio sleeps are faked.
 "Before stage 22" databases are made by `reset_hourly`: the sols are loaded normally, then
 `hourly_revision` goes back to 0 and the hours are deleted.
@@ -19,11 +19,15 @@ from sqlalchemy import text
 from app.repositories import rad as rad_repo
 from tests._rad import (
     CHECKSUMS,
+    F_120,
+    F_350,
     F_1649_A,
     F_1649_B,
+    F_1649_C,
     F_4842,
     F_4843,
     F_SOL10,
+    REV,
     TIMING,
     Factory,
     RadHost,
@@ -38,6 +42,7 @@ from tests._rad import (
     rel_path,
     reset_hourly,
     run_rad,
+    set_revision,
     synthetic_host,
     synthetic_name,
     synthetic_path,
@@ -97,12 +102,12 @@ def paths_of(host: RadHost) -> list[str]:
 async def test_sync_new_sol_stores_daily_row_hours_and_revision_together_ac44(
     host_4842_4843: RadHost, clean_db: Factory
 ) -> None:
-    """AC-44: sol 4843 -> one hour row (hour 0, observations 0 and 2), `hourly_revision` 1."""
+    """AC-44: sol 4843 -> one hour row (hour 0, observations 0 and 2), the current revision."""
     assert await sync_two() == 0
 
     row = await daily_row(clean_db, 4843)
     assert row is not None
-    assert (row["hourly_revision"], row["hourly_reject"], row["hourly_dropped"]) == (1, None, 1)
+    assert (row["hourly_revision"], row["hourly_reject"], row["hourly_dropped"]) == (REV, None, 1)
     (hour,) = await rad_hourly(clean_db, 4843)
     assert hour["hour"] == 0
     assert hour["n_obs"] == 2
@@ -120,7 +125,7 @@ async def test_sync_sol_with_the_time_of_another_sol_is_rejected_off_sol_ac44(
 
     row = await daily_row(clean_db, 4842)
     assert row is not None
-    assert (row["hourly_revision"], row["hourly_reject"]) == (1, "off_sol")
+    assert (row["hourly_revision"], row["hourly_reject"]) == (REV, "off_sol")
     assert row["hourly_dropped"] == row["n_used"] == 3
     assert await rad_hourly(clean_db, 4842) == []
 
@@ -137,7 +142,7 @@ async def test_sync_fixture_sol_10_has_the_hours_0_and_23_and_one_dropped_ac44(
     row = await daily_row(clean_db, 10)
     assert row is not None
     assert (row["n_used"], row["n_dropped_low_rate"]) == (3, 1)
-    assert (row["hourly_revision"], row["hourly_reject"], row["hourly_dropped"]) == (1, None, 1)
+    assert (row["hourly_revision"], row["hourly_reject"], row["hourly_dropped"]) == (REV, None, 1)
     hours = await rad_hourly(clean_db, 10)
     assert [(h["hour"], h["n_obs"], h["bu_count"]) for h in hours] == [(0, 1, 7817), (23, 1, 7707)]
     assert [h["live_s"] for h in hours] == [960.0, 960.0]
@@ -157,7 +162,7 @@ async def test_sync_fixture_sol_1649_is_rejected_off_sol_and_keeps_its_day_ac44(
     assert row is not None
     assert (row["n_used"], row["n_dropped_qc"]) == (3, 1)
     assert (row["hourly_revision"], row["hourly_reject"], row["hourly_dropped"]) == (
-        1,
+        REV,
         "off_sol",
         3,
     )
@@ -244,7 +249,7 @@ async def test_sync_mixed_sol_hours_hold_only_what_the_day_counted_ac44(
         row["n_dropped_invalid"],
     ) == (6, 1, 1, 1)
     assert row["hourly_dropped"] == 2
-    assert (row["hourly_revision"], row["hourly_reject"]) == (1, None)
+    assert (row["hourly_revision"], row["hourly_reject"]) == (REV, None)
     hours = await rad_hourly(clean_db, 4843)
     assert [(h["hour"], h["n_obs"]) for h in hours] == [(0, 2), (1, 2)]
     # The identities of AC-37, in SQL terms.
@@ -293,7 +298,7 @@ async def test_reprocess_two_sols_asks_two_lists_and_two_files_without_probes_ac
 async def test_reprocess_writes_the_hours_and_the_revision_ac41(
     host_4842_4843: RadHost, clean_db: Factory
 ) -> None:
-    """AC-41: 4843 gets hour 0 and `hourly_dropped` 1; 4842 gets `off_sol`; both revision 1."""
+    """AC-41: 4843 gets hour 0 and `hourly_dropped` 1, 4842 `off_sol`; both the current revision."""
     await load_and_reset_two(clean_db, host_4842_4843)
 
     assert await sync_two("--reprocess") == 0
@@ -302,11 +307,11 @@ async def test_reprocess_writes_the_hours_and_the_revision_ac41(
     row_4842 = await daily_row(clean_db, 4842)
     assert row_4843 is not None and row_4842 is not None
     assert (row_4843["hourly_revision"], row_4843["hourly_reject"], row_4843["hourly_dropped"]) == (
-        1,
+        REV,
         None,
         1,
     )
-    assert (row_4842["hourly_revision"], row_4842["hourly_reject"]) == (1, "off_sol")
+    assert (row_4842["hourly_revision"], row_4842["hourly_reject"]) == (REV, "off_sol")
     hours = await rad_hourly(clean_db)
     assert [(h["sol"], h["hour"], h["n_obs"]) for h in hours] == [(4843, 0, 2)]
 
@@ -359,7 +364,7 @@ async def test_reprocess_with_a_duplicate_group_downloads_the_primary_file_only_
     assert host.file_calls(P1649_A) == []
     row = await daily_row(clean_db, 1649)
     assert row is not None
-    assert (row["hourly_revision"], row["hourly_reject"]) == (1, "off_sol")
+    assert (row["hourly_revision"], row["hourly_reject"]) == (REV, "off_sol")
     after = {f["path"]: (f["status"], f["role"]) for f in await rad_files(clean_db)}
     assert after == statuses
 
@@ -378,7 +383,7 @@ async def test_reprocess_early_format_sol_gets_its_hours_ac41(
 
     assert await rad_hourly(clean_db, 10) == hours
     row = await daily_row(clean_db, 10)
-    assert row is not None and row["hourly_revision"] == 1
+    assert row is not None and row["hourly_revision"] == REV
 
 
 async def test_reprocess_range_without_sols_in_the_plan_downloads_nothing_ac41(
@@ -404,7 +409,7 @@ async def test_reprocess_touches_only_the_sols_in_the_range_ac41(
 
     assert code == 0
     assert [r.path for r in host_4842_4843.calls("files")] == [P4843]
-    assert (await daily_row(clean_db, 4843))["hourly_revision"] == 1  # type: ignore[index]
+    assert (await daily_row(clean_db, 4843))["hourly_revision"] == REV  # type: ignore[index]
     assert (await daily_row(clean_db, 4842))["hourly_revision"] == 0  # type: ignore[index]
 
 
@@ -450,7 +455,138 @@ async def test_reprocess_applies_the_dose_filter_to_the_day_and_updates_it_ac58(
     assert row is not None
     assert (row["dose_b_min"], row["n_used"], row["n_dropped_invalid"]) == (6.0, 6, 1)
     assert row["updated_at"] > datetime(2026, 11, 1, tzinfo=UTC)
-    assert row["hourly_revision"] == 1
+    assert row["hourly_revision"] == REV
+
+
+# --- AC-59: revision 2 (ADR-7 revision 3): conflicting observations leave the hours ----------
+
+P120 = rel_path(F_120)
+P350 = rel_path(F_350)
+P1649_C = rel_path(F_1649_C)
+
+
+async def make_old_revision(factory: Factory, *sols: int) -> None:
+    """The state of revision 1: the sol was rejected for `overlap`, no hours, old revision."""
+    for sol in sols:
+        await set_revision(factory, 1, "overlap", sol=sol)
+    async with factory() as session:
+        await session.execute(
+            text("DELETE FROM rad_hourly WHERE sol = ANY(:sols)"), {"sols": list(sols)}
+        )
+        await session.execute(
+            text("UPDATE rad_daily SET hourly_dropped = n_used WHERE sol = ANY(:sols)"),
+            {"sols": list(sols)},
+        )
+        await session.commit()
+
+
+async def test_sync_real_sols_120_and_350_get_hours_with_the_conflicting_dropped_ac59(
+    make_host: Any, clean_db: Factory
+) -> None:
+    """AC-59: the real (trimmed) files of sols 120 and 350 are accepted: revision 2, no reject,
+    `hourly_dropped` 3 each (the conflicting blocks and the one of the next sol)."""
+    make_host(F_120, F_350)
+
+    assert await run_rad("sync", "--from-sol", "120", "--to-sol", "350") == 0
+
+    for sol, n_used, n_hours in ((120, 22, 19), (350, 26, 23)):
+        row = await daily_row(clean_db, sol)
+        assert row is not None
+        assert (row["n_used"], row["hourly_revision"], row["hourly_reject"]) == (n_used, 2, None)
+        assert row["hourly_dropped"] == 3
+        hours = await rad_hourly(clean_db, sol)
+        assert sum(h["n_obs"] for h in hours) == n_hours
+        assert sum(h["n_obs"] for h in hours) + row["hourly_dropped"] == row["n_used"]
+
+
+async def test_sync_real_sol_1649_with_interleaved_streams_is_rejected_overlap_ac59(
+    make_host: Any, clean_db: Factory
+) -> None:
+    """AC-59: the interleaved 1649 file: the day stays, no hours, `overlap`, all 22 dropped."""
+    make_host(F_1649_C)
+
+    assert await run_rad("sync", "--from-sol", "1649", "--to-sol", "1649") == 0
+
+    row = await daily_row(clean_db, 1649)
+    assert row is not None
+    assert (row["n_used"], row["hourly_revision"], row["hourly_reject"]) == (22, 2, "overlap")
+    assert row["hourly_dropped"] == 22
+    assert await rad_hourly(clean_db, 1649) == []
+
+
+async def test_reprocess_takes_the_sols_of_revision_1_and_writes_revision_2_ac59(
+    make_host: Any, clean_db: Factory
+) -> None:
+    """AC-59: sols 120 and 350 stand at revision 1 (rejected `overlap` by the old rule); sol 10 is
+    already at revision 2. `--reprocess` reads the two files only and writes 2 for them."""
+    host = make_host(F_SOL10, F_120, F_350)
+    assert await run_rad("sync", "--from-sol", "10", "--to-sol", "350") == 0
+    await make_old_revision(clean_db, 120, 350)
+    ten_before = await daily_row(clean_db, 10)
+    host.requests.clear()
+
+    code = await run_rad("sync", "--reprocess", "--from-sol", "10", "--to-sol", "350")
+
+    assert code == 0
+    assert [r.path for r in host.calls("files")] == [P120, P350]  # ascending; sol 10 is not read
+    assert host.calls("probes") == []
+    revisions = {r["sol"]: r["hourly_revision"] for r in await rad_daily(clean_db)}
+    assert revisions == {10: 2, 120: 2, 350: 2}
+    for sol in (120, 350):
+        row = await daily_row(clean_db, sol)
+        assert row is not None
+        assert (row["hourly_reject"], row["hourly_dropped"]) == (None, 3)
+        assert len(await rad_hourly(clean_db, sol)) > 0
+    assert await daily_row(clean_db, 10) == ten_before
+
+
+async def test_reprocess_of_revision_1_keeps_the_daily_values_and_updated_at_ac59(
+    make_host: Any, clean_db: Factory
+) -> None:
+    """AC-59: the daily values of a sol do not change with the new hours rule."""
+    make_host(F_120, F_350)
+    assert await run_rad("sync", "--from-sol", "120", "--to-sol", "350") == 0
+    before = {sol: await daily_row(clean_db, sol) for sol in (120, 350)}
+    await make_old_revision(clean_db, 120, 350)
+
+    assert await run_rad("sync", "--reprocess", "--from-sol", "120", "--to-sol", "350") == 0
+
+    for sol in (120, 350):
+        assert without_hourly(await daily_row(clean_db, sol)) == without_hourly(before[sol])
+
+
+async def test_reprocess_again_after_revision_2_asks_only_the_lists_ac59(
+    make_host: Any, clean_db: Factory
+) -> None:
+    """AC-59: nothing is below the current revision any more -> two lists, no file."""
+    host = make_host(F_120, F_350)
+    assert await run_rad("sync", "--from-sol", "120", "--to-sol", "350") == 0
+    await make_old_revision(clean_db, 120, 350)
+    assert await run_rad("sync", "--reprocess", "--from-sol", "120", "--to-sol", "350") == 0
+    host.requests.clear()
+
+    assert await run_rad("sync", "--reprocess", "--from-sol", "120", "--to-sol", "350") == 0
+
+    assert sorted(paths_of(host)) == [CHECKSUMS, TIMING]
+
+
+async def test_reprocess_revision_1_sol_that_is_still_rejected_gets_revision_2_ac59(
+    make_host: Any, clean_db: Factory
+) -> None:
+    """AC-59: a sol at revision 1 whose conflicts exceed the limit stays `overlap`, now at 2."""
+    make_host(F_1649_C)
+    assert await run_rad("sync", "--from-sol", "1649", "--to-sol", "1649") == 0
+    await set_revision(clean_db, 1, "overlap")
+
+    assert await run_rad("sync", "--reprocess", "--from-sol", "1649", "--to-sol", "1649") == 0
+
+    row = await daily_row(clean_db, 1649)
+    assert row is not None
+    assert (row["hourly_revision"], row["hourly_reject"], row["hourly_dropped"]) == (
+        2,
+        "overlap",
+        22,
+    )
 
 
 # --- AC-42: the monthly timer does not re-download the history -------------------------------
@@ -486,7 +622,7 @@ async def test_sync_without_reprocess_still_handles_new_and_changed_sols_fully_a
     assert await sync_two() == 0
 
     assert [r.path for r in host_4842_4843.calls("files")] == [P4843]
-    assert (await daily_row(clean_db, 4843))["hourly_revision"] == 1  # type: ignore[index]
+    assert (await daily_row(clean_db, 4843))["hourly_revision"] == REV  # type: ignore[index]
     assert (await daily_row(clean_db, 4842))["hourly_revision"] == 0  # type: ignore[index]
     assert [(h["sol"], h["hour"]) for h in await rad_hourly(clean_db)] == [(4843, 0)]
 
@@ -505,7 +641,7 @@ async def interrupted(*argv: str) -> int | None:
 async def test_reprocess_ctrl_c_keeps_the_done_sols_and_the_next_run_goes_on_ac43(
     make_host: Any, clean_db: Factory
 ) -> None:
-    """AC-43: sols 10 and 4842 are done (revision 1), 4843 was in work; the repeat reads it."""
+    """AC-43: sols 10 and 4842 are done (current revision), 4843 was in work."""
     host = make_host(F_SOL10, F_4842, F_4843)
     assert await run_rad("sync") == 0
     await reset_hourly(clean_db)
@@ -516,7 +652,7 @@ async def test_reprocess_ctrl_c_keeps_the_done_sols_and_the_next_run_goes_on_ac4
 
     assert code != 0
     revisions = {r["sol"]: r["hourly_revision"] for r in await rad_daily(clean_db)}
-    assert revisions == {10: 1, 4842: 1, 4843: 0}
+    assert revisions == {10: REV, 4842: REV, 4843: 0}
     assert sorted({h["sol"] for h in await rad_hourly(clean_db)}) == [10]
     host.fail.clear()
     host.requests.clear()
@@ -525,7 +661,7 @@ async def test_reprocess_ctrl_c_keeps_the_done_sols_and_the_next_run_goes_on_ac4
 
     assert [r.path for r in host.calls("files")] == [P4843]  # 10 and 4842 are not read again
     revisions = {r["sol"]: r["hourly_revision"] for r in await rad_daily(clean_db)}
-    assert revisions == {10: 1, 4842: 1, 4843: 1}
+    assert revisions == {10: REV, 4842: REV, 4843: REV}
     assert sorted({h["sol"] for h in await rad_hourly(clean_db)}) == [10, 4843]
 
 
@@ -557,7 +693,7 @@ async def test_reprocess_ctrl_c_inside_the_sol_transaction_rolls_the_sol_back_ac
     assert (row["hourly_revision"], row["dose_b_mean"]) == (0, 99)
     assert await rad_hourly(clean_db, 4843) == []
     done = await daily_row(clean_db, 4842)
-    assert done is not None and done["hourly_revision"] == 1
+    assert done is not None and done["hourly_revision"] == REV
     monkeypatch.setattr(rad_repo, "replace_hourly", real)
     host_4842_4843.requests.clear()
 
@@ -565,7 +701,7 @@ async def test_reprocess_ctrl_c_inside_the_sol_transaction_rolls_the_sol_back_ac
 
     assert [r.path for r in host_4842_4843.calls("files")] == [P4843]
     row = await daily_row(clean_db, 4843)
-    assert row is not None and row["hourly_revision"] == 1
+    assert row is not None and row["hourly_revision"] == REV
     assert row["dose_b_mean"] != 99
 
 
@@ -580,7 +716,7 @@ async def test_reprocess_a_failing_file_does_not_stop_the_other_sols_and_a_sync_
     code = await sync_two("--reprocess")
 
     assert code == 1
-    assert (await daily_row(clean_db, 4843))["hourly_revision"] == 1  # type: ignore[index]
+    assert (await daily_row(clean_db, 4843))["hourly_revision"] == REV  # type: ignore[index]
     assert (await daily_row(clean_db, 4842))["hourly_revision"] == 0  # type: ignore[index]
     host_4842_4843.fail.clear()
     host_4842_4843.requests.clear()
@@ -588,7 +724,7 @@ async def test_reprocess_a_failing_file_does_not_stop_the_other_sols_and_a_sync_
     assert await sync_two() == 0
 
     assert [r.path for r in host_4842_4843.calls("files")] == [P4842]
-    assert (await daily_row(clean_db, 4842))["hourly_revision"] == 1  # type: ignore[index]
+    assert (await daily_row(clean_db, 4842))["hourly_revision"] == REV  # type: ignore[index]
 
 
 # --- the repository --------------------------------------------------------------------------

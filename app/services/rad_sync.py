@@ -25,6 +25,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequenc
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
+from fractions import Fraction
 from typing import Any, Literal
 
 from sqlalchemy import func, select
@@ -81,8 +82,11 @@ MAX_ERROR_LENGTH = 500
 # local day number (floor of MSD + lon / 360) of sol 0.
 CURIOSITY_LON_E = 137.4
 CURIOSITY_SOL0_MSD = 49269
-# Two used observations of a sol may overlap by this much (s) before the hours are refused.
+# An observation may start this much (s) before the end of the last accepted one without being
+# a conflicting one.
 OVERLAP_TOLERANCE_S = 60.0
+# More conflicting observations than this share of the sol's observations refuse its hours.
+MAX_OVERLAP_DROPPED_SHARE = 0.10
 # The share of the used observations that must fall into the sol (by UTC) for it to have hours.
 MIN_ON_SOL_SHARE = 0.5
 # A dose of B or E below this (uGy/h) at QC 0 is not plausible (the norm is 6.6-13.1).
@@ -91,7 +95,7 @@ MIN_DOSE_UGY_H = 1.0
 __all__ = ["HOUR_LIVE_S"]
 MAX_SMALLINT = 32767
 # The revision of the hourly calculation; ``rad sync --reprocess`` redoes sols below it.
-RAD_HOURLY_REVISION = 1
+RAD_HOURLY_REVISION = 2
 
 Sleep = Callable[[float], Awaitable[None]]
 
@@ -316,13 +320,24 @@ def _timed(obs: RadObservation, file_sol: int) -> _Timed | None:
     return _Timed(obs, obs.start_utc, duration, hour)
 
 
-def _overlaps(timed: Sequence[_Timed]) -> bool:
-    """Neighbours by start that overlap by more than ``OVERLAP_TOLERANCE_S``."""
-    ordered = sorted(timed, key=lambda item: item.start)
-    return any(
-        (after.start - before.start).total_seconds() < before.duration - OVERLAP_TOLERANCE_S
-        for before, after in zip(ordered, ordered[1:], strict=False)
-    )
+def _split_conflicts(timed: Sequence[_Timed]) -> tuple[list[_Timed], list[_Timed]]:
+    """Split into (accepted, conflicting) in one pass over the observations sorted by start.
+
+    Equal starts are ordered by the block number (``RadObservation.index``). An
+    observation conflicts when it starts earlier than the last *accepted* one ends, less
+    ``OVERLAP_TOLERANCE_S``; a conflicting one never becomes the last accepted.
+    """
+    accepted: list[_Timed] = []
+    conflicting: list[_Timed] = []
+    for item in sorted(timed, key=lambda t: (t.start, t.obs.index)):
+        if accepted:
+            last = accepted[-1]
+            gap = (item.start - last.start).total_seconds()
+            if gap < last.duration - OVERLAP_TOLERANCE_S:
+                conflicting.append(item)
+                continue
+        accepted.append(item)
+    return accepted, conflicting
 
 
 def combine_hours(used: Sequence[RadObservation], file_sol: int) -> HourlyResult:
@@ -331,20 +346,24 @@ def combine_hours(used: Sequence[RadObservation], file_sol: int) -> HourlyResult
     An observation belongs to the hour of its middle (start + duration / 2 by UTC). Those whose
     middle is in another sol or whose start is unreadable are ``dropped`` (they stay in the
     daily summary). The hours of the whole sol are refused (``reject``) when fewer than
-    ``MIN_ON_SOL_SHARE`` of the used observations are in the sol (``off_sol``) or two of them
-    overlap by more than ``OVERLAP_TOLERANCE_S`` (``overlap``): the times are then contradictory.
+    ``MIN_ON_SOL_SHARE`` of the used observations are in the sol (``off_sol``). Then the
+    observations of the sol that overlap an accepted one by more than ``OVERLAP_TOLERANCE_S``
+    (``_split_conflicts``) are left out of the hours and counted in ``dropped``; when they are
+    more than ``MAX_OVERLAP_DROPPED_SHARE`` of the observations of the sol, the hours are
+    refused too (``overlap``): two interleaved streams, the times are contradictory.
     """
     placed = [item for obs in used if (item := _timed(obs, file_sol)) is not None]
     on_sol = [item for item in placed if item.hour is not None]
     if len(on_sol) < MIN_ON_SOL_SHARE * len(used):
         return HourlyResult([], len(used), "off_sol")
-    if _overlaps(on_sol):
+    accepted, conflicting = _split_conflicts(on_sol)
+    if len(conflicting) > Fraction(str(MAX_OVERLAP_DROPPED_SHARE)) * len(on_sol):
         return HourlyResult([], len(used), "overlap")
     by_hour: dict[int, list[RadObservation]] = defaultdict(list)
-    for item in on_sol:
+    for item in accepted:
         by_hour[item.hour or 0].append(item.obs)
     hours = [_hour_summary(hour, group) for hour, group in sorted(by_hour.items())]
-    return HourlyResult(hours, len(used) - len(on_sol), None)
+    return HourlyResult(hours, len(used) - len(accepted), None)
 
 
 def _hour_summary(hour: int, group: Sequence[RadObservation]) -> HourSummary:

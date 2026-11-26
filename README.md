@@ -80,7 +80,9 @@ Do not mix them.
   of detector B.
 - An hour without observations has `coverage: 0`, `observations: 0` and `null` values.
 - `hours: null` has two causes: hours were not computed for this sol, or the observation times of the sol
-  contradict each other (observations overlap, or fewer than half of them fall on this sol). The daily fields stay valid.
+  contradict each other (more than 10% of the observations overlap earlier ones, or fewer than half of them fall on
+  this sol). The daily fields stay valid. A single overlapping observation is left out of the hours but stays in the
+  daily summary.
 - `timing_caveat: true`: the dataset lists timing errors for this sol, so the hours may be shifted.
 - A sol with no summary answers `404 sol_not_found`; other rovers answer `404 not_found`.
 

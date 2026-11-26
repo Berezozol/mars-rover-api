@@ -30,6 +30,8 @@ import respx
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.services.rad_sync import RAD_HOURLY_REVISION
+
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "upstream" / "rad"
 HOST = "pds-ppi.igpp.ucla.edu"
 VOLUME = "MSL-M-RAD-3-RDR-V1.0"
@@ -43,13 +45,23 @@ CREDIT_RAD = "MSL RAD (SwRI) / NASA PDS Planetary Plasma Interactions Node, MSL-
 
 Factory = async_sessionmaker[AsyncSession]
 
+# The current revision of the hours (ADR-7 revision 3 made it 2); "revision 1" of the spec text
+# of stage 22 reads as this value in every test except the explicit AC-59 ones.
+REV = RAD_HOURLY_REVISION
+
 F_SOL10 = "RAD_RDR_2012_228_20_41_0010_V00.TXT"
 F_4843 = "RAD_RDR_2026_080_17_18_4843_V00.TXT"
 F_4842 = "RAD_RDR_2026_079_17_02_4842_V00.TXT"
 F_1649_A = "RAD_RDR_2017_085_15_54_1649_V00.TXT"  # earlier name, earlier CREATION_TIME
 F_1649_B = "RAD_RDR_2017_085_16_28_1649_V00.TXT"  # the later one: the primary file of the sol
+# ADR-7 revision 3 (stage 22): real files with conflicting observations, see the fixtures README.
+F_120 = "RAD_RDR_2012_341_21_28_0120_V00.TXT"  # accepted, conflicting 4 and 18, off-sol 43
+F_350 = "RAD_RDR_2013_212_05_04_0350_V00.TXT"  # accepted, conflicting 34 and 35, off-sol 85
+F_1649_C = "RAD_RDR_2017_086_17_39_1649_V00.TXT"  # interleaved streams: `overlap`; not in the list
 FOLDER = {
     10: "SOL_00000_00089",
+    120: "SOL_00090_00179",
+    350: "SOL_00270_00359",
     1649: "SOL_01649_01772",
     4842: "SOL_04710_04843",
     4843: "SOL_04710_04843",
@@ -687,6 +699,27 @@ async def reset_hourly(factory: Factory) -> None:
                 "UPDATE rad_daily SET hourly_revision = 0, hourly_reject = NULL, hourly_dropped = 0"
             )
         )
+        await session.commit()
+
+
+async def set_revision(
+    factory: Factory, revision: int, reject: str | None = None, *, sol: int | None = None
+) -> None:
+    """Pretend that the hours were computed by an older revision (rows stay, `reject` is set)."""
+    params: dict[str, Any] = {"rev": revision, "reject": reject}
+    async with factory() as session:
+        if sol is None:
+            await session.execute(
+                text("UPDATE rad_daily SET hourly_revision = :rev, hourly_reject = :reject"), params
+            )
+        else:
+            await session.execute(
+                text(
+                    "UPDATE rad_daily SET hourly_revision = :rev, hourly_reject = :reject "
+                    "WHERE sol = :sol"
+                ),
+                {**params, "sol": sol},
+            )
         await session.commit()
 
 

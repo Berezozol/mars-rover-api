@@ -515,10 +515,13 @@ def build_mmgis_fixtures(source_dir: Path = MMGIS_SOURCE_DIR, out_dir: Path = MM
 
 
 RAD_SOURCE_DIR = ROOT / "data" / "rad_sample"
+RAD_C5_DIR = ROOT / "data" / "rad_c5"
 RAD_DIR = FIXTURES_DIR / "rad"
 RAD_VOLUME_FOLDERS = {
     10: "SOL_00000_00089",
+    120: "SOL_00090_00179",
     222: "SOL_00180_00269",
+    350: "SOL_00270_00359",
     1649: "SOL_01649_01772",
     4842: "SOL_04710_04843",
     4843: "SOL_04710_04843",
@@ -560,8 +563,13 @@ def _rad_pick(
     return head, kept
 
 
-def build_rad_fixtures(source_dir: Path = RAD_SOURCE_DIR, out_dir: Path = RAD_DIR) -> None:
-    """Trim the local MSL RAD RDR samples (offline, no requests); see rad/README.md."""
+def build_rad_fixtures(
+    source_dir: Path = RAD_SOURCE_DIR, out_dir: Path = RAD_DIR, c5_dir: Path = RAD_C5_DIR
+) -> None:
+    """Trim the local MSL RAD RDR samples (offline, no requests); see rad/README.md.
+
+    ``c5_dir`` holds the three full files of the ADR-7 revision 3 analysis (sols 120, 350, 1649).
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
     files: dict[str, bytes] = {}
 
@@ -589,7 +597,33 @@ def build_rad_fixtures(source_dir: Path = RAD_SOURCE_DIR, out_dir: Path = RAD_DI
         head, blocks = _rad_pick(source_dir / name, {1: 60, 3: 60, 14: 60, 17: 60})
         files[name] = head + b"".join(blocks)
 
-    for name, data in files.items():
+    # Stage 22, ADR-7 revision 3: real files with a few conflicting observations (source defect:
+    # the UTC of 1-7 observations is 0.1-1.6 ks before the grid). Whole runs of neighbours are
+    # kept so that the share of conflicting observations stays below the 10 % limit.
+    # Sol 120 (2012, no OBS_DURATION): conflicts 4 (vs 3) and 18 (vs 17); 43 is on the next sol.
+    head, blocks = _rad_pick(
+        c5_dir / "RAD_RDR_2012_341_21_28_0120_V00.TXT", dict.fromkeys([*range(21), 43], 3)
+    )
+    files["RAD_RDR_2012_341_21_28_0120_V00.TXT"] = head + b"".join(blocks)
+    # Sol 350 (2013): 34 and 35 conflict, 33 starts 141 s after 34 but is accepted (compared with
+    # the last accepted observation, 32); 85 is on the next sol.
+    head, blocks = _rad_pick(
+        c5_dir / "RAD_RDR_2013_212_05_04_0350_V00.TXT", dict.fromkeys([*range(20, 45), 85], 3)
+    )
+    files["RAD_RDR_2013_212_05_04_0350_V00.TXT"] = head + b"".join(blocks)
+    # Sol 1649, the interleaved file (2017): 22 observations of the time-ordered run
+    # 79 ... 69, five of them conflicting. Not in CHECKSUMS.TXT (sol 1649 already has its pair).
+    head, blocks = _rad_pick(
+        c5_dir / "RAD_RDR_2017_086_17_39_1649_V00.TXT",
+        dict.fromkeys(
+            [79, 81, 83, 85, 87, 89, 91, 93, 51, 53, 55, 101, 57, 103, 59, 107, 61, 109]
+            + [111, 113, 115, 69],
+            3,
+        ),
+    )
+    unlisted = {"RAD_RDR_2017_086_17_39_1649_V00.TXT": head + b"".join(blocks)}
+
+    for name, data in {**files, **unlisted}.items():
         (out_dir / name).write_bytes(data)
         logger.info("wrote %s (%d bytes)", name, len(data))
 

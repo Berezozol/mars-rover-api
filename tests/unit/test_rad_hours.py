@@ -1,6 +1,6 @@
 """Hours of a RAD sol: `combine_hours` and the pieces around it (stage 22, phase C).
 
-Spec: docs/proposals/sol-conditions.md, AC-35 ... AC-37, AC-56, AC-57 (AC-58 is in
+Spec: docs/proposals/sol-conditions.md, AC-35 ... AC-37, AC-56, AC-57, AC-59 (AC-58 is in
 test_rad_combine.py, AC-34 in test_mars_time_lmst.py). `combine_hours(used, file_sol)` takes the
 observations that `combine_sol` counted and returns `HourlyResult(hours, dropped, reject)`; an
 hour is `HourSummary(hour, n_obs, live_s, dose_b_mean, dose_e_mean, bu_count)`. The hour is the
@@ -20,7 +20,10 @@ from app.services import rad_sync
 from app.services.rad_sync import combine_hours, combine_sol
 from app.sources.rad import RadObservation, RadParser
 from tests._rad import (
+    F_120,
+    F_350,
     F_1649_B,
+    F_1649_C,
     F_4843,
     F_SOL10,
     attr,
@@ -130,7 +133,8 @@ def in_sol_batch(*, n_in: int, n_out: int = 0, d: float = 961) -> list[Any]:
         ("MIN_ON_SOL_SHARE", 0.5),
         ("MIN_DOSE_UGY_H", 1.0),
         ("HOUR_LIVE_S", 3698.97),
-        ("RAD_HOURLY_REVISION", 1),
+        ("RAD_HOURLY_REVISION", 2),
+        ("MAX_OVERLAP_DROPPED_SHARE", 0.10),
     ],
 )
 def test_rad_sync_constants_have_the_values_of_the_spec(name: str, value: float) -> None:
@@ -456,87 +460,198 @@ def test_combine_hours_do_not_know_the_observations_the_day_dropped_ac37() -> No
     assert sum(attr(h, "n_obs") for h in hours_of(result)) + attr(result, "dropped") == 3
 
 
-# --- AC-56: overlapping observations -------------------------------------------------------------
+# --- AC-56 (revision 3): conflicting observations leave the hours, the sol stays ------------------
+
+GRID_STEP_S = 1024.0
+BASE = at(2026, 3, 21, 21, 0, 0)
 
 
-def two_obs(overlap_s: float, *, d: float | None = 961, live: float = 930.0) -> list[Any]:
-    """Two observations whose second one starts `overlap_s` seconds before the first one ends."""
-    first = at(2026, 3, 21, 21, 0, 0)
+def grid(
+    n: int = 20,
+    *,
+    shifts: dict[int, float] | None = None,
+    d: float | None = 961,
+    live: float = 930.0,
+) -> list[Any]:
+    """`n` observations (block `2 * i`) on a 1024 s step; `bu_count` is `1000 + i`.
+
+    `shifts[i] = s` moves observation `i` so that it starts `s` seconds before the end of the
+    regular observation `i - 1` (`s > 0` overlaps it, `s < 0` leaves a gap). Shifted
+    observations must not be neighbours. The `bu_count` of a shifted one is 1, so that the
+    sum of `bu_count` over the hours tells which observations are in them.
+    """
     length = d if d is not None else live
-    second = first + timedelta(seconds=length - overlap_s)
-    return [make_obs(0, first, d=d, live=live), make_obs(2, second, d=d, live=live)]
+    out = []
+    for i in range(n):
+        start = BASE + timedelta(seconds=GRID_STEP_S * i)
+        bu = 1000 + i
+        if shifts and i in shifts:
+            previous = BASE + timedelta(seconds=GRID_STEP_S * (i - 1))
+            start = previous + timedelta(seconds=length - shifts[i])
+            bu = 1
+        out.append(make_obs(2 * i, start, d=d, live=live, bu=bu))
+    return out
+
+
+def elsewhere(n: int) -> list[Any]:
+    """`n` observations of the previous sol (4842) by UTC, no overlaps among them."""
+    return [make_obs(100 + 2 * i, BASE + timedelta(seconds=1024 * i - SOL_S)) for i in range(n)]
+
+
+def n_in_hours(result: Any) -> int:
+    return sum(attr(h, "n_obs") for h in hours_of(result))
+
+
+def bu_in_hours(result: Any) -> int:
+    return sum(attr(h, "bu_count") for h in hours_of(result))
+
+
+def bu_sum(observations: list[Any], *, skip: tuple[int, ...] = ()) -> int:
+    """Sum of `bu_count` of the observations without the blocks in `skip` (block numbers)."""
+    return sum(attr(o, "bu_count") for o in observations if attr(o, "index") not in skip)
 
 
 @pytest.mark.parametrize("overlap_s", [61.0, 60.5, 120.0, 961.0], ids=["61", "60.5", "120", "same"])
-def test_combine_hours_overlap_above_the_tolerance_rejects_the_whole_sol_ac56(
+def test_combine_hours_one_conflicting_observation_is_left_out_and_the_sol_stays_ac56(
     overlap_s: float,
 ) -> None:
-    """AC-56: the second starts more than 60 s before the first ends -> `overlap`, no hours."""
-    used = two_obs(overlap_s)
+    """AC-56: 1 of 20 starts more than 60 s before the end of the previous one -> not in the
+    hours, `dropped` 1, the other 19 are in the hours, `reject` is `None`."""
+    used = grid(20, shifts={10: overlap_s})
 
     result = combine_hours(used, 4843)
 
-    assert attr(result, "reject") == "overlap"
-    assert hours_of(result) == []
-    assert attr(result, "dropped") == len(used)
+    assert attr(result, "reject") is None
+    assert attr(result, "dropped") == 1
+    assert n_in_hours(result) == 19
+    assert bu_in_hours(result) == bu_sum(used, skip=(20,))  # block 20 is the shifted one
 
 
 @pytest.mark.parametrize(
     "overlap_s",
-    [60.0, 59.0, 30.0, 0.0, -47.0, -300.0],
-    ids=["60", "59", "30", "touch", "gap47", "gap300"],
+    [60.0, 59.0, 30.0, 0.0, -47.0, -100.0],
+    ids=["60", "59", "30", "touch", "gap47", "gap100"],
 )
-def test_combine_hours_overlap_of_at_most_60_s_or_a_gap_is_accepted_ac56(
+def test_combine_hours_overlap_of_at_most_60_s_or_a_gap_is_not_a_conflict_ac56(
     overlap_s: float,
 ) -> None:
-    """AC-56: exactly 60 s of overlap or a gap -> the sol is accepted."""
-    result = combine_hours(two_obs(overlap_s), 4843)
+    """AC-56: exactly 60 s of overlap, less, or a gap -> the observation is in the hours."""
+    result = combine_hours(grid(20, shifts={10: overlap_s}), 4843)
 
     assert attr(result, "reject") is None
     assert attr(result, "dropped") == 0
-    assert sum(attr(h, "n_obs") for h in hours_of(result)) == 2
+    assert n_in_hours(result) == 20
 
 
-def test_combine_hours_overlap_is_found_whatever_the_input_order_ac56() -> None:
-    """AC-56: the observations are sorted by their start before the pairs are compared."""
-    used = two_obs(120.0)
+def test_combine_hours_the_boundary_is_60_s_exactly_ac56() -> None:
+    """AC-56: 60 s is accepted, a microsecond more is a conflict (`start - start_last < d - 60`)."""
+    accepted = combine_hours(grid(20, shifts={10: 60.0}), 4843)
+    conflicting = combine_hours(grid(20, shifts={10: 60.000001}), 4843)
 
-    assert attr(combine_hours(list(reversed(used)), 4843), "reject") == "overlap"
+    assert (attr(accepted, "dropped"), n_in_hours(accepted)) == (0, 20)
+    assert (attr(conflicting, "dropped"), n_in_hours(conflicting)) == (1, 19)
 
 
-def test_combine_hours_one_overlapping_pair_among_good_ones_rejects_the_sol_ac56() -> None:
-    base = at(2026, 3, 21, 20, 0, 0)
-    used = [
-        make_obs(0, base),
-        make_obs(2, base + timedelta(seconds=1008)),
-        make_obs(4, base + timedelta(seconds=2016)),
-        make_obs(6, base + timedelta(seconds=2016 + 961 - 200)),  # 200 s over the previous one
-        make_obs(8, base + timedelta(seconds=5000)),
+def test_combine_hours_conflict_is_found_whatever_the_input_order_ac56() -> None:
+    """AC-56: the observations are sorted by their start before they are compared."""
+    used = grid(20, shifts={10: 120.0})
+
+    result = combine_hours(list(reversed(used)), 4843)
+
+    assert shape(result) == shape(combine_hours(used, 4843))
+    assert attr(result, "dropped") == 1
+
+
+def test_combine_hours_the_later_one_of_the_pair_leaves_the_hours_ac56() -> None:
+    """The later start conflicts, even when its block number is the lower one."""
+    first = at(2026, 3, 21, 21, 0, 0)
+    pair = [
+        make_obs(10, first + timedelta(seconds=100), bu=1),  # later start, lower block
+        make_obs(12, first, bu=5000),  # earlier start, higher block: accepted
     ]
+    rest = [make_obs(20 + 2 * i, first + timedelta(seconds=3000 + 1024 * i)) for i in range(19)]
+
+    result = combine_hours(pair + rest, 4843)
+
+    assert attr(result, "dropped") == 1
+    assert bu_in_hours(result) == 5000 + bu_sum(rest)
+
+
+def test_combine_hours_next_is_compared_with_the_last_accepted_not_with_the_dropped_ac56() -> None:
+    """AC-56: A at 0, B at 100 s (conflicts with A), C at 950 s. C is 850 s after B (< 901: a
+    conflict if B counted) but 950 s after A (accepted): only B is out."""
+    a = at(2026, 3, 21, 21, 0, 0)
+    trio = [
+        make_obs(0, a, bu=1001),
+        make_obs(2, a + timedelta(seconds=100), bu=1),
+        make_obs(4, a + timedelta(seconds=950), bu=1003),
+    ]
+    tail = [make_obs(10 + 2 * i, a + timedelta(seconds=950 + 1024 * (i + 1))) for i in range(17)]
+
+    result = combine_hours(trio + tail, 4843)
+
+    assert attr(result, "reject") is None
+    assert attr(result, "dropped") == 1
+    assert n_in_hours(result) == 19
+    assert bu_in_hours(result) == 1001 + 1003 + bu_sum(tail)
+
+
+def test_combine_hours_a_run_of_conflicts_is_compared_with_the_same_accepted_ac56() -> None:
+    """A at 0; B and C start 100 and 400 s later: both overlap A and are out; D at 950 s is
+    accepted (against A, not against C). 2 of 28 are within the limit."""
+    a = at(2026, 3, 21, 21, 0, 0)
+    run = [
+        make_obs(0, a, bu=1001),
+        make_obs(2, a + timedelta(seconds=100), bu=1),
+        make_obs(4, a + timedelta(seconds=400), bu=1),
+        make_obs(6, a + timedelta(seconds=950), bu=1004),
+    ]
+    tail = [make_obs(10 + 2 * i, a + timedelta(seconds=950 + 1024 * (i + 1))) for i in range(24)]
+
+    result = combine_hours(run + tail, 4843)
+
+    assert attr(result, "reject") is None
+    assert attr(result, "dropped") == 2
+    assert bu_in_hours(result) == 1001 + 1004 + bu_sum(tail)
+
+
+@pytest.mark.parametrize("order", ["as-is", "reversed", "twins-last"])
+def test_combine_hours_equal_starts_are_ordered_by_the_block_number_ac56(order: str) -> None:
+    """AC-56: equal `start_utc` -> the lower block is accepted, the higher one conflicts,
+    whatever the order of the input."""
+    start = at(2026, 3, 21, 21, 0, 0)
+    twins = [make_obs(8, start, bu=1), make_obs(4, start, bu=5000)]
+    rest = [make_obs(20 + 2 * i, start + timedelta(seconds=1024 * (i + 1))) for i in range(19)]
+    used = {
+        "as-is": twins + rest,
+        "reversed": list(reversed(twins)) + rest,
+        "twins-last": rest + twins,
+    }[order]
 
     result = combine_hours(used, 4843)
 
-    assert attr(result, "reject") == "overlap"
-    assert hours_of(result) == []
-    assert attr(result, "dropped") == 5
+    assert attr(result, "dropped") == 1
+    assert bu_in_hours(result) == 5000 + bu_sum(rest)
 
 
-def test_combine_hours_the_overlap_is_measured_with_d_not_with_the_live_time_ac56() -> None:
-    """d = 961 s, live 930 s, the second starts 900 s after the first: 61 s over d (reject),
-    only 30 s over the live time."""
-    first = at(2026, 3, 21, 21, 0, 0)
-    used = [make_obs(0, first), make_obs(2, first + timedelta(seconds=900))]
+def test_combine_hours_the_conflict_is_measured_with_d_not_with_the_live_time_ac56() -> None:
+    """d = 961 s, live 930 s, the observation starts 900 s after the previous one: 61 s over d
+    (a conflict), only 30 s over the live time (not a conflict)."""
+    result = combine_hours(grid(20, shifts={10: 61.0}, d=961, live=930.0), 4843)
 
-    assert attr(combine_hours(used, 4843), "reject") == "overlap"
+    assert attr(result, "dropped") == 1
 
 
-def test_combine_hours_without_obs_duration_the_overlap_uses_the_live_time_ac56() -> None:
+def test_combine_hours_without_obs_duration_the_conflict_uses_the_live_time_ac56() -> None:
     """The early format: d is the live time (930 s here)."""
-    assert attr(combine_hours(two_obs(61.0, d=None, live=930.0), 4843), "reject") == "overlap"
-    assert attr(combine_hours(two_obs(60.0, d=None, live=930.0), 4843), "reject") is None
+    over = combine_hours(grid(20, shifts={10: 61.0}, d=None, live=930.0), 4843)
+    exact = combine_hours(grid(20, shifts={10: 60.0}, d=None, live=930.0), 4843)
+
+    assert attr(over, "dropped") == 1
+    assert attr(exact, "dropped") == 0
 
 
-def test_combine_hours_regular_spacing_of_the_fixtures_is_not_an_overlap_ac56() -> None:
+def test_combine_hours_regular_spacing_of_the_fixtures_is_not_a_conflict_ac56() -> None:
     """Real data: the shortest step is about 1008 s with d = 961 s (a gap of 47 s)."""
     base = at(2026, 3, 21, 18, 0, 0)
     used = [make_obs(i, base + timedelta(seconds=1008 * i)) for i in range(20)]
@@ -544,7 +659,176 @@ def test_combine_hours_regular_spacing_of_the_fixtures_is_not_an_overlap_ac56() 
     result = combine_hours(used, 4843)
 
     assert attr(result, "reject") is None
-    assert sum(attr(h, "n_obs") for h in hours_of(result)) == 20
+    assert attr(result, "dropped") == 0
+    assert n_in_hours(result) == 20
+
+
+def test_combine_hours_observations_of_other_sols_take_no_part_in_the_comparison_ac56() -> None:
+    """The off-sol observations are `dropped` first and are not compared with the others."""
+    result = combine_hours(grid(20) + elsewhere(4), 4843)
+
+    assert attr(result, "reject") is None
+    assert attr(result, "dropped") == 4
+    assert n_in_hours(result) == 20
+
+
+# --- AC-59 (revision 3): the limit of conflicting observations, off_sol first ---------------------
+
+
+def test_rad_sync_constants_of_revision_3_ac59() -> None:
+    """AC-59: the limit is 0.10 of the observations on the sol; the revision is 2."""
+    assert rad_sync.MAX_OVERLAP_DROPPED_SHARE == 0.10
+    assert rad_sync.RAD_HOURLY_REVISION == 2
+
+
+def test_combine_hours_two_of_twenty_conflicting_is_exactly_the_limit_and_accepted_ac59() -> None:
+    """AC-59: 2 of 20 = 10 % -> accepted, 18 in the hours, `dropped` 2."""
+    used = grid(20, shifts={5: 200.0, 12: 400.0})
+
+    result = combine_hours(used, 4843)
+
+    assert attr(result, "reject") is None
+    assert attr(result, "dropped") == 2
+    assert n_in_hours(result) == 18
+    assert bu_in_hours(result) == bu_sum(used, skip=(10, 24))
+
+
+def test_combine_hours_three_of_twenty_conflicting_rejects_the_sol_ac59() -> None:
+    """AC-59: 3 of 20 = 15 % -> `overlap`, no hours, `dropped` = all the used observations."""
+    result = combine_hours(grid(20, shifts={3: 200.0, 9: 200.0, 15: 200.0}), 4843)
+
+    assert attr(result, "reject") == "overlap"
+    assert hours_of(result) == []
+    assert attr(result, "dropped") == 20
+
+
+@pytest.mark.parametrize(
+    ("n_total", "n_conflicting", "reject"),
+    [(10, 1, None), (11, 1, None), (9, 1, "overlap"), (30, 3, None), (29, 3, "overlap")],
+    ids=["1-of-10", "1-of-11", "1-of-9", "3-of-30", "3-of-29"],
+)
+def test_combine_hours_the_limit_is_a_share_of_the_observations_on_the_sol_ac59(
+    n_total: int, n_conflicting: int, reject: str | None
+) -> None:
+    """AC-59: more than 10 % of the observations on the sol -> `overlap`; exactly 10 % is
+    accepted."""
+    shifts = {2 + 3 * k: 300.0 for k in range(n_conflicting)}
+
+    result = combine_hours(grid(n_total, shifts=shifts), 4843)
+
+    assert attr(result, "reject") == reject
+    if reject:
+        assert (hours_of(result), attr(result, "dropped")) == ([], n_total)
+    else:
+        assert attr(result, "dropped") == n_conflicting
+
+
+def test_combine_hours_the_share_is_of_the_observations_on_the_sol_not_of_all_used_ac59() -> None:
+    """AC-59: 3 conflicting of 20 on the sol + 10 elsewhere: 15 % of the sol (rejected), though
+    only 3 / 30 = 10 % of all used ones. `dropped` of a rejected sol is all the 30."""
+    used = grid(20, shifts={3: 200.0, 9: 200.0, 15: 200.0}) + elsewhere(10)
+
+    result = combine_hours(used, 4843)
+
+    assert attr(result, "reject") == "overlap"
+    assert hours_of(result) == []
+    assert attr(result, "dropped") == 30
+
+
+def test_combine_hours_two_conflicting_of_twenty_and_others_elsewhere_are_all_dropped_ac59() -> (
+    None
+):
+    """The mirror: 2 of 20 on the sol are within the limit; the 5 elsewhere and the 2
+    conflicting ones are `dropped` (7)."""
+    result = combine_hours(grid(20, shifts={5: 200.0, 12: 400.0}) + elsewhere(5), 4843)
+
+    assert attr(result, "reject") is None
+    assert attr(result, "dropped") == 7
+    assert n_in_hours(result) == 18
+
+
+def test_combine_hours_off_sol_is_checked_before_the_overlap_ac59() -> None:
+    """AC-59: fewer than half on the sol and conflicts among them -> `off_sol`, not `overlap`."""
+    inside = grid(5, shifts={2: 300.0, 4: 300.0})  # 2 of 5 conflicting: would be `overlap`
+
+    result = combine_hours(inside + elsewhere(7), 4843)
+
+    assert attr(result, "reject") == "off_sol"
+    assert hours_of(result) == []
+    assert attr(result, "dropped") == 12
+
+
+# --- AC-59: real files (ADR-7 revision 3, tests/fixtures/upstream/rad/README.md) ------------------
+
+
+def used_of(name: str) -> list[Any]:
+    """The observations that `combine_sol` counts for a fixture file."""
+    summary = combine_sol(parse(fixture(name)), 0.5)
+    assert summary is not None
+    return list(summary.used_observations)
+
+
+def test_combine_hours_real_sol_120_is_accepted_with_its_two_conflicts_dropped_ac59() -> None:
+    """AC-59: sol 120 (2012, C5 analysis): blocks 4 and 18 start 1.5 ks before the grid; block 43
+    is on the next sol. 22 used, 19 in the hours, `dropped` 3 (share 2 of 21)."""
+    used = used_of(F_120)
+    assert sorted(attr(o, "index") for o in used) == [*range(21), 43]
+
+    result = combine_hours(used, 120)
+
+    assert attr(result, "reject") is None
+    assert attr(result, "dropped") == 3
+    assert n_in_hours(result) == 19
+    assert bu_in_hours(result) == bu_sum(used, skip=(4, 18, 43))
+
+
+def test_combine_hours_real_sol_350_is_accepted_with_its_two_conflicts_dropped_ac59() -> None:
+    """AC-59: sol 350 (2013, C5 analysis): blocks 34 and 35 conflict; block 33 starts 141 s after
+    34 but is compared with the last accepted one (32) and stays; block 85 is on the next sol.
+    26 used, 23 in the hours, `dropped` 3 (share 2 of 25)."""
+    used = used_of(F_350)
+    assert sorted(attr(o, "index") for o in used) == [*range(20, 45), 85]
+
+    result = combine_hours(used, 350)
+
+    assert attr(result, "reject") is None
+    assert attr(result, "dropped") == 3
+    assert n_in_hours(result) == 23
+    assert bu_in_hours(result) == bu_sum(used, skip=(34, 35, 85))
+
+
+def test_combine_hours_real_sol_350_block_33_is_in_the_hours_ac59() -> None:
+    """Block 33 is the one that a comparison with the dropped block 34 would lose."""
+    used = used_of(F_350)
+    block_33 = next(o for o in used if attr(o, "index") == 33)
+    # 35 is dropped anyway; it is removed too so that 36 is not let in by the missing 33.
+    without = [o for o in used if attr(o, "index") not in (33, 35)]
+
+    difference = bu_in_hours(combine_hours(used, 350)) - bu_in_hours(combine_hours(without, 350))
+
+    assert difference == attr(block_33, "bu_count")
+
+
+def test_combine_hours_real_sol_1649_interleaved_streams_are_rejected_overlap_ac59() -> None:
+    """AC-59: the 1649 file with two interleaved streams (full file: 14 of 64 on the sol, 21.9 %;
+    the trimmed run: 5 of 22) -> `overlap`, no hours, all 22 `dropped`."""
+    used = used_of(F_1649_C)
+    assert len(used) == 22
+
+    result = combine_hours(used, 1649)
+
+    assert attr(result, "reject") == "overlap"
+    assert hours_of(result) == []
+    assert attr(result, "dropped") == 22
+
+
+def test_combine_hours_fixture_1649_pair_is_off_sol_not_overlap_ac59() -> None:
+    """The 1649 pair of stage 21 keeps 4 blocks: 1 of 3 used is on the sol (1 and 3 are on sol
+    1648 by UTC), so `off_sol` decides before the overlap; the `overlap` fixture of 1649 is the
+    `_086_17_39_` file."""
+    result = combine_hours(used_of(F_1649_B), 1649)
+
+    assert attr(result, "reject") == "off_sol"
 
 
 # --- AC-57: too few observations on the sol ------------------------------------------------------
