@@ -1,9 +1,10 @@
 # Production stack on the Contabo VPS (Ubuntu 24.04, Docker CE + compose plugin).
 # Caddy terminates HTTPS on the host network and proxies to http://127.0.0.1:8000.
 #
-# Live copy: /srv/mars/compose.yml, next to .env, Caddyfile, db-roles.sql, secrets/ and
-# backups/ (update.sh copies compose.yml, Caddyfile and db-roles.sql there from the repository
-# clone /srv/mars/repo). Runbook: deploy/README.md, "VPS (Contabo) + Caddy".
+# Live copy: /srv/mars/compose.yml, next to .env, Caddyfile, db-roles.sql, secrets/, backups/
+# and www/ (update.sh copies compose.yml, Caddyfile and db-roles.sql there from the repository
+# clone /srv/mars/repo; www/ holds the web interface files Caddy serves, one directory per
+# release). Runbook: deploy/README.md, "VPS (Contabo) + Caddy".
 #
 # The app image is built on the server from the clone and tagged with the commit
 # (mars-rover-api:<sha>); update.sh writes the tag to APP_TAG in .env.
@@ -119,6 +120,14 @@ services:
       # One-off containers (docker compose run --rm app python -m app.cli ...) do not start
       # the server, so they do not start a second scheduler.
       SYNC_ENABLED: ${SYNC_ENABLED:-true}
+      # Server-wide ceiling: above this many open connections or requests in flight uvicorn
+      # answers 503 "Service Unavailable" (text/plain, no Retry-After, no CORS headers) before
+      # the application sees the request. Open connections count too, idle keep-alive ones
+      # of Caddy included (closed by uvicorn after 5 s). Caddy does not cap its connections to
+      # the app (a cap let one slow reader hold every slot, deploy/README.md, "Edge limits"),
+      # so this is the ceiling for everything that reaches the app. The web interface files
+      # do not count against it: Caddy serves them itself.
+      UVICORN_LIMIT_CONCURRENCY: ${UVICORN_LIMIT_CONCURRENCY:-384}
     # Cache of converted Spirit/Opportunity full-size images (MER_IMAGE_CACHE_*, see .env).
     # Named volume, so that uid 10001 (user app) can write to it; it can be deleted at any
     # time (images are converted again on demand).
@@ -175,6 +184,11 @@ services:
     network_mode: host
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Web interface files: www/<tag>/ per release, www/current -> the active one (update.sh,
+      # publish-frontend.sh). A directory, so a new release needs no Caddy restart. Created by
+      # update.sh before the first start; without www/current/index.html the app serves the
+      # interface itself.
+      - ./www:/srv/www:ro
       # Certificates and the ACME account: keep this volume, losing it means re-issuing
       # (Let's Encrypt rate limits apply).
       - caddy_data:/data
@@ -188,7 +202,15 @@ services:
       - NET_BIND_SERVICE
     security_opt:
       - no-new-privileges:true
-    mem_limit: 512m
+    # 2g (was 512m): clients that send requests and read a little, then stop, hold about
+    # 0.22-0.44 MB of Caddy memory per connection for static files and answers up to 190 KB, and
+    # up to 1.4 MB for an 8 MB answer (stand measurements, deploy/README.md "Edge limits"). The
+    # nftables ceiling of 1500 connections in total (limits.sh, CONN_MAX_ALL) is about 660 MB
+    # at 0.44 MB and 2.1 GB only if every connection held an 8 MB answer, which the app's
+    # per-address concurrency limits do not allow. GOMEMLIMIT is not set: most of that memory
+    # is kernel socket buffers, which the Go limit does not see. Host budget: db 4g + app 3g +
+    # caddy 2g = 9g of 12 GB.
+    mem_limit: 2g
     pids_limit: 512
     logging: *logging
 

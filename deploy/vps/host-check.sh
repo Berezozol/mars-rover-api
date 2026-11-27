@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Host and stack check for Telegram alerts (systemd timer mars-hostcheck.timer, every 5 min).
 # Checks: disk, memory, the three containers (running and healthy), /health of the app,
-# HTTPS through Caddy with real certificate validation, age of the newest backup.
+# the nftables per-client limits (table inet mars_limits loaded), HTTPS through Caddy with real
+# certificate validation, age of the newest backup.
 # Alert rules: a message when the set of problems changes, a reminder every 6 hours while it
 # lasts, and "OK again" when it clears. The exit code is always 0 unless the script itself
 # breaks (a failing check is the message, not a failed unit).
@@ -40,6 +41,21 @@ mem_total="$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)"
 mem_avail="$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)"
 if [[ -n "$mem_total" && -n "$mem_avail" ]] && (( mem_avail * 100 < mem_total * MEM_AVAIL_MIN_PCT )); then
   add "memory: only $((mem_avail / 1024)) MB available of $((mem_total / 1024)) MB"
+fi
+
+# nftables limits: the per-address connection bound (README, "Edge limits") exists only while
+# the table is loaded. If mars-limits.service fails after a reboot the server runs without it and
+# nothing else would say so. Only checked where limits.sh apply has been run (the rules file
+# exists). The script runs as `deploy`: the table itself is read with sudo when that works
+# without a password, otherwise the state of the unit is used (RemainAfterExit: "active" while
+# the rules are loaded, "failed"/"inactive" if loading failed or was undone).
+LIMITS_FILE="${LIMITS_FILE:-/etc/nftables.d/mars-limits.nft}"
+if [[ -f "$LIMITS_FILE" ]]; then
+  if ! systemctl is-active --quiet mars-limits.service; then
+    add "nftables limits: mars-limits.service is $(systemctl is-active mars-limits.service 2>/dev/null || true) (table inet mars_limits not loaded)"
+  elif sudo -n true 2>/dev/null && ! sudo -n nft list table inet mars_limits >/dev/null 2>&1; then
+    add "nftables limits: table inet mars_limits is not loaded although the unit is active"
+  fi
 fi
 
 # Containers: each service must run, and be healthy where it has a healthcheck.

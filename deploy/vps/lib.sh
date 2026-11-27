@@ -3,6 +3,8 @@
 #   /srv/mars/compose.yml, Caddyfile, db-roles.sql   live copies (update.sh refreshes them)
 #   /srv/mars/.env, secrets/pg_owner_password        secrets (chmod 600 / 700)
 #   /srv/mars/backups/                         pg_dump archives, backup.log
+#   /srv/mars/www/<tag>/, www/current -> <tag>  web interface files of each release, served by
+#                                              Caddy (mounted read-only into it)
 #   /srv/mars/repo/                            git clone of the project (scripts live here)
 # MARS_DIR overrides the base directory (for a rehearsal copy).
 
@@ -11,6 +13,7 @@ MARS_PROJECT="${MARS_PROJECT:-mars}"
 BACKUP_DIR="${BACKUP_DIR:-$MARS_DIR/backups}"
 ENV_FILE="$MARS_DIR/.env"
 COMPOSE_FILE="$MARS_DIR/compose.yml"
+WWW_DIR="${WWW_DIR:-$MARS_DIR/www}"
 
 # docker compose bound to the live directory (reads .env there for interpolation).
 mars_compose() {
@@ -152,4 +155,83 @@ mars_apply_roles() {
   local dir
   dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   mars_compose exec -T db psql -U mars -d mars -q -v ON_ERROR_STOP=1 -f - <"$dir/db-roles.sql"
+}
+
+# Web interface of a release for Caddy. The files are the ones inside the app image of the same
+# tag (/app/frontend/dist), so index.html and /assets of one release always belong together
+# and match what the app itself would serve (the fallback when `current` is missing).
+#
+# Stage: copy them out of the image into $WWW_DIR/<tag> (once; an existing directory with an
+# index.html is kept). Needs the image mars-rover-api:<tag>. Nothing the visitors see changes.
+# A tag becomes a directory name under $WWW_DIR: no "current" (the link), no leading "." (our
+# temporary names) or "-", only the characters of a Docker tag.
+mars_valid_tag() {
+  [[ "$1" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]*$ && "$1" != "current" ]] || {
+    echo "invalid release tag: '$1'" >&2
+    return 1
+  }
+}
+
+mars_stage_frontend() {
+  local tag="$1" dir="$WWW_DIR/$1" tmp cid
+  mars_valid_tag "$tag" || return 1
+  mkdir -p "$WWW_DIR"
+  chmod 755 "$WWW_DIR"
+  if [[ -f "$dir/index.html" ]]; then
+    return 0
+  fi
+  tmp="$(mktemp -d "$WWW_DIR/.stage.XXXXXX")"
+  cid="$(docker create --pull=never "mars-rover-api:$tag")" || { rm -rf "$tmp"; return 1; }
+  if ! docker cp "$cid:/app/frontend/dist/." "$tmp/"; then
+    docker rm "$cid" >/dev/null 2>&1 || true
+    rm -rf "$tmp"
+    echo "cannot copy /app/frontend/dist out of mars-rover-api:$tag (image built without the web interface?)" >&2
+    return 1
+  fi
+  docker rm "$cid" >/dev/null
+  if [[ ! -f "$tmp/index.html" ]]; then
+    rm -rf "$tmp"
+    echo "mars-rover-api:$tag has no index.html in /app/frontend/dist" >&2
+    return 1
+  fi
+  # Caddy's file_server follows symlinks out of its root, and the Caddy container also holds
+  # /data (ACME account and keys): a build with anything but regular files and directories
+  # (links, devices, sockets, pipes) is refused.
+  if [[ -n "$(find "$tmp" ! -type f ! -type d -print -quit)" ]]; then
+    rm -rf -- "$tmp"
+    echo "mars-rover-api:$tag has something other than regular files and directories in /app/frontend/dist: refused" >&2
+    return 1
+  fi
+  # Caddy runs without CAP_DAC_OVERRIDE: the files must be readable by others.
+  chmod -R u+rwX,go+rX "$tmp"
+  rm -rf "$dir"
+  mv -T "$tmp" "$dir"
+}
+
+# Activate: point $WWW_DIR/current at <tag> (a relative link, so it resolves inside the
+# directory Caddy sees at /srv/www). The rename is atomic: a request gets the old release or the
+# new one, never a mixture. Caddy needs no reload.
+mars_activate_frontend() {
+  local tag="$1"
+  mars_valid_tag "$tag" || return 1
+  [[ -f "$WWW_DIR/$tag/index.html" ]] || { echo "release $tag is not staged in $WWW_DIR" >&2; return 1; }
+  ln -sfn "$tag" "$WWW_DIR/.current.new"
+  mv -T "$WWW_DIR/.current.new" "$WWW_DIR/current"
+}
+
+# Delete staged releases whose app image is gone (the same retention as the images) and
+# leftovers of an interrupted stage. The active one is never touched.
+mars_prune_frontend() {
+  local d tag active
+  active="$(basename -- "$(readlink "$WWW_DIR/current" 2>/dev/null || true)")"
+  rm -rf "$WWW_DIR"/.stage.* 2>/dev/null || true
+  for d in "$WWW_DIR"/*/; do
+    d="${d%/}"
+    # The glob also matches the `current` link; with a trailing slash rm would follow it and
+    # empty the active release. Links are never deleted here.
+    [[ -L "$d" || ! -d "$d" ]] && continue
+    tag="$(basename "$d")"
+    [[ "$tag" == "current" || "$tag" == "$active" || "$d" -ef "$WWW_DIR/current" ]] && continue
+    docker image inspect "mars-rover-api:$tag" >/dev/null 2>&1 || rm -rf -- "$d"
+  done
 }

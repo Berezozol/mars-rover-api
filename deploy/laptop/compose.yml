@@ -1,4 +1,5 @@
-# Production stack on the owner's laptop (Windows 11, Docker Desktop / WSL2).
+# Fallback stack on the owner's laptop (Windows 11, Docker Desktop / WSL2); production is the VPS
+# (deploy/vps/). Keep it switched off: Funnel off, ADMIN_TOKEN empty (deploy/README.md).
 # Tailscale Funnel terminates HTTPS and proxies to http://127.0.0.1:8000.
 #
 # Lives outside the repository, e.g. C:\Users\<user>\mars-server\compose.yml, next to .env

@@ -56,7 +56,11 @@ fi
 
 echo "=== 3. firewall, updates, fail2ban, time zone, swap (applied 2026-11-22)"
 apt-get update -q
-apt-get install -y -q ufw unattended-upgrades fail2ban ca-certificates curl
+apt-get install -y -q ufw unattended-upgrades fail2ban ca-certificates curl nftables
+# limits.sh loads its own table through mars-limits.service. The stock nftables.service would
+# load /etc/nftables.conf, which starts with `flush ruleset` and would wipe the ufw and Docker
+# tables: keep it off (it is off by default on Ubuntu).
+systemctl disable nftables.service 2>/dev/null || true
 
 ufw default deny incoming
 ufw default allow outgoing
@@ -143,6 +147,7 @@ if [[ -d "$unit_dir" ]]; then
   # Timers are enabled by the owner once .env and the stack exist (README step 7).
   echo "units installed; enable with: systemctl enable --now mars-backup.timer mars-hostcheck.timer mars-verify-backup.timer"
   echo "RAD update (monthly, after the RAD import, README 7a): systemctl enable --now mars-rad-sync.timer"
+  echo "Per-client limits on ports 80/443 (README, \"Edge limits\"): sudo bash $unit_dir/../limits.sh check, then apply"
 else
   echo "no clone at /srv/mars/repo yet: units not installed"
 fi

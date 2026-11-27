@@ -5,6 +5,10 @@
 # The image never runs migrations on start; run `alembic upgrade head` as a separate step
 # (see deploy/README.md).
 
+# Base images are pinned by tag. To pin by digest, resolve it once (needs network) and append it:
+#   docker buildx imagetools inspect python:3.13.18-slim-trixie   # line "Digest: sha256:..."
+#   ARG PYTHON_IMAGE=python:3.13.18-slim-trixie@sha256:<digest>
+# (same for the uv and node images). Dependabot (docker) proposes updates of tag and digest.
 ARG PYTHON_IMAGE=python:3.13.18-slim-trixie
 ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.13.8
 ARG NODE_IMAGE=node:26.13.1-alpine
@@ -61,10 +65,16 @@ FROM ${PYTHON_IMAGE} AS runtime
 
 # FORWARDED_ALLOW_IPS is read by uvicorn for --forwarded-allow-ips;
 # set it to the reverse proxy address in production.
+# UVICORN_LIMIT_CONCURRENCY is read by uvicorn for --limit-concurrency: above this many open
+# connections or requests in flight uvicorn answers 503 "Service Unavailable" (text/plain)
+# before the application sees the request. Caddy does not cap its connections to the app (no
+# keep-alive to it either), so this is the ceiling for everything that reaches the app and the
+# safety net for callers that bypass Caddy (127.0.0.1:8000); far above the DB pool (10 + 5).
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/app/.venv/bin:${PATH}" \
     FORWARDED_ALLOW_IPS=127.0.0.1 \
+    UVICORN_LIMIT_CONCURRENCY=384 \
     FRONTEND_DIST_DIR=/app/frontend/dist
 
 RUN groupadd --system --gid 10001 app \
@@ -83,10 +93,15 @@ RUN mkdir -p /app/data/mer-images && chown -R app:app /app/data
 USER app
 EXPOSE 8000
 
-# /health answers 503 when the database is unreachable, which marks the container unhealthy.
+# /health answers 503 (JSON) when the database is unreachable, which marks the container
+# unhealthy. If uvicorn is ever saturated (UVICORN_LIMIT_CONCURRENCY; behind Caddy this needs
+# a direct flood on 127.0.0.1:8000) it answers the plain-text 503 "Service Unavailable" to every
+# request, /health included: the process is alive and a restart would not help, so exactly that
+# answer does not count as unhealthy (host-check.sh and the external monitor still alert).
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)"]
+    CMD ["python", "-c", "import sys, urllib.request as r, urllib.error as e\ntry:\n    r.urlopen('http://127.0.0.1:8000/health', timeout=4)\nexcept e.HTTPError as x:\n    sys.exit(0 if x.code == 503 and x.read(64) == b'Service Unavailable' else 1)"]
 
 # One process: the in-process scheduler must not be multiplied by workers.
-# --forwarded-allow-ips is taken from FORWARDED_ALLOW_IPS (uvicorn reads it natively).
+# --forwarded-allow-ips is taken from FORWARDED_ALLOW_IPS and --limit-concurrency from
+# UVICORN_LIMIT_CONCURRENCY (uvicorn reads both from the environment natively).
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]

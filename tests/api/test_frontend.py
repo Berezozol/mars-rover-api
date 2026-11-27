@@ -9,7 +9,8 @@ settings point at a directory without a build, so the other tests never see the 
 - `/assets/*` -> hashed files, ``public, max-age=31536000, immutable``, gzip; unknown -> 404.
 - Not intercepted: /api/*, /mars-photos/*, /health, /health/sync, /docs, /redoc,
   /openapi.json, /developers.
-- The interface and the assets are outside the rate limit.
+- The interface and the assets have no rate-limit windows; only the concurrency limit of
+  docs/API.md "Одновременные запросы вне API" applies (tests/api/test_page_concurrency.py).
 - Without a build `/` is the developer page and interface paths are 404.
 """
 

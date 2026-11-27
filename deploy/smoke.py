@@ -3,9 +3,14 @@
 Usage:
     uv run python deploy/smoke.py https://mars-api.example.ts.net
 
-Needs only httpx and the standard library. Sends 16 requests (12 of them count against the
-per-IP rate limit of 60/min), never follows redirects. With --with-mer-image it also
-fetches a full-size Opportunity image (a PDS download and conversion, one more request).
+Needs only httpx and the standard library. Sends 22 requests (17 of them count against the
+per-IP rate limit of 60/min; one more when /openapi.json redirects to the API host), never
+follows redirects (except the one hop of the /openapi.json check). With --with-mer-image it
+also fetches a full-size Opportunity image (a PDS download and conversion, one more request).
+
+Two checks depend on where the server runs: a public https address must answer 404 for the
+admin API (the proxy closes it); a local http address may also answer 401/403 when ADMIN_TOKEN
+is set there. Force the local rules for an https address with --local.
 Exit code 0 when every check passes, 1 otherwise.
 """
 
@@ -29,6 +34,9 @@ V1_TRAILING_SLASH = "/api/v1/rovers/curiosity/"
 V2_ROVERS = "/api/v2/rovers"
 V2_PHOTOS = "/api/v2/rovers/curiosity/photos?per_page=1"
 V2_MER_PHOTOS = "/api/v2/rovers/opportunity/photos?sol=1&per_page=1"
+ADMIN_PATH = "/api/v2/admin/sync/runs"
+# Words that must not appear anywhere in the public OpenAPI document (case-insensitive).
+OPENAPI_FORBIDDEN = ("admin", "x-admin-token")
 EXPECTED_ROVERS = {"curiosity", "opportunity", "perseverance", "spirit"}
 # v2 also lists the Ingenuity helicopter (stage 12); v1 keeps the original four.
 EXPECTED_V2_ROVERS = EXPECTED_ROVERS | {"ingenuity"}
@@ -63,9 +71,11 @@ def _status(response: httpx.Response, *expected: int) -> None:
 
 
 class Smoke:
-    def __init__(self, base_url: str, timeout: float) -> None:
+    def __init__(self, base_url: str, timeout: float, local: bool = False) -> None:
         self.base_url = base_url.rstrip("/")
         self.https = urlsplit(self.base_url).scheme == "https"
+        # Public mode: the admin API must be closed from outside (404 from the proxy).
+        self.public = self.https and not local
         self.client = httpx.Client(
             base_url=self.base_url,
             timeout=timeout,
@@ -240,6 +250,53 @@ class Smoke:
         _status(second, 304)
         return f"ETag {etag}"
 
+    def openapi_hides_admin(self) -> str:
+        r = self.get("/openapi.json")
+        hops = ""
+        if r.status_code in (301, 302, 307, 308):
+            # The web-interface host sends /openapi.json to the API host: follow that one hop.
+            location = r.headers.get("location", "")
+            _expect(location.startswith("https://"), f"redirect Location {location!r}")
+            self.requests += 1
+            r = self.client.get(location)
+            hops = f" (via redirect to {urlsplit(location).netloc})"
+        _status(r, 200)
+        text = r.text.lower()
+        found = [word for word in OPENAPI_FORBIDDEN if word in text]
+        _expect(not found, f"/openapi.json mentions {found}: admin routes leak into the schema")
+        _json(r)
+        return f"{len(r.content)} bytes, no admin{hops}"
+
+    def admin_closed(self) -> str:
+        # Several spellings: the proxy rule must be tolerant of case, repeated slashes and
+        # percent-encoding, and a write method must not get through either. Each path is sent
+        # exactly as written here (checked on the request that went out).
+        probes = [
+            ("GET", ADMIN_PATH),
+            ("GET", "//api/v2/Admin/sync/runs"),
+            ("GET", "/api/v2/%61dmin/sync/runs"),
+            ("POST", "/api/v2/admin/sync"),
+        ]
+        seen = []
+        for method, path in probes:
+            self.requests += 1
+            # A full URL: with a relative one httpx joins it to base_url and rewrites a leading
+            # "//" (the second slash turns the next segment into a host name), so the double
+            # slash would never reach the server.
+            r = self.client.request(method, self.base_url + path)
+            sent = r.request.url.raw_path.decode("ascii")
+            _expect(sent == path, f"{method} {path}: the client sent {sent!r} instead")
+            seen.append(str(r.status_code))
+            if self.public:
+                _expect(r.status_code == 404, f"{method} {path}: HTTP {r.status_code}, want 404")
+            else:
+                # Local server: 404 (admin off) or 401/403 (admin on, token required).
+                _expect(
+                    r.status_code in (401, 403, 404),
+                    f"{method} {path}: HTTP {r.status_code}, want 401/403/404",
+                )
+        return "/".join(seen)
+
     def v1_unknown_rover(self) -> str:
         r = self.get(V1_UNKNOWN_ROVER)
         _status(r, 400)
@@ -256,13 +313,18 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="also GET the full-size Opportunity image (PDS download and conversion, slow)",
     )
+    parser.add_argument(
+        "--local",
+        action="store_true",
+        help="treat the target as a local server even over https (admin may answer 401/403)",
+    )
     parser.add_argument("--timeout", type=float, default=30.0, help="seconds per request")
     args = parser.parse_args(argv)
 
     if urlsplit(args.base_url).scheme not in ("http", "https"):
         parser.error("base_url must start with http:// or https://")
 
-    smoke = Smoke(args.base_url, args.timeout)
+    smoke = Smoke(args.base_url, args.timeout, local=args.local)
     print(f"Smoke test of {smoke.base_url}")
     redirect_name = "v1 trailing slash -> 307" + (" to https" if smoke.https else "")
     checks: list[tuple[str, Callable[[], str]]] = [
@@ -281,6 +343,11 @@ def main(argv: list[str] | None = None) -> int:
         (redirect_name, smoke.v1_trailing_slash),
         ("If-None-Match -> 304", smoke.etag_not_modified),
         ("v1 unknown rover -> 400", smoke.v1_unknown_rover),
+        ("/openapi.json has no admin routes", smoke.openapi_hides_admin),
+        (
+            "admin API closed -> 404" if smoke.public else "admin API closed -> 404/401/403",
+            smoke.admin_closed,
+        ),
     ]
     if args.with_mer_image:
         checks.append(("v2 opportunity full image -> 200 jpeg", smoke.v2_mer_image))

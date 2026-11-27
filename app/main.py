@@ -12,6 +12,7 @@ from starlette.middleware.gzip import DEFAULT_EXCLUDED_CONTENT_TYPES
 
 from app import __version__
 from app.api.apikeys import API_KEY_HEADER, ApiKeyResolver
+from app.api.backpressure import BackpressureMiddleware
 from app.api.caching import CachingMiddleware, VaryAcceptEncodingMiddleware
 from app.api.frontend import mount_frontend
 from app.api.health import router as health_router
@@ -70,7 +71,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     - ``sync_tasks``: set of the running background sync tasks (await them in tests).
     - ``rate_limiter`` and ``site_rate_limiter`` (the /48 budget of IPv6 clients; only with
       RATE_LIMIT_ENABLED) and ``admin_auth_limiter`` (only with admin enabled):
-      ``RateLimiter`` instances; tests may replace their ``clock``.
+      ``RateLimiter`` instances; tests may replace their ``clock``. ``page_limiter`` and
+      ``site_page_limiter``: the concurrency-only limiters of paths outside the API.
     - ``v1_bytes_per_request`` (only with RATE_LIMIT_ENABLED): bytes of a v1 response per charged
       request; tests may change it. ``v1_raw_bytes_per_request``: same for the uncompressed body.
     - ``key_rate_limiter``, ``api_key_auth_limiter``, ``api_key_resolver``, ``api_key_usage``,
@@ -202,6 +204,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             max_concurrent=settings.rate_limit_concurrent * factor,
             max_keys=SITE_MAX_KEYS,
         )
+        # Paths outside the API: concurrency only (no windows), separate from the API limiters.
+        # The window is a placeholder: nothing is ever hit, only slots are taken.
+        app.state.page_limiter = RateLimiter(
+            [(1, 1.0)],
+            max_concurrent=settings.rate_limit_page_concurrent,
+            max_keys=REQUEST_MAX_KEYS,
+        )
+        app.state.site_page_limiter = RateLimiter(
+            [(1, 1.0)],
+            max_concurrent=settings.rate_limit_page_concurrent * factor,
+            max_keys=SITE_MAX_KEYS,
+        )
         if settings.api_keys_enabled:
             _setup_key_limiters(app, settings)
         # Inside CORS (browsers can read the 429), outside caching (304s count too).
@@ -237,6 +251,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # Outside GZip: v1 responses are charged by the bytes on the wire (after compression).
         app.add_middleware(ResponseSizeMiddleware)
     app.add_middleware(VaryAcceptEncodingMiddleware)
+    # Outermost: splits large bodies so a client that does not read keeps its request (and the
+    # limiter slots) alive. Harmless without the limiter, so always on.
+    app.add_middleware(BackpressureMiddleware)
     register_exception_handlers(app)
 
     app.include_router(home_router)

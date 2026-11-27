@@ -1,9 +1,14 @@
 """Request limits for v1 and v2 (docs/API.md, "Ограничение частоты").
 
 Pure ASGI middleware. Every request under an API prefix (any method, including HEAD and
-requests that would end in a 304) counts against a limiter; other paths (/, /health,
-/health/sync, /docs, /openapi.json) are not limited. It sits inside the CORS middleware, so
-browsers can read the 429.
+requests that would end in a 304) counts against a limiter. Every other path (site pages and
+files, /health, /health/sync, /docs, /redoc, /openapi.json, /developers, /llms.txt, anything
+else) has no windows, only a per-address concurrency limit (``app.state.page_limiter`` and, for
+IPv6, the /48 ``app.state.site_page_limiter``; separate from the API limiters, always keyed by
+the client address): an extra request gets an immediate v2 429 without X-RateLimit-* headers.
+Its slot is held until the response has been handed to the server in full, so a client that
+does not read its responses cannot hold more than its slots. The middleware sits inside the
+CORS middleware, so browsers can read the 429.
 
 Without an API key the limiter is ``app.state.rate_limiter`` and the key is the client
 address (``scope["client"][0]``: uvicorn's ``--proxy-headers`` has already replaced it with
@@ -109,8 +114,11 @@ class RateLimitMiddleware:
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         ip_limiter = _limiter(scope)
-        if ip_limiter is None or not is_limited_path(scope["path"]):
+        if ip_limiter is None:
             await self.app(scope, receive, send)
+            return
+        if not is_limited_path(scope["path"]):
+            await self._serve_page(scope, receive, send)
             return
         ip = RateIdentity(kind="ip", key=client_key(scope))
         scope[IDENTITY_SCOPE_KEY] = ip
@@ -141,6 +149,35 @@ class RateLimitMiddleware:
             # The slots are held until the response is complete, also on errors and disconnects.
             if held:
                 _leave_all(held)
+
+    async def _serve_page(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """A path outside the API: only the per-address concurrency limit applies (separate
+        limiters, no windows, no X-RateLimit-* headers, the client address is always the key).
+        The slots are held until the application has handed over the whole response (the server
+        applies back pressure in ``send``), also on errors, disconnects and cancellation."""
+        state = scope["app"].state
+        limiter = getattr(state, "page_limiter", None)
+        if limiter is None:
+            await self.app(scope, receive, send)
+            return
+        key = client_key(scope)
+        pairs = [(limiter, key)]
+        site_limiter = getattr(state, "site_page_limiter", None)
+        site = site_key(scope)
+        if site_limiter is not None and site != key:
+            pairs.append((site_limiter, site))
+        held = _enter_all(pairs)
+        if held is None:
+            logger.debug("Page concurrency limited client=%s", key)
+            headers = rate_limited_headers(CONCURRENT_RETRY_AFTER)
+            await _json_response(scope, 429, rate_limited_content(""), headers)(
+                scope, receive, send
+            )
+            return
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            _leave_all(held)
 
     async def _too_many_in_flight(
         self,

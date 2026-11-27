@@ -173,6 +173,9 @@ class Settings(BaseSettings):
     rate_limit_per_hour: int = Field(default=2000, ge=1)
     # Requests of one IP served at the same time; an extra one gets 429 at once.
     rate_limit_concurrent: int = Field(default=4, ge=1)
+    # Requests of one client address served at the same time on paths outside the API (site,
+    # /health, /docs, ...); an extra one gets 429 at once. Separate from the API limiters.
+    rate_limit_page_concurrent: int = Field(default=16, ge=1)
     # All IPv6 addresses of one /48 network share a budget this many times larger than one
     # client's (per minute, per hour and concurrent); a request counts in both.
     rate_limit_ipv6_site_factor: int = Field(default=8, ge=1)

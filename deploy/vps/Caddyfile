@@ -29,6 +29,13 @@
 		}
 	}
 
+	# Plain HTTP (port 80) only redirects to HTTPS: HTTP/1.1 only, so that h2c with prior knowledge
+	# (a client that starts with the HTTP/2 preface) is refused. `protocols h1` is safe here: the
+	# problem described below concerns the TLS listener (no TLS state, no client address).
+	servers :80 {
+		protocols h1
+	}
+
 	servers {
 		# Go's MaxHeaderBytes: the request line and all headers together. Above it Caddy
 		# answers 431 by itself. The URL limit (414) is stricter and is enforced below.
@@ -44,9 +51,31 @@
 		# Do NOT add trusted_proxies here: Caddy is the first proxy, so an incoming
 		# X-Forwarded-For is client-controlled and is replaced, not extended.
 
-		# HTTP/3 needs UDP 443 open in the Contabo panel firewall (only TCP is open now);
-		# ufw already allows it. After opening it use: protocols h1 h2 h3
+		# HTTP/2 is switched off for clients (owner's decision of 2026-11-27, security review),
+		# but NOT with `protocols h1`: stand tests of Caddy 2.10.2 showed that `protocols h1` alone
+		# leaves the request without its TLS state and client address ({remote_host} empty, so
+		# X-Forwarded-For would be empty and every client would look like the proxy; with
+		# strict_sni_host every request gets 421). So the server keeps `h1 h2` and only the TLS
+		# handshake offers http/1.1 (`tls { alpn http/1.1 }`, snippet h1_only below, imported by
+		# every site): a client that offers h2 and http/1.1 gets http/1.1, one that offers only h2
+		# is refused in the handshake. Reason: one HTTP/2 connection carries 250 streams, each
+		# holding a response buffer in Caddy while the client does not read (reviewer: 10
+		# connections x 250 zero-window streams on a 190 KB answer took Caddy over its 512 MB
+		# limit), and Caddy 2.10 has no max_concurrent_streams. With HTTP/1.1 one connection holds
+		# one request, so the nftables per-address connection limit bounds the memory. Cost: a
+		# browser opens up to 6 connections per host, more TLS handshakes, slower page loads.
+		# To go back: delete the `import h1_only` lines. HTTP/3 would also need UDP 443 open in
+		# the Contabo panel (only TCP is open).
 		protocols h1 h2
+
+		# A TLS request whose Host differs from the SNI of its connection gets 421 (a real
+		# name in the SNI with a made-up Host header). A request by IP address or a made-up
+		# SNI normally does not get that far: the TLS handshake fails (no certificate for
+		# the name); the catch-all sites at the end of this file are only a backstop, almost
+		# unreachable. (A browser on HTTP/2 could reuse one connection for solindex.net and
+		# api.solindex.net, same certificate and address, and be told 421 once; with HTTP/1.1
+		# only there is no such reuse.)
+		strict_sni_host
 	}
 }
 
@@ -77,8 +106,50 @@
 	}
 }
 
-# Sol Index (frontend, served by the app at /) and the API: one upstream for both hosts.
+# TLS handshake offers HTTP/1.1 only (see `protocols` above). Imported by every site.
+(h1_only) {
+	tls {
+		alpn http/1.1
+	}
+}
+
+# The app on the loopback port. One definition for every place that proxies to it.
+(to_app) {
+	reverse_proxy 127.0.0.1:8000 {
+		# Never pass a client-supplied chain on: the app trusts these headers from
+		# Caddy and takes the right-most entry it does not trust. (Caddy replaces them by
+		# default too, as long as `trusted_proxies` is not set, so `caddy validate` calls these two
+		# lines unnecessary; they stay as a guard in case someone adds `trusted_proxies`.)
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+		header_up -X-Real-IP
+		header_down -Server
+
+		transport http {
+			dial_timeout 3s
+			# No cap on connections to the app (no max_conns_per_host): a cap makes one
+			# client that reads slowly hold every slot until the write timeout, and everybody else
+			# waits (stand test of 2026-11-26). The ceiling is uvicorn's
+			# (UVICORN_LIMIT_CONCURRENCY 384, a 503 above it); the per-client limits are the app's
+			# own (API paths), nftables (connections) and the static handler above (the web
+			# interface never reaches the app).
+			# No keep-alive to the app: Caddy sends `Connection: close` and uvicorn closes the
+			# connection as soon as it has written the response. With keep-alive, a client that
+			# never reads a response of 100-200 KB (it fits into the kernel buffers, so the app has
+			# finished) leaves Caddy holding the upstream connection open; uvicorn counts it
+			# against its concurrency ceiling until its 5 s keep-alive ends, and a few such
+			# clients make everybody else get 503 (stand test of 2026-11-27). Cost: one loopback
+			# TCP connect per request.
+			keepalive off
+			# Full-size MER image conversion may take up to 60 s.
+			response_header_timeout 90s
+		}
+	}
+}
+
+# Sol Index (static files from Caddy, see @static) and the API: one upstream for both hosts.
 solindex.net, api.solindex.net {
+	import h1_only
 	# Admin API is reachable only through an SSH tunnel to 127.0.0.1:8000 (deploy/README.md).
 	# Case-insensitive, tolerant of repeated slashes.
 	@admin path_regexp admin (?i)^/+api/+v2/+admin
@@ -96,31 +167,106 @@ solindex.net, api.solindex.net {
 		respond "URI Too Long" 414
 	}
 
+	# Swagger UI and ReDoc load scripts from a CDN, so on the site host (solindex.net, the
+	# origin people use) they are not served: a compromised CDN file would run next to the
+	# site's own storage. (The API host also serves the web interface; it has no user storage
+	# beyond the theme setting, and its /docs policy is the CDN-only one below.) The site
+	# links to /docs ("API docs"), so send people over instead of 404.
+	# /openapi.json is plain JSON, redirected too so that there is one canonical copy.
+	@site_docs {
+		host solindex.net
+		path /docs /docs/* /redoc /redoc/* /openapi.json
+	}
+	handle @site_docs {
+		redir https://api.solindex.net{uri} 302
+	}
+
 	handle {
-		# The API takes only GET/HEAD (admin is closed above): bodies are not expected.
+		# Request bodies are small JSON documents: POST/DELETE exist only on /api/v2/keys*
+		# and /api/v2/account* (API keys, e-mail confirmation); everything else is
+		# GET/HEAD/OPTIONS (admin is closed above). 64 KB is far above any of them.
 		request_body {
 			max_size 64KB
 		}
 
-		reverse_proxy 127.0.0.1:8000 {
-			# Never pass a client-supplied chain on: the app trusts these headers from
-			# Caddy and takes the right-most entry it does not trust.
-			header_up X-Forwarded-For {remote_host}
-			header_up X-Forwarded-Proto {scheme}
-			header_up -X-Real-IP
-			header_down -Server
-
-			transport http {
-				dial_timeout 3s
-				# Full-size MER image conversion may take up to 60 s plus the queue.
-				response_header_timeout 90s
+		# The Sol Index files are served by Caddy itself, from the build that came out of the
+		# app image of the running release (compose.yml: ./www -> /srv/www; update.sh and
+		# publish-frontend.sh point the `current` link at it). A static file never takes a slot
+		# of the app, so a slow reader of a big asset cannot starve the API. This reproduces
+		# app/api/frontend.py (FrontendFallback); keep both in step:
+		#  - only GET and HEAD, and only paths that are not reserved by the app (api, mars-photos,
+		#    health, docs, redoc, openapi.json, developers, llms.txt; exact, case-sensitive as in
+		#    the app: /API/x is the web interface there too). Everything else, other methods
+		#    included, goes to the app;
+		#  - /assets/<file>: the file, immutable cache; a missing file goes to the app (its JSON 404);
+		#  - a top-level file of the build (favicon.svg, robots.txt): the file, 1 hour;
+		#  - any other path: index.html (the single-page app), no-cache, with a validator;
+		#  - no index.html in the build directory (no release published yet, broken link): nothing
+		#    here matches and the app serves the interface itself, as it does without Caddy.
+		@static {
+			method GET HEAD
+			not path_regexp ^/(?:api|mars-photos|health|docs|redoc|openapi\.json|developers|llms\.txt)(?:/|$)
+			file {
+				root /srv/www/current
+				try_files /index.html
 			}
+		}
+		handle @static {
+			root * /srv/www/current
+
+			# /assets/ itself (no file name) is the app's JSON 404, like a missing file.
+			@asset path_regexp ^/assets/
+			handle @asset {
+				@asset_file {
+					not path /assets/
+					file {
+						try_files {path}
+					}
+				}
+				handle @asset_file {
+					header Cache-Control "public, max-age=31536000, immutable"
+					# Compression for static files only: the API is compressed by the app, which
+					# prices v1 responses by their compressed size (see the note below).
+					encode zstd gzip
+					file_server
+				}
+				handle {
+					import to_app
+				}
+			}
+
+			@top {
+				path_regexp ^/[^/]+$
+				not path_regexp (?i)^/index\.html$
+				file {
+					try_files {path}
+				}
+			}
+			handle @top {
+				header Cache-Control "public, max-age=3600"
+				encode zstd gzip
+				file_server
+			}
+
+			handle {
+				# `/` rather than /index.html: file_server redirects an index file name to its
+				# directory. It adds ETag and Last-Modified and answers If-None-Match with 304.
+				rewrite * /
+				header Cache-Control "no-cache"
+				encode zstd gzip
+				file_server
+			}
+		}
+
+		handle {
+			import to_app
 		}
 	}
 
-	# NO `encode` directive on purpose: the application compresses (gzip) itself, and the
-	# rate limit prices v1 responses by their compressed size. A second compression layer
-	# would change the cost of responses and double-encode.
+	# NO `encode` for responses of the app, on purpose: the application compresses (gzip)
+	# itself, and the rate limit prices v1 responses by their compressed size. A second
+	# compression layer would change the cost of responses and double-encode. `encode` is used
+	# only inside the static-file handlers above, whose files the app never sees.
 
 	header {
 		# 1 year since 2026-11-22 (owner's decision; it started at 300 s). To back out, serve
@@ -131,10 +277,44 @@ solindex.net, api.solindex.net {
 		# only when the application did not set it itself.
 		?X-Content-Type-Options nosniff
 		?Referrer-Policy strict-origin-when-cross-origin
-		?Content-Security-Policy "frame-ancestors 'none'"
 		-Server
 		-Via
 	}
+
+	# Content-Security-Policy by kind of response (matchers are mutually exclusive; `?` keeps a
+	# policy the application sets itself, it sets none today).
+	#
+	# 1. JSON, XML, text of the API: nothing may load or run (policy for non-documents).
+	@csp_api path /api/* /mars-photos/* /health /health/* /openapi.json /llms.txt
+	header @csp_api ?Content-Security-Policy "default-src 'none'; frame-ancestors 'none'"
+
+	# 2. Swagger UI (/docs, API host only, see @site_docs): FastAPI's page loads scripts and
+	# styles from cdn.jsdelivr.net, the favicon from fastapi.tiangolo.com and starts itself
+	# with an inline script; it reads /openapi.json and calls the API from the same origin.
+	@csp_docs path /docs /docs/*
+	header @csp_docs ?Content-Security-Policy "default-src 'none'; script-src https://cdn.jsdelivr.net 'unsafe-inline'; style-src https://cdn.jsdelivr.net 'unsafe-inline'; img-src 'self' data: https://fastapi.tiangolo.com; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+
+	# 3. ReDoc (/redoc): the same CDN, plus Google Fonts, a worker from a blob: URL, data: images.
+	@csp_redoc path /redoc /redoc/*
+	header @csp_redoc ?Content-Security-Policy "default-src 'none'; script-src https://cdn.jsdelivr.net 'unsafe-inline'; worker-src blob:; child-src blob:; style-src https://cdn.jsdelivr.net https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com data:; img-src 'self' data: blob: https://fastapi.tiangolo.com; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+
+	# 4. Everything else: the web interface (also served on the API host), /developers. The
+	# enforced policy is only the anti-framing one. The full policy runs as Report-Only
+	# (nothing is blocked; violations show in the browser console) until the owner has
+	# watched the real pages: then move the value to Content-Security-Policy.
+	#  - script: own files plus the theme snippet of index.html by hash (recompute it if that
+	#    script changes: deploy/README.md, "Content-Security-Policy"); 'wasm-unsafe-eval' is
+	#    for model-viewer's Draco/KTX2 decoders, it does not allow eval();
+	#  - style 'unsafe-inline': model-viewer and /developers use inline styles;
+	#  - img: own files, our /image links on the API host (MER full size), data:/blob: for
+	#    the 3D viewer, NASA/JPL/PDS hosts (feeds give mars.nasa.gov, mars.jpl.nasa.gov,
+	#    pds-imaging.jpl.nasa.gov, planetarydata.jpl.nasa.gov; /image redirects there);
+	#  - connect: the API on the same origin, the NASA glTF models, Google's decoder files.
+	@csp_web {
+		not path /api/* /mars-photos/* /health /health/* /openapi.json /llms.txt /docs /docs/* /redoc /redoc/*
+	}
+	header @csp_web ?Content-Security-Policy "frame-ancestors 'none'"
+	header @csp_web ?Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' 'sha256-ZzC2H/BN1bvuuJJ6AhjQ7lu6ZtEkPLXK5KXSQ5meKU8=' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://api.solindex.net https://*.nasa.gov; font-src 'self' data:; connect-src 'self' blob: data: https://assets.science.nasa.gov https://www.gstatic.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'"
 
 	# JSON access log to stdout (docker logs, json-file rotation 5 x 10 MB). The client
 	# address is `request.remote_ip`: CHECK on the rehearsal that it is the real address for
@@ -144,8 +324,27 @@ solindex.net, api.solindex.net {
 }
 
 www.solindex.net {
+	import h1_only
 	# The query is kept for users; the access log redacts api_key in the URI and in Location.
 	redir https://solindex.net{uri} permanent
+	header -Server
 
 	import access_log
+}
+
+# Unknown Host: close the connection without an answer instead of Caddy's empty 200. Over
+# HTTPS a request by IP or with a made-up SNI mostly fails in the TLS handshake before it gets
+# here, so :443 is a backstop; :80 is the one that matters (plain HTTP with a made-up Host).
+# Named sites above are matched first; the automatic http -> https redirects for the three
+# names and ACME validation should be unaffected, but this could not be tried without Caddy:
+# CHECK the redirect right after the reload (README, "Rolling out"). Not logged: scanner noise
+# would drown the access log. If the
+# redirect for the named hosts ever stops working, remove the :80 block first.
+:443 {
+	import h1_only
+	abort
+}
+
+:80 {
+	abort
 }

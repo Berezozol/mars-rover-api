@@ -1,0 +1,19 @@
+[Unit]
+Description=Mars Rover API: per-client connection limits on TCP 80/443 (nftables)
+Documentation=file:///srv/mars/repo/deploy/README.md
+# Deliberately simple ordering: after the network is up, no ordering against network-pre or
+# cloud-init (that could create a boot ordering cycle). The short window without limits at
+# boot is accepted; a unit that FAILED is not: host-check.sh alerts on it. Nothing depends on this unit and it requires nothing: if loading fails
+# the unit just shows "failed", the network and SSH are not affected.
+After=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# The file is written by deploy/vps/limits.sh apply. Loading is atomic and idempotent; it
+# replaces only the table inet mars_limits (ufw and Docker tables are not touched).
+ExecStart=/usr/sbin/nft -f /etc/nftables.d/mars-limits.nft
+ExecStop=-/usr/sbin/nft delete table inet mars_limits
+
+[Install]
+WantedBy=multi-user.target

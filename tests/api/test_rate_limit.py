@@ -1,8 +1,9 @@
 """Per-IP rate limit on v1 and v2 (docs/API.md "Ограничение частоты"; LEGACY-API.md "лимит
 частоты"; stage 9).
 
-- Applies to /api/v1/*, /mars-photos/api/v1/* and /api/v2/*, HEAD and 304 included; not to
-  /, /health, /health/sync, /docs, /openapi.json.
+- Windows apply to /api/v1/*, /mars-photos/api/v1/* and /api/v2/*, HEAD and 304 included; not
+  to /, /health, /health/sync, /docs, /openapi.json (those only have the concurrency limit,
+  see tests/api/test_page_concurrency.py).
 - Key = client IP (``scope["client"]``; emulated with ``httpx.ASGITransport(client=...)``).
 - Two windows: RATE_LIMIT_PER_MINUTE and RATE_LIMIT_PER_HOUR; rejected calls are not counted.
 - 429: v2 ``{"error": {"code": "rate_limited", "message": "Rate limit exceeded", "details":
@@ -301,7 +302,8 @@ EXEMPT = ["/", "/health", "/health/sync", "/docs", "/openapi.json"]
 
 
 @pytest.mark.parametrize("path", EXEMPT, ids=EXEMPT)
-async def test_rate_limit_exempt_path_is_never_limited(limited: AppFactory, path: str) -> None:
+async def test_rate_limit_non_api_path_has_no_windows(limited: AppFactory, path: str) -> None:
+    """Sequential requests are never refused (no windows) and do not spend the API budget."""
     app, _ = await limited(per_minute=1)
     async with client_for(app) as client:
         codes = await statuses(client, path, 5)
@@ -310,9 +312,10 @@ async def test_rate_limit_exempt_path_is_never_limited(limited: AppFactory, path
         assert (await client.get(V2_URL)).status_code == 200
 
 
-async def test_rate_limit_exempt_paths_still_answer_when_api_is_limited(
+async def test_rate_limit_non_api_paths_are_not_counted_against_the_api_budget(
     limited: AppFactory,
 ) -> None:
+    """An exhausted API window does not refuse non-API paths."""
     app, _ = await limited(per_minute=1)
     async with client_for(app) as client:
         await client.get(V2_URL)

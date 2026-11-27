@@ -10,12 +10,15 @@
 # Steps:
 #   1. git pull --ff-only in /srv/mars/repo
 #   2. docker build -t mars-rover-api:<commit>
-#   3. copy compose.yml, Caddyfile and db-roles.sql to /srv/mars, validate the Compose file
+#   3. copy compose.yml, Caddyfile and db-roles.sql to /srv/mars, validate the Compose file,
+#      copy the web interface files out of the new image into /srv/mars/www/<commit> (Caddy
+#      serves them; they go live in step 6, together with the app)
 #   4. start db, fresh backup (backup.sh)
 #   5. migrations as the owner role in a one-off container with the NEW image (the old app
 #      keeps serving), then db-roles.sql (grants of the restricted role mars_app)
-#   6. APP_TAG=<commit> in .env, recreate app, start/reload caddy
-#   7. wait for /health, remove old images
+#   6. link www/current -> <commit>, APP_TAG=<commit> in .env, recreate app, start/reload caddy
+#   7. wait for /health, check that Caddy and the app serve the same index.html, remove old
+#      images and their staged web interface files
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -83,6 +86,9 @@ chmod 644 "$MARS_DIR/Caddyfile"
 # Interpolation needs APP_TAG: validate with the new tag, without touching .env yet.
 mars_compose config -q
 echo "compose.yml valid; Caddyfile changed: $caddy_changed"
+# Staging changes nothing the visitors see; a failure stops the update before the database.
+mars_stage_frontend "$commit"
+echo "web interface files of $commit staged in $WWW_DIR/$commit"
 
 step "4/7 database up and backup"
 mars_compose up -d --wait db
@@ -99,6 +105,8 @@ if grep -q '^APP_TAG=' "$ENV_FILE"; then
 else
   printf '\nAPP_TAG=%s\n' "$commit" >>"$ENV_FILE"
 fi
+# The link first (atomic), then the app: Caddy never serves a half-updated interface.
+mars_activate_frontend "$commit"
 mars_compose up -d app
 mars_compose up -d caddy
 if [[ "$caddy_changed" -eq 1 ]]; then
@@ -124,6 +132,19 @@ for tag in "${stale[@]}"; do
   docker image rm "mars-rover-api:$tag" >/dev/null 2>&1 || true
 done
 docker image prune -f >/dev/null
+mars_prune_frontend
+
+# The interface is served by Caddy from www/current; the app has the same files inside its
+# image. Checked after the clean-up above, so that a clean-up gone wrong is caught. A different index.html means the link and the running image disagree. The site keeps
+# working (Caddy serves one complete release), so this only warns.
+app_index="$(curl -fsS -m 10 http://127.0.0.1:8000/ 2>/dev/null || true)"
+edge_index="$(curl -fsSk -m 10 --resolve solindex.net:443:127.0.0.1 https://solindex.net/ 2>/dev/null || true)"
+if [[ -n "$app_index" && "$app_index" == "$edge_index" ]]; then
+  echo "Web interface: Caddy and the app serve the same index.html"
+else
+  log "WARNING: Caddy and the app serve different index.html, or Caddy did not answer: check $WWW_DIR/current and the Caddy log"
+  notify "update: Caddy and the app serve different web interface files after $commit"
+fi
 
 trap - ERR
 echo
