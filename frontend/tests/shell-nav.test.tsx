@@ -673,3 +673,112 @@ describe("shell AC-4 the theme select", () => {
     expect(label?.textContent?.trim()).toBe("Theme");
   });
 });
+
+// ----- shell-polish (docs/proposals/frontend-shell-nav-polish.md): the rover switcher and the Rovers item -----
+
+const roverSwitch = () => screen.getByRole("navigation", { name: "Rover" });
+const switchNames = () => names(roverSwitch());
+
+describe("shell-polish AC-2 the rover switcher offers only rovers that have the view", () => {
+  it.each(["/rovers/perseverance/map", "/rovers/curiosity/map"])(
+    "shell-polish AC-2 %s: the switcher holds exactly Perseverance and Curiosity",
+    async (path) => {
+      open(path);
+      await screen.findByTestId("view-tabs");
+      expect(switchNames()).toEqual(["Perseverance", "Curiosity"]);
+      for (const a of within(roverSwitch()).getAllByRole("link")) {
+        expect(a.getAttribute("href")).toMatch(/^\/rovers\/(perseverance|curiosity)\/map$/);
+      }
+    },
+  );
+
+  it("shell-polish AC-2 on the map no link leads to /rovers/<id>/map of a rover without a map", async () => {
+    open("/rovers/curiosity/map");
+    await screen.findByTestId("view-tabs");
+    const hrefs = within(roverSwitch())
+      .getAllByRole("link")
+      .map((a) => a.getAttribute("href"));
+    for (const id of ["spirit", "ingenuity", "opportunity"]) {
+      expect(hrefs).not.toContain(`/rovers/${id}/map`);
+    }
+    expect(roverViews("curiosity")).toContain("map");
+  });
+
+  it("shell-polish AC-2 the current rover is marked in the filtered switcher", async () => {
+    open("/rovers/curiosity/map");
+    await screen.findByTestId("view-tabs");
+    const cur = within(roverSwitch()).getByRole("link", { name: "Curiosity" });
+    expect(cur.getAttribute("aria-current")).toBe("page");
+    expect(
+      within(roverSwitch())
+        .getByRole("link", { name: "Perseverance" })
+        .getAttribute("aria-current"),
+    ).toBeNull();
+  });
+
+  it("shell-polish AC-2 /rovers/ingenuity/map (no map): the switcher lists the filtered rovers, without the current one", async () => {
+    open("/rovers/ingenuity/map");
+    await screen.findByText("No location data for Ingenuity");
+    expect(switchNames()).toEqual(["Perseverance", "Curiosity"]);
+  });
+
+  it.each([
+    ["/rovers/perseverance", "photos"],
+    ["/rovers/perseverance/timeline", "timeline"],
+  ])("shell-polish AC-2 %s: Photos and Timeline show every rover as before", async (path) => {
+    open(path);
+    await screen.findByTestId("view-tabs");
+    expect(switchNames()).toEqual(["Perseverance", "Curiosity", "Ingenuity", "Spirit"]);
+  });
+});
+
+describe("shell-polish AC-3 the Rovers item of the header on rover pages", () => {
+  const dataBtn = () => within(mainNav()).getByRole("button", { name: /^Data/ });
+  const roversLink = () => within(mainNav()).getByRole("link", { name: "Rovers" });
+
+  it.each([
+    "/rovers/curiosity",
+    "/rovers/curiosity/timeline",
+    "/rovers/perseverance/map",
+    "/rovers/perseverance/samples",
+    "/rovers/ingenuity/flights",
+    "/rovers/curiosity/sols/344/conditions",
+  ])("shell-polish AC-3 %s: Rovers is current (true), Data is not", async (path) => {
+    // the report page asks for more than the other pages; its content does not matter here
+    open(path, {
+      "/api/v2/rovers/curiosity/weather/344": () => apiError(404, "not_found", "no report"),
+      "/api/v2/rovers/curiosity/radiation": () => apiError(404, "not_found", "no data"),
+    });
+    await screen.findByRole("navigation", { name: "Main" });
+    await waitFor(() => expect(roversLink().getAttribute("aria-current")).toBe("true"));
+    expect(dataBtn().getAttribute("aria-current")).toBeNull();
+  });
+
+  it("shell-polish AC-3 on / Rovers keeps aria-current=page", async () => {
+    open("/");
+    await screen.findByRole("navigation", { name: "Main" });
+    await waitFor(() => expect(roversLink().getAttribute("aria-current")).toBe("page"));
+    expect(dataBtn().getAttribute("aria-current")).toBeNull();
+  });
+
+  it.each(["/data", "/data/weather", "/data/samples", "/data/radiation"])(
+    "shell-polish AC-3 %s: Data is current, Rovers is not",
+    async (path) => {
+      open(path, {
+        "/api/v2/rovers/curiosity/weather": { items: [] },
+        "/api/v2/rovers/perseverance/weather": { items: [] },
+        "/api/v2/rovers/curiosity/radiation": () => apiError(404, "not_found", "no data"),
+      });
+      await screen.findByRole("navigation", { name: "Main" });
+      await waitFor(() => expect(dataBtn().getAttribute("aria-current")).toBeTruthy());
+      expect(roversLink().getAttribute("aria-current")).toBeNull();
+    },
+  );
+
+  it("shell-polish AC-3 other pages (/stats) mark neither Rovers nor Data", async () => {
+    open("/stats");
+    await screen.findByRole("navigation", { name: "Main" });
+    expect(roversLink().getAttribute("aria-current")).toBeNull();
+    expect(dataBtn().getAttribute("aria-current")).toBeNull();
+  });
+});

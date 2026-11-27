@@ -947,6 +947,11 @@ td .cam-n {
   color: var(--text);
   border-bottom-color: var(--accent);
 }
+@media (max-width: 640px) {
+  .view-tabs a {
+    padding-inline: var(--s3);
+  }
+}
 .tiles {
   display: grid;
   gap: var(--s3);

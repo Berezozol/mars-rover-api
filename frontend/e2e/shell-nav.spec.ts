@@ -812,3 +812,279 @@ for (const scheme of ["light", "dark"] as const) {
     });
   });
 }
+
+// ----- shell-polish (docs/proposals/frontend-shell-nav-polish.md), AC-1..AC-4 -----
+// Written against the specification. The 375 px tests run in the `mobile` project, the 1280 px ones in the other.
+
+const SCHEMES = ["light", "dark"] as const;
+
+/** The nav item that carries `aria-current` (links and the Data button, not the closed menu's list). */
+const currentItemOf = (page: Page) =>
+  page.locator(
+    "nav.nav[aria-label='Main'] > a[aria-current], nav.nav[aria-label='Main'] .nav-menu-btn[aria-current]",
+  );
+
+/** Parses any CSS colour through a canvas into [r, g, b, a] (a in 0..1) so that colour spaces do not matter. */
+const PARSE_COLOR = `(css) => {
+  const c = document.createElement("canvas");
+  c.width = c.height = 1;
+  const x = c.getContext("2d", { willReadFrequently: true });
+  x.clearRect(0, 0, 1, 1);
+  x.fillStyle = css;
+  x.fillRect(0, 0, 1, 1);
+  const d = x.getImageData(0, 0, 1, 1).data;
+  return [d[0], d[1], d[2], d[3] / 255];
+}`;
+
+/** The --accent colour and its contrast ratio against the header background (composited over the page). */
+async function accentContrast(page: Page) {
+  return page.evaluate(`(() => {
+    const parse = ${PARSE_COLOR};
+    const probe = document.createElement("span");
+    probe.style.color = "var(--accent)";
+    document.body.appendChild(probe);
+    const accent = getComputedStyle(probe).color;
+    probe.remove();
+    const over = (top, under) => top.slice(0, 3).map((v, i) => v * top[3] + under[i] * (1 - top[3]));
+    const pg = parse(getComputedStyle(document.body).backgroundColor);
+    const headerBg = parse(getComputedStyle(document.querySelector(".site-header")).backgroundColor);
+    const bg = over(headerBg, [pg[0], pg[1], pg[2]]);
+    const a = parse(accent).slice(0, 3);
+    const lum = (rgb) => {
+      const [r, g, b] = rgb.map((v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); });
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    const l1 = lum(a), l2 = lum(bg);
+    return { accent, ratio: (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05) };
+  })()`) as Promise<{ accent: string; ratio: number }>;
+}
+
+/** The computed indicator of an element: shadow offsets, the shadow colour as [r, g, b] and the fill. */
+async function indicatorOf(el: ReturnType<Page["locator"]>) {
+  return el.evaluate((node, parseSrc) => {
+    const parse = (0, eval)(parseSrc) as (css: string) => number[];
+    const cs = getComputedStyle(node);
+    const shadow = cs.boxShadow;
+    const off = shadow.match(/(-?\d+(?:\.\d+)?)px\s+(-?\d+(?:\.\d+)?)px/);
+    const colour = shadow.match(/(rgba?\([^)]*\)|color\([^)]*\))/);
+    const rgb = colour ? parse(colour[1]!) : null;
+    return {
+      shadow,
+      x: off ? Number(off[1]) : null,
+      y: off ? Number(off[2]) : null,
+      inset: /\binset\b/.test(shadow),
+      rgb: rgb ? rgb.slice(0, 3).map(Math.round) : null,
+      background: cs.backgroundColor,
+    };
+  }, PARSE_COLOR);
+}
+
+const toRgb = (page: Page, css: string) =>
+  page.evaluate(`(${PARSE_COLOR})(${JSON.stringify(css)}).slice(0, 3).map(Math.round)`) as Promise<
+    number[]
+  >;
+
+const roverSwitch = (page: Page) => page.getByRole("navigation", { name: "Rover", exact: true });
+
+test.describe("shell-polish AC-1 the four views fit on 375 px", () => {
+  for (const scheme of SCHEMES) {
+    for (const url of ["/rovers/perseverance/map", "/rovers/perseverance/samples"]) {
+      test(`shell-polish AC-1 ${url} (${scheme}): the row of views needs no scrolling and shows all four tabs whole`, async ({
+        page,
+      }) => {
+        await mockApi(page);
+        await page.emulateMedia({ colorScheme: scheme });
+        await page.goto(url);
+        const row = page.locator("nav[data-testid='view-tabs']");
+        await expect(row).toBeVisible();
+        const r = await row.evaluate((el) => {
+          const nav = el.getBoundingClientRect();
+          return {
+            scrollWidth: el.scrollWidth,
+            clientWidth: el.clientWidth,
+            overflowAttr: el.getAttribute("data-overflow"),
+            tabs: [...el.querySelectorAll("a")].map((a) => {
+              const b = a.getBoundingClientRect();
+              return {
+                label: (a.textContent ?? "").trim(),
+                left: b.left - nav.left,
+                right: nav.right - b.right,
+              };
+            }),
+          };
+        });
+        expect(r.scrollWidth).toBeLessThanOrEqual(r.clientWidth);
+        expect(r.overflowAttr).toBeNull();
+        expect(r.tabs.map((t) => t.label)).toEqual(["Photos", "Timeline", "Route map", "Samples"]);
+        for (const t of r.tabs) {
+          expect(t.left, `${t.label} starts inside the row`).toBeGreaterThanOrEqual(-0.5);
+          expect(t.right, `${t.label} ends inside the row`).toBeGreaterThanOrEqual(-0.5);
+        }
+        const o = await horizontalOverflow(page);
+        expect(o.scrollWidth).toBeLessThanOrEqual(o.innerWidth);
+      });
+    }
+  }
+});
+
+test.describe("shell-polish AC-2 the rover switcher on the map", () => {
+  test.beforeEach(async ({ page }) => mockApi(page));
+
+  for (const url of ["/rovers/perseverance/map", "/rovers/curiosity/map"]) {
+    test(`shell-polish AC-2 ${url}: only Perseverance and Curiosity, every link leads to a map that exists`, async ({
+      page,
+    }) => {
+      await page.goto(url);
+      await expect(roverSwitch(page)).toBeVisible();
+      expect(await itemNames(roverSwitch(page))).toEqual(["Perseverance", "Curiosity"]);
+      const hrefs = await roverSwitch(page)
+        .getByRole("link")
+        .evaluateAll((as) => as.map((a) => a.getAttribute("href")));
+      expect(hrefs).toEqual(["/rovers/perseverance/map", "/rovers/curiosity/map"]);
+    });
+  }
+
+  test("shell-polish AC-2 a switcher link opens the map of the other rover", async ({ page }) => {
+    await page.goto("/rovers/perseverance/map");
+    await roverSwitch(page).getByRole("link", { name: "Curiosity" }).click();
+    await expect(page).toHaveURL(/\/rovers\/curiosity\/map$/);
+    await expect(roverSwitch(page).getByRole("link", { name: "Curiosity" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+  });
+
+  test("shell-polish AC-2 Photos and Timeline still offer every rover", async ({ page }) => {
+    for (const url of ["/rovers/perseverance", "/rovers/perseverance/timeline"]) {
+      await page.goto(url);
+      await expect(roverSwitch(page)).toBeVisible();
+      expect(await itemNames(roverSwitch(page))).toEqual([
+        "Perseverance",
+        "Curiosity",
+        "Ingenuity",
+        "Spirit",
+      ]);
+    }
+  });
+});
+
+test.describe("shell-polish AC-3 the Rovers item on the rover pages", () => {
+  test.beforeEach(async ({ page }) => mockApi(page));
+
+  for (const scheme of SCHEMES) {
+    for (const url of [
+      "/rovers/curiosity",
+      "/rovers/curiosity/timeline",
+      "/rovers/perseverance/map",
+      "/rovers/perseverance/samples",
+      "/rovers/ingenuity/flights",
+      "/rovers/curiosity/sols/344/conditions",
+    ]) {
+      test(`shell-polish AC-3 ${url} (${scheme}): Rovers is current and looks current; Data is not`, async ({
+        page,
+      }) => {
+        await page.emulateMedia({ colorScheme: scheme });
+        await page.goto(url);
+        const rovers = header(page).getByRole("link", { name: "Rovers", exact: true });
+        const status = header(page).getByRole("link", { name: "Status", exact: true });
+        const data = header(page).getByRole("button", { name: /^Data/ });
+        await expect(rovers).toHaveAttribute("aria-current", "true");
+        await expect(data).not.toHaveAttribute("aria-current", /.+/);
+        const r = await indicatorOf(rovers);
+        const s = await indicatorOf(status);
+        const d = await indicatorOf(data);
+        expect(r.shadow, "Rovers has an indicator").not.toBe("none");
+        expect(s.shadow, "an ordinary item has none").toBe("none");
+        expect(d.shadow, "Data has none here").toBe("none");
+        expect(r.background, "Rovers has the 'current' fill").not.toBe(s.background);
+      });
+    }
+
+    for (const url of ["/", "/data", "/data/weather"]) {
+      test(`shell-polish AC-3 ${url} (${scheme}): ${url === "/" ? "Rovers" : "Data"} is the current item`, async ({
+        page,
+      }) => {
+        await page.emulateMedia({ colorScheme: scheme });
+        await page.goto(url);
+        const rovers = header(page).getByRole("link", { name: "Rovers", exact: true });
+        const data = header(page).getByRole("button", { name: /^Data/ });
+        if (url === "/") {
+          await expect(rovers).toHaveAttribute("aria-current", "page");
+          await expect(data).not.toHaveAttribute("aria-current", /.+/);
+        } else {
+          await expect(data).toHaveAttribute("aria-current", /.+/);
+          await expect(rovers).not.toHaveAttribute("aria-current", /.+/);
+        }
+      });
+    }
+  }
+});
+
+test.describe("shell-polish AC-4 the current item of the header has an indicator", () => {
+  test.beforeEach(async ({ page }) => mockApi(page));
+
+  for (const scheme of SCHEMES) {
+    for (const url of ["/stats", "/data/weather", "/", "/rovers/perseverance/map"]) {
+      test(`shell-polish AC-4 ${url} (${scheme}): a line of at least 2 px in --accent, contrast to the header at least 3:1`, async ({
+        page,
+      }) => {
+        await page.emulateMedia({ colorScheme: scheme });
+        await page.goto(url);
+        const current = currentItemOf(page);
+        await expect(current).toHaveCount(1);
+        await expect(current).toBeVisible();
+        const ind = await indicatorOf(current);
+        expect(ind.inset, `inset shadow: ${ind.shadow}`).toBe(true);
+        expect(ind.x, "no sideways offset").toBe(0);
+        expect(ind.y, `a line at the bottom, at least 2 px: ${ind.shadow}`).toBeLessThanOrEqual(-2);
+        const c = await accentContrast(page);
+        expect(ind.rgb, "the line is --accent").toEqual(await toRgb(page, c.accent));
+        expect(
+          c.ratio,
+          `--accent against the header background (${scheme})`,
+        ).toBeGreaterThanOrEqual(3);
+      });
+    }
+
+    test(`shell-polish AC-4 (${scheme}): the indicator does not change the size of the item`, async ({
+      page,
+    }) => {
+      await page.emulateMedia({ colorScheme: scheme });
+      await page.goto("/stats");
+      const withLine = await header(page)
+        .getByRole("link", { name: "Stats", exact: true })
+        .boundingBox();
+      await page.goto("/status");
+      const without = await header(page)
+        .getByRole("link", { name: "Stats", exact: true })
+        .boundingBox();
+      expect(withLine!.width).toBeCloseTo(without!.width, 0);
+      expect(withLine!.height).toBeCloseTo(without!.height, 0);
+    });
+
+    test(`shell-polish AC-4 (${scheme}): the header is not taller than 85 px on 375 px`, async ({
+      page,
+    }) => {
+      test.skip(!isMobile(), "the height limit is specified for 375 px");
+      await page.emulateMedia({ colorScheme: scheme });
+      for (const url of ["/stats", "/data/weather", "/rovers/perseverance/map"]) {
+        await page.goto(url);
+        await expect(currentItemOf(page)).toBeVisible();
+        const h = await page
+          .locator(".site-header")
+          .evaluate((el) => el.getBoundingClientRect().height);
+        // 0.5 px of rounding room: the specification says "not more than the present 85 px"
+        expect(h, `${url}: header height`).toBeLessThanOrEqual(85.5);
+      }
+    });
+
+    test(`shell-polish AC-4 (${scheme}): no serious axe violations in the header with an indicator`, async ({
+      page,
+    }) => {
+      await page.emulateMedia({ colorScheme: scheme });
+      await page.goto("/stats");
+      await expect(currentItemOf(page)).toBeVisible();
+      expect(await serious(page, "header")).toEqual([]);
+    });
+  }
+});

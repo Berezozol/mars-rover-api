@@ -27,11 +27,7 @@ function DataMenu({ route }: { route: RouteMatch }) {
   const wrap = useRef<HTMLDivElement>(null);
   const btn = useRef<HTMLButtonElement>(null);
   const active = route.name === "dataSet" ? route.set : null;
-  const here =
-    route.name === "data" ||
-    route.name === "dataSet" ||
-    route.name === "samples" ||
-    route.name === "solReport";
+  const here = route.name === "data" || route.name === "dataSet";
 
   // Navigating closes the menu.
   useEffect(() => setOpen(false), [route]);
@@ -212,6 +208,9 @@ export function Layout({ route, pathname, children }: Props) {
   }, []);
 
   const cur = (name: RouteMatch["name"]) => (route.name === name ? "page" : undefined);
+  const inRovers = ["photos", "timeline", "map", "samples", "flights", "solReport"].includes(
+    route.name,
+  );
 
   return (
     <>
@@ -244,7 +243,7 @@ export function Layout({ route, pathname, children }: Props) {
             Sol Index <small>unofficial</small>
           </Link>
           <nav class="nav" aria-label="Main" ref={navRef}>
-            <Link href="/" aria-current={cur("home")}>
+            <Link href="/" aria-current={cur("home") ?? (inRovers ? "true" : undefined)}>
               Rovers
             </Link>
             <Link href="/search" aria-current={cur("search")} title="Search photos across rovers">

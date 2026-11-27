@@ -78,7 +78,12 @@ export function RouteMapPage({ roverId }: { roverId: string }) {
   const canNear = supportsNear(rover.id);
   return (
     <>
-      <RoverTabs rovers={rovers.data} current={rover.id} to={(id) => `/rovers/${id}/map`} />
+      <RoverTabs
+        rovers={rovers.data}
+        current={rover.id}
+        to={(id) => `/rovers/${id}/map`}
+        view="map"
+      />
       <ViewTabs rover={rover.id} name={rover.name} current="map" />
       {canNear && (
         <nav class="mode-switch" aria-label="Route map mode" data-testid="near-mode-switch">

@@ -32,7 +32,7 @@ export function useOverflowStrip(ref: RefObject<HTMLElement>, key: string): void
       const t = e.target as HTMLElement | null;
       if (t && !t.closest(".nav-menu-list")) reveal(t);
     };
-    const current = el.querySelector<HTMLElement>('[aria-current="page"]');
+    const current = el.querySelector<HTMLElement>("[aria-current]");
     if (current) reveal(current);
     update();
     el.addEventListener("scroll", update, { passive: true });
