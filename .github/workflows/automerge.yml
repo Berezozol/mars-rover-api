@@ -1,0 +1,48 @@
+name: Automerge
+
+# Turns on auto-merge (squash) for PRs from stage-*, fix-*, process/* branches without the
+# label `needs-owner`; GitHub merges when the required checks are green. A PR that gets the
+# label later (migration-guard) has auto-merge turned off again. Needs "Allow auto-merge" in the
+# repository settings. Spec: docs/proposals/ci-cd-auto-deploy.md.
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: automerge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  automerge:
+    name: Enable auto-merge
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Same-repository branches only: a fork PR has a read-only token anyway.
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.draft == false &&
+      (startsWith(github.event.pull_request.head.ref, 'stage-') ||
+       startsWith(github.event.pull_request.head.ref, 'fix-') ||
+       startsWith(github.event.pull_request.head.ref, 'process/'))
+    permissions:
+      contents: write # merge
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR_URL: ${{ github.event.pull_request.html_url }}
+      HAS_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'needs-owner') }}
+
+    steps:
+      - name: Enable or disable auto-merge
+        run: |
+          # Read the labels now, not from the event payload (it can be stale).
+          live="$(gh pr view "$PR_URL" --json labels --jq '[.labels[].name] | index("needs-owner") != null')"
+          if [ "$HAS_LABEL" = "true" ] || [ "$live" = "true" ]; then
+            echo "Label needs-owner: auto-merge stays off"
+            gh pr merge --disable-auto "$PR_URL" || true
+          else
+            gh pr merge --auto --squash --delete-branch "$PR_URL"
+          fi

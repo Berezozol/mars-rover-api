@@ -1,0 +1,116 @@
+name: Deploy
+
+# Runs after every push to master (a merged PR). Spec: docs/proposals/ci-cd-auto-deploy.md,
+# runbook: deploy/README.md, "Auto deploy".
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+# One deployment at a time; a running one is never cancelled, the next waits in the queue.
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+env:
+  UV_VERSION: "0.13.8"
+  PYTHON_VERSION: "3.13"
+
+jobs:
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DEPLOY_PAUSED: ${{ vars.DEPLOY_PAUSED }}
+      PUBLIC_URL: ${{ vars.PUBLIC_URL }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      SHA: ${{ github.sha }}
+
+    steps:
+      - name: Check the pause switch
+        id: pause
+        run: |
+          if [ "${DEPLOY_PAUSED}" = "true" ]; then
+            echo "paused=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Deployment skipped: repository variable DEPLOY_PAUSED=true"
+            echo "Deployment of ${SHA} skipped: DEPLOY_PAUSED=true. Set it to false (or delete it) and re-run this workflow to deploy." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "paused=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check configuration
+        if: steps.pause.outputs.paused != 'true'
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.KNOWN_HOSTS }}
+        run: |
+          missing=""
+          [ -n "${DEPLOY_HOST}" ] || missing="$missing DEPLOY_HOST"
+          [ -n "${DEPLOY_SSH_KEY}" ] || missing="$missing DEPLOY_SSH_KEY"
+          [ -n "${KNOWN_HOSTS}" ] || missing="$missing KNOWN_HOSTS"
+          [ -n "${PUBLIC_URL}" ] || missing="$missing PUBLIC_URL(variable)"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing settings:$missing (deploy/README.md, Auto deploy)"
+            exit 1
+          fi
+
+      - name: Check out (smoke.py)
+        if: steps.pause.outputs.paused != 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Deploy over SSH (forced command)
+        if: steps.pause.outputs.paused != 'true'
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          dir="$(mktemp -d)"
+          trap 'rm -rf "$dir"' EXIT
+          printf '%s\n' "${DEPLOY_SSH_KEY}" > "$dir/key"
+          printf '%s\n' "${KNOWN_HOSTS}" > "$dir/known_hosts"
+          chmod 600 "$dir/key" "$dir/known_hosts"
+          # The server runs deploy-entry.sh whatever is sent; it accepts only "deploy <sha>".
+          ssh -i "$dir/key" \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$dir/known_hosts" \
+            -o ServerAliveInterval=30 \
+            "deploy@${DEPLOY_HOST}" "deploy ${SHA}"
+
+      - name: Set up uv
+        if: steps.pause.outputs.paused != 'true'
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Smoke test of the public address
+        if: steps.pause.outputs.paused != 'true'
+        run: uv run --no-project --with httpx python deploy/smoke.py "${PUBLIC_URL}"
+
+      # Telegram: skipped silently when the secrets are not set. The token goes to curl through
+      # stdin, not the command line. The server also sends its own messages (deploy-entry.sh).
+      - name: Notify in Telegram
+        if: always() && steps.pause.outputs.paused != 'true'
+        env:
+          JOB_STATUS: ${{ job.status }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          [ -n "${TELEGRAM_BOT_TOKEN}" ] && [ -n "${TELEGRAM_CHAT_ID}" ] || { echo "Telegram secrets not set, skipped"; exit 0; }
+          if [ "${JOB_STATUS}" = "success" ]; then text="[mars-ci] deployed ${SHA:0:12}: smoke OK"; else text="[mars-ci] deploy of ${SHA:0:12} FAILED or rolled back: ${RUN_URL}"; fi
+          curl -fsS -m 20 -o /dev/null --config - \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=${text}" \
+            <<<"url = \"https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage\"" \
+            || echo "::warning::could not send the Telegram message"

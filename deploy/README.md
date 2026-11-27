@@ -325,6 +325,69 @@ the image again, which is fast from the cache; copies the Caddyfile and reloads 
 `caddy validate`), or by hand
 `docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile`.
 
+### 2a. Auto deploy (GitHub Actions)
+
+Spec: `docs/proposals/ci-cd-auto-deploy.md`. Flow: PR from `stage-*`, `fix-*` or `process/*` ->
+required checks green -> `automerge.yml` merges (squash) unless the label `needs-owner` is set
+(`migration-guard.yml` sets it for destructive migrations and for changes of `docs/API.md` /
+`docs/LEGACY-API.md`) -> push to `master` -> `deploy.yml`:
+SSH to the VPS with the deploy key -> forced command `deploy-entry.sh deploy <sha>` -> checks
+the SHA is in `origin/master`, remembers `APP_TAG`, runs `update.sh --skip-pull` (backup,
+migrations, restart), waits for `/health`, runs `smoke.py` on `127.0.0.1:8000` -> on any failure
+puts the previous `APP_TAG` back (`docker compose up -d app`), notifies Telegram, exits 1 ->
+the job runs `smoke.py` against `PUBLIC_URL` and reports to Telegram. One deploy at a time
+(`concurrency: deploy-prod`, a running one is not cancelled). The rollback never touches the
+database: migrations in a PR must be backward compatible (add first, drop in a later PR).
+
+**GitHub settings** (owner, once):
+
+| Where | Name | Value |
+|---|---|---|
+| Secret | `DEPLOY_SSH_KEY` | private deploy key (below) |
+| Secret | `DEPLOY_HOST` | VPS address (the `deploy` user is fixed in the workflow) |
+| Secret | `KNOWN_HOSTS` | output of `ssh-keyscan -t ed25519 <host>`, compared with the fingerprint in the provider console |
+| Secret (optional) | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | same bot as the alerts; without them the step is skipped |
+| Variable | `PUBLIC_URL` | public address, no trailing slash |
+| Variable (pause) | `DEPLOY_PAUSED` | `true` stops deploys |
+| Settings | General -> Allow auto-merge | on |
+| Settings | Branch protection `master` | require a PR and the checks `Lint, migrations, tests`, `Frontend`, `Docker build`, `migration-guard` |
+
+**Deploy key.** On your computer: `ssh-keygen -t ed25519 -N "" -C mars-deploy -f mars-deploy`;
+paste `mars-deploy` into the secret `DEPLOY_SSH_KEY`, then delete both files after the public
+one is installed. On the VPS, in `/home/deploy/.ssh/authorized_keys` (one line):
+
+```
+command="/srv/mars/repo/deploy/vps/deploy-entry.sh",restrict ssh-ed25519 AAAA... mars-deploy
+```
+
+`restrict` turns off forwarding, a TTY and agent use; the forced command ignores whatever the
+client asks for and accepts only `deploy <40-hex sha>`. Check: `ssh -i mars-deploy deploy@HOST id`
+must print `deploy-entry: refused ...`, and `ssh -i mars-deploy deploy@HOST bash` must not
+give a shell. Note that the script is read from the repository clone: a commit that changes
+`deploy-entry.sh` takes effect with the next deploy.
+
+**Pause.** Repository -> Settings -> Variables -> `DEPLOY_PAUSED=true`: PRs still merge, the
+deploy job skips with a notice. Resume: set it to `false` and re-run the last `Deploy` run from
+the Actions tab (or run `update.sh` by hand).
+
+**Manual rollback.** As in "Update and rollback" above: set `APP_TAG` to the previous tag in
+`/srv/mars/.env` and `docker compose up -d app`. To keep it from being redeployed: set
+`DEPLOY_PAUSED=true` first, then revert the bad commit through a PR.
+
+**GitHub is down.** Use `/release` (or run `update.sh` as above on the server): the deploy key is
+not needed, nothing else depends on Actions. `deploy-entry.sh` can also be tried by hand on the
+server: `SSH_ORIGINAL_COMMAND="deploy <sha>" /srv/mars/repo/deploy/vps/deploy-entry.sh`.
+
+**Migration guard by hand.** `python .github/scripts/migration_guard.py --base <sha> --head <sha>`
+(exit 0 clean, 1 reasons printed, 2 error). Cases to check (file mode, `--status-file list.txt
+--root DIR`, list lines like `A migrations/versions/x.py`):
+1. new migration with `op.add_column` / `op.create_index` only -> exit 0;
+2. `op.drop_column` in `upgrade()` -> exit 1; the same call only in `downgrade()` -> exit 0;
+3. `op.rename_table` or `alter_column(new_column_name=...)` -> exit 1;
+4. `alter_column(..., type_=...)` or `nullable=False` -> exit 1; `op.execute("ALTER TABLE ... DROP ...")` -> exit 1;
+5. line `M migrations/versions/existing.py` (edit of an applied migration) -> exit 1;
+6. `M docs/API.md` or `M docs/LEGACY-API.md` -> exit 1; `M docs/ARCHITECTURE.md` -> exit 0.
+
 ### 3. Backups and restore
 
 `mars-backup.timer` runs `backup.sh` weekly, Sunday 02:30 UTC (`Persistent=true`: a run missed
