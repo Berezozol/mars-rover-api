@@ -23,6 +23,7 @@ client "does not read", the transport is paused and the next send blocks.
 
 import asyncio
 import json
+import logging
 import socket
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -473,7 +474,26 @@ async def raw_get(loop: asyncio.AbstractEventLoop, port: int, path: str) -> tupl
     return int(text.split(" ", 2)[1]), text + "\r\n", body
 
 
-async def test_real_server_unread_big_responses_hold_their_slots(make_env: MakeEnv) -> None:
+@pytest.fixture
+def restore_uvicorn_loggers():
+    """uvicorn.Config mutates the global uvicorn loggers even with log_config=None."""
+    names = ("uvicorn", "uvicorn.error", "uvicorn.access", "uvicorn.asgi")
+    saved = {}
+    for name in names:
+        lg = logging.getLogger(name)
+        saved[name] = (lg.level, list(lg.handlers), lg.propagate, lg.disabled)
+    yield
+    for name, (level, handlers, propagate, disabled) in saved.items():
+        lg = logging.getLogger(name)
+        lg.setLevel(level)
+        lg.handlers[:] = handlers
+        lg.propagate = propagate
+        lg.disabled = disabled
+
+
+async def test_real_server_unread_big_responses_hold_their_slots(
+    make_env: MakeEnv, restore_uvicorn_loggers: None
+) -> None:
     """Raw sockets send requests and read nothing; once N responses are stuck in the server, a
     fresh request from the same address is refused. Polls (bounded) instead of sleeping blind."""
     import uvicorn
@@ -488,7 +508,15 @@ async def test_real_server_unread_big_responses_hold_their_slots(make_env: MakeE
     listener.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 8192)
     port = listener.getsockname()[1]
     server = uvicorn.Server(
-        uvicorn.Config(env.app, lifespan="off", log_level="warning", access_log=False)
+        # log_config=None keeps uvicorn from reconfiguring global logging
+        # (dictConfig would leak into later tests in the same process).
+        uvicorn.Config(
+            env.app,
+            lifespan="off",
+            log_config=None,
+            log_level="warning",
+            access_log=False,
+        )
     )
     serve = asyncio.ensure_future(server.serve(sockets=[listener]))
     loop = asyncio.get_running_loop()
