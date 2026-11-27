@@ -92,18 +92,22 @@ export function EmptyState({
   title,
   children,
   actions,
+  level = 3,
 }: {
   title: string;
   children?: ComponentChildren;
   actions?: ComponentChildren;
+  /** Heading level: 1 for a placeholder that stands in for the whole page. */
+  level?: 1 | 2 | 3;
 }) {
+  const Heading = `h${level}` as "h1" | "h2" | "h3";
   return (
     <div class="card empty">
       <svg width="48" height="48" viewBox="0 0 48 48" aria-hidden="true">
         <circle cx="24" cy="24" r="14" fill="none" stroke="currentColor" stroke-width="2" />
         <path d="M6 30c10-6 26-6 36 0" fill="none" stroke="currentColor" stroke-width="2" />
       </svg>
-      <h3>{title}</h3>
+      <Heading>{title}</Heading>
       {children && <p class="muted small">{children}</p>}
       {actions && <div class="row">{actions}</div>}
     </div>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "preact/hooks";
 import { api } from "../api/client";
 import type { Flight, Rover } from "../api/types";
+import { ViewTabs } from "../components/ViewTabs";
 import { EmptyState, ErrorAlert, PageSkeleton } from "../components/States";
 import { fmt, statusLabel } from "../lib/format";
 import {
@@ -57,7 +58,7 @@ export function Flights({ roverId }: { roverId: string }) {
   );
   if (!rover) {
     return (
-      <EmptyState title="Rover not found" actions={back}>
+      <EmptyState level={1} title="Rover not found" actions={back}>
         We don’t know a rover called “{roverId}”.
       </EmptyState>
     );
@@ -65,6 +66,7 @@ export function Flights({ roverId }: { roverId: string }) {
   if (rover.id !== "ingenuity") {
     return (
       <EmptyState
+        level={1}
         title={`${rover.name} has no flights`}
         actions={
           <>
@@ -128,12 +130,7 @@ function FlightsView({ rover }: { rover: Rover }) {
         <span aria-current="page">Flights</span>
       </nav>
 
-      <nav class="view-tabs" aria-label={`Views of ${rover.name}`}>
-        <Link href={`/rovers/${rover.id}`}>Photos</Link>
-        <Link href={`/rovers/${rover.id}/flights`} aria-current="page">
-          Flights
-        </Link>
-      </nav>
+      <ViewTabs rover={rover.id} name={rover.name} current="flights" />
 
       <div class="row" style={{ alignItems: "center", marginBottom: "var(--s2)" }}>
         <h1 style={{ margin: 0 }}>{rover.name} flights</h1>

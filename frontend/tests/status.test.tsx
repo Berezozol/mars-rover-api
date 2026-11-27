@@ -276,19 +276,26 @@ describe("Status", () => {
     expect(card.textContent).not.toMatch(/NaN|Invalid|undefined|null/);
   });
 
-  it("AC-8: the footer of /status links to /status and the page mentions archived rovers", async () => {
+  it("AC-8: the header of /status links to /status (current page) and the page mentions archived rovers", async () => {
     setup(OK);
     await screen.findByTestId("status-overall");
-    const link = screen.getByTestId("footer-status-link");
+    // moved from the footer to the main navigation (shell AC-1)
+    const link = within(screen.getByRole("navigation", { name: "Main" })).getByRole("link", {
+      name: "Status",
+    });
     expect(link.getAttribute("href")).toBe("/status");
+    expect(link.getAttribute("aria-current")).toBe("page");
     expect(link.textContent).toContain("Status");
     const text = document.body.textContent ?? "";
     for (const name of ["Spirit", "Opportunity", "Ingenuity"]) expect(text).toContain(name);
   });
 
-  it("AC-8: the footer link is present on another page and navigates to /status", async () => {
+  it("AC-8: the header link is present on another page and navigates to /status", async () => {
     setup(OK, "/no-such-page");
-    const link = await screen.findByTestId("footer-status-link");
+    const link = await within(await screen.findByRole("navigation", { name: "Main" })).findByRole(
+      "link",
+      { name: "Status" },
+    );
     expect(link.getAttribute("href")).toBe("/status");
     fireEvent.click(link);
     expect((await screen.findByTestId("status-overall")).textContent).toContain(

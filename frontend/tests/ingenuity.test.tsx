@@ -328,14 +328,12 @@ describe("Route map: stop photos and the latest position", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("links Flights from Perseverance's map", async () => {
+  it("Perseverance's map does not link Flights (a view of Ingenuity only; shell AC-1)", async () => {
     mapRoutes();
     open("/rovers/perseverance/map");
     await screen.findByRole("table");
     const tabs = screen.getByRole("navigation", { name: "Views of Perseverance" });
-    expect(within(tabs).getByRole("link", { name: "Flights" }).getAttribute("href")).toBe(
-      "/rovers/ingenuity/flights",
-    );
+    expect(within(tabs).queryByRole("link", { name: "Flights" })).toBeNull();
   });
 });
 

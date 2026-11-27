@@ -6,6 +6,7 @@ import { FILTER_SAMPLE_TYPES } from "../api/types";
 import { Pager } from "../components/Pager";
 import { PhotoTile } from "../components/PhotoTile";
 import { RoverTabs } from "../components/RoverTabs";
+import { ViewTabs } from "../components/ViewTabs";
 import { Rover3D } from "../components/Rover3D";
 import { Subscribe } from "../components/Subscribe";
 import { EmptyState, ErrorAlert, GridSkeleton, PageSkeleton } from "../components/States";
@@ -72,6 +73,7 @@ export function Photos({ roverId }: { roverId: string }) {
   if (!rover) {
     return (
       <EmptyState
+        level={1}
         title="Rover not found"
         actions={
           <Link class="btn btn-sm" href="/">
@@ -86,6 +88,7 @@ export function Photos({ roverId }: { roverId: string }) {
   return (
     <>
       <RoverTabs rovers={rovers.data} current={rover.id} to={(id) => `/rovers/${id}`} />
+      <ViewTabs rover={rover.id} name={rover.name} current="photos" />
       <PageHead rover={rover} />
       <Rover3D roverId={rover.id} />
       {rover.max_sol === null ? (

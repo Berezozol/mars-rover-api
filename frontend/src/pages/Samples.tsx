@@ -2,6 +2,7 @@ import { useEffect, useState } from "preact/hooks";
 import { api } from "../api/client";
 import type { Rover, Sample, SamplesResponse } from "../api/types";
 import { StatusBadge, TubeLink } from "../components/SampleParts";
+import { ViewTabs } from "../components/ViewTabs";
 import { EmptyState, ErrorAlert, PageSkeleton } from "../components/States";
 import { fmt } from "../lib/format";
 import { useAsync, useRovers, useTitle } from "../lib/hooks";
@@ -34,7 +35,7 @@ export function Samples({ roverId }: { roverId: string }) {
   );
   if (!rover) {
     return (
-      <EmptyState title="Rover not found" actions={back}>
+      <EmptyState level={1} title="Rover not found" actions={back}>
         We don’t know a rover called “{roverId}”.
       </EmptyState>
     );
@@ -43,6 +44,7 @@ export function Samples({ roverId }: { roverId: string }) {
     const per = rovers.data.find((r) => r.id === SAMPLES_ROVER);
     return (
       <EmptyState
+        level={1}
         title={`${rover.name} has no sample list`}
         actions={
           <>
@@ -116,14 +118,7 @@ function SamplesView({ rover }: { rover: Rover }) {
         <span aria-current="page">Samples</span>
       </nav>
 
-      <nav class="view-tabs" aria-label={`Views of ${rover.name}`}>
-        <Link href={`/rovers/${rover.id}`}>Photos</Link>
-        <Link href={`/rovers/${rover.id}/timeline`}>Timeline</Link>
-        <Link href={`/rovers/${rover.id}/map`}>Route map</Link>
-        <Link href={`/rovers/${rover.id}/samples`} aria-current="page">
-          Samples
-        </Link>
-      </nav>
+      <ViewTabs rover={rover.id} name={rover.name} current="samples" />
 
       <h1>{rover.name} rock samples</h1>
       <p class="muted" style={{ maxWidth: "70ch" }}>

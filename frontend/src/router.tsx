@@ -324,7 +324,10 @@ export function matchRoute(pathname: string): RouteMatch {
     }
     return { name: "notfound" };
   }
-  if (a === "photos" && b && parts.length === 2) return { name: "photo", id: b };
+  if (a === "photos" && b && parts.length === 2) {
+    // A photo id is a positive whole number; anything else is not a page (the API would answer 422).
+    return /^[1-9]\d{0,9}$/.test(b) ? { name: "photo", id: b } : { name: "notfound" };
+  }
   if (a === "data" && parts.length === 1) return { name: "data" };
   if (a === "data" && parts.length === 2 && (DATA_SETS as string[]).includes(b!)) {
     return { name: "dataSet", set: b as DataSet };

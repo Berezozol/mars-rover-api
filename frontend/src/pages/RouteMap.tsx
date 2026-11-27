@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import type { LocationResponse, Rover, Sample, Traverse, Waypoint } from "../api/types";
 import { NearView } from "../components/NearView";
 import { RoverTabs } from "../components/RoverTabs";
+import { ViewTabs } from "../components/ViewTabs";
 import { SampleBadges, TubeLink } from "../components/SampleParts";
 import { EmptyState, ErrorAlert, PageSkeleton } from "../components/States";
 import { fmt } from "../lib/format";
@@ -62,6 +63,7 @@ export function RouteMapPage({ roverId }: { roverId: string }) {
   if (!rover) {
     return (
       <EmptyState
+        level={1}
         title="Rover not found"
         actions={
           <Link class="btn btn-sm" href="/">
@@ -77,7 +79,7 @@ export function RouteMapPage({ roverId }: { roverId: string }) {
   return (
     <>
       <RoverTabs rovers={rovers.data} current={rover.id} to={(id) => `/rovers/${id}/map`} />
-      <ViewTabs rover={rover} rovers={rovers.data} />
+      <ViewTabs rover={rover.id} name={rover.name} current="map" />
       {canNear && (
         <nav class="mode-switch" aria-label="Route map mode" data-testid="near-mode-switch">
           <Link href={`/rovers/${rover.id}/map`} aria-current={near.active ? undefined : "page"}>
@@ -121,29 +123,6 @@ export function RouteMapPage({ roverId }: { roverId: string }) {
         </>
       )}
     </>
-  );
-}
-
-/** Photos / Timeline / Route map of this rover, plus Flights next to Perseverance (where Ingenuity flew). */
-function ViewTabs({ rover, rovers }: { rover: Rover; rovers: Rover[] }) {
-  const heli = rovers.find((r) => r.id === "ingenuity");
-  return (
-    <nav class="view-tabs" aria-label={`Views of ${rover.name}`}>
-      <Link href={`/rovers/${rover.id}`}>Photos</Link>
-      <Link href={`/rovers/${rover.id}/timeline`}>Timeline</Link>
-      <Link href={`/rovers/${rover.id}/map`} aria-current="page">
-        Route map
-      </Link>
-      {rover.id === SAMPLES_ROVER && <Link href={samplesHref()}>Samples</Link>}
-      {heli && (rover.id === "perseverance" || rover.id === "ingenuity") && (
-        <Link
-          href={`/rovers/${heli.id}/flights`}
-          title="Flights of the Ingenuity helicopter, which flew from Perseverance’s landing site"
-        >
-          Flights
-        </Link>
-      )}
-    </nav>
   );
 }
 

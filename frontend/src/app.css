@@ -22,15 +22,32 @@ main:focus {
 .nav a {
   white-space: nowrap;
 }
-.theme-toggle:hover {
-  background: var(--surface-2);
-  color: var(--text);
+.footer-groups {
+  display: flex;
+  gap: var(--s2) var(--s7);
+  flex-wrap: wrap;
+  margin-top: var(--s3);
+}
+.footer-group-title {
+  display: block;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
 }
 .footer-links {
   display: flex;
-  gap: var(--s4);
+  gap: var(--s1) var(--s4);
   flex-wrap: wrap;
-  margin-top: var(--s2);
+  margin-top: var(--s1);
+}
+@media (max-width: 640px) {
+  .footer-links a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
 }
 pre {
   margin: 0;
@@ -476,6 +493,9 @@ details.more .chips {
   text-align: center;
   padding: var(--s7) var(--s4);
 }
+.empty h1 {
+  font-size: var(--fs-md);
+}
 .empty svg {
   color: var(--text-faint);
 }
@@ -895,6 +915,20 @@ td .cam-n {
   margin-bottom: var(--s4);
   overflow-x: auto;
   overflow-y: hidden;
+}
+.view-tabs {
+  scrollbar-width: none;
+}
+.view-tabs::-webkit-scrollbar {
+  display: none;
+}
+.view-tabs::after {
+  content: "";
+  flex: none;
+  width: 1px;
+}
+.view-tabs a:focus-visible {
+  outline-offset: -3px;
 }
 .view-tabs a {
   padding: var(--s2) var(--s4);

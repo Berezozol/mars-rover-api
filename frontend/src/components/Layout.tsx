@@ -1,8 +1,12 @@
 import type { ComponentChildren } from "preact";
-import { useEffect, useRef, useState } from "preact/hooks";
-import { visibleRovers } from "../lib/format";
-import { useRovers } from "../lib/hooks";
-import { currentTheme, toggleTheme } from "../lib/theme";
+import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
+import { useOverflowStrip } from "../lib/overflow";
+import {
+  getThemeChoice,
+  onSystemThemeChange,
+  setThemeChoice,
+  type ThemeChoice,
+} from "../lib/theme";
 import { lastNavigationKind, Link, savedScroll, type RouteMatch } from "../router";
 
 interface Props {
@@ -31,6 +35,42 @@ function DataMenu({ route }: { route: RouteMatch }) {
 
   // Navigating closes the menu.
   useEffect(() => setOpen(false), [route]);
+
+  // The list is `position: fixed` so that the scrolling strip around the button cannot clip it; it is
+  // placed under the button (under the whole header on a narrow screen) and follows resizes and scrolls.
+  const list = useRef<HTMLUListElement>(null);
+  // A flag for the CSS (the strip's fade mask must not cover the open list; no reliance on `:has`),
+  // set before paint.
+  useLayoutEffect(() => {
+    const nav = wrap.current?.closest("nav");
+    if (open) nav?.setAttribute("data-menu-open", "");
+    else nav?.removeAttribute("data-menu-open");
+    return () => nav?.removeAttribute("data-menu-open");
+  }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const l = list.current;
+      const b = btn.current;
+      if (!l || !b) return;
+      const r = b.getBoundingClientRect();
+      const narrow =
+        typeof window.matchMedia === "function" && window.matchMedia("(max-width: 640px)").matches;
+      const header = b.closest("header");
+      // The list has a 4px top margin on a wide screen; on a narrow one it spans the width (CSS).
+      l.style.top = `${narrow && header ? header.getBoundingClientRect().bottom : r.bottom}px`;
+      l.style.left = narrow
+        ? ""
+        : `${Math.max(8, Math.min(r.left, window.innerWidth - l.offsetWidth - 8))}px`;
+    };
+    place();
+    window.addEventListener("resize", place);
+    document.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      document.removeEventListener("scroll", place, true);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -79,7 +119,7 @@ function DataMenu({ route }: { route: RouteMatch }) {
           />
         </svg>
       </button>
-      <ul class="nav-menu-list" id="data-menu" hidden={!open}>
+      <ul class="nav-menu-list" id="data-menu" ref={list} hidden={!open}>
         {DATA_ITEMS.map((i) => (
           <li key={i.href}>
             <Link
@@ -107,11 +147,18 @@ function DataMenu({ route }: { route: RouteMatch }) {
 export function Layout({ route, pathname, children }: Props) {
   const mainRef = useRef<HTMLElement>(null);
   const headerRef = useRef<HTMLElement>(null);
-  const [rovers] = useRovers();
-  const [theme, setTheme] = useState(currentTheme);
+  const navRef = useRef<HTMLElement>(null);
+  const [theme, setTheme] = useState<ThemeChoice>(getThemeChoice);
 
-  // On a route change by a link: back to the top and move focus to <main> for keyboard/screen-reader
-  // users. Back/Forward keep the position: the page restores it itself (`useRestoreScroll`).
+  // Auto follows the system (also while the page is open); a choice made in another tab applies here too.
+  useEffect(() => onSystemThemeChange(setTheme), []);
+
+  // The current item stays visible in the strip on a narrow screen; `data-overflow` marks hidden items.
+  useOverflowStrip(navRef, pathname);
+
+  // On a route change by a link: back to the top and move focus to the page's <h1> (or to <main> until
+  // one appears) for keyboard/screen-reader users. Back/Forward keep the position and the focus: the
+  // page restores the position itself (`useRestoreScroll`).
   const first = useRef(true);
   useEffect(() => {
     if (first.current) {
@@ -124,7 +171,33 @@ export function Layout({ route, pathname, children }: Props) {
       return;
     }
     window.scrollTo?.(0, 0);
-    mainRef.current?.focus({ preventScroll: true });
+    const main = mainRef.current;
+    if (!main) return;
+    const focusHeading = (): boolean => {
+      const h1 = main.querySelector<HTMLElement>("h1");
+      if (!h1) return false;
+      h1.setAttribute("tabindex", "-1");
+      h1.focus({ preventScroll: true });
+      return true;
+    };
+    if (focusHeading()) return;
+    // Still loading: <main> holds the focus, and the heading takes it when it appears (within 2 s),
+    // unless the focus has moved elsewhere by then.
+    main.focus({ preventScroll: true });
+    const observer = new MutationObserver(() => {
+      const a = document.activeElement;
+      if (a !== main && a !== document.body) {
+        observer.disconnect();
+        return;
+      }
+      if (focusHeading()) observer.disconnect();
+    });
+    observer.observe(main, { childList: true, subtree: true });
+    const timer = window.setTimeout(() => observer.disconnect(), 2000);
+    return () => {
+      observer.disconnect();
+      window.clearTimeout(timer);
+    };
   }, [pathname]);
 
   // The sticky table header on the timeline sits under the sticky site header.
@@ -137,20 +210,6 @@ export function Layout({ route, pathname, children }: Props) {
     window.addEventListener("resize", set);
     return () => window.removeEventListener("resize", set);
   }, []);
-
-  const own =
-    route.name === "photos" ||
-    route.name === "timeline" ||
-    route.name === "map" ||
-    route.name === "flights" ||
-    route.name === "samples"
-      ? route.rover
-      : null;
-  const list = rovers.status === "ok" ? visibleRovers(rovers.data) : [];
-  const rover = own ?? list[0]?.id ?? "perseverance";
-
-  // Only Ingenuity flies; the item appears once the API lists it.
-  const hasFlights = rovers.status === "ok" && rovers.data.some((r) => r.id === "ingenuity");
 
   const cur = (name: RouteMatch["name"]) => (route.name === name ? "page" : undefined);
 
@@ -184,27 +243,13 @@ export function Layout({ route, pathname, children }: Props) {
             </svg>
             Sol Index <small>unofficial</small>
           </Link>
-          <nav class="nav" aria-label="Main">
+          <nav class="nav" aria-label="Main" ref={navRef}>
             <Link href="/" aria-current={cur("home")}>
               Rovers
-            </Link>
-            <Link href={`/rovers/${rover}`} aria-current={cur("photos")} title="Latest sol">
-              Photos
             </Link>
             <Link href="/search" aria-current={cur("search")} title="Search photos across rovers">
               Search
             </Link>
-            <Link href={`/rovers/${rover}/timeline`} aria-current={cur("timeline")}>
-              Timeline
-            </Link>
-            <Link href={`/rovers/${rover}/map`} aria-current={cur("map")}>
-              Route map
-            </Link>
-            {hasFlights && (
-              <Link href="/rovers/ingenuity/flights" aria-current={cur("flights")}>
-                Flights
-              </Link>
-            )}
             <DataMenu route={route} />
             <Link
               href="/stats"
@@ -213,16 +258,28 @@ export function Layout({ route, pathname, children }: Props) {
             >
               Stats
             </Link>
+            <Link href="/status" aria-current={cur("status")}>
+              Status
+            </Link>
             <a href="/docs">API docs</a>
           </nav>
-          <button
-            class="theme-toggle"
-            type="button"
-            aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
-            onClick={() => setTheme(toggleTheme())}
-          >
-            {theme === "dark" ? "Light" : "Dark"}
-          </button>
+          <div class="theme-field">
+            <label for="theme-select">Theme</label>
+            <select
+              id="theme-select"
+              class="theme-select"
+              value={theme}
+              onChange={(e) => {
+                const choice = e.currentTarget.value as ThemeChoice;
+                setThemeChoice(choice);
+                setTheme(choice);
+              }}
+            >
+              <option value="auto">Auto</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </div>
         </div>
       </header>
       <main id="main" tabIndex={-1} ref={mainRef}>
@@ -232,18 +289,35 @@ export function Layout({ route, pathname, children }: Props) {
         <div class="container">
           Sol Index is an independent, unofficial project and is not affiliated with or endorsed by
           NASA or JPL. Image credit is shown next to every photo.
-          <div class="footer-links">
-            <a href="/developers">For developers</a>
-            <a href="/docs">API docs</a>
-            <Link href="/status" data-testid="footer-status-link">
-              Status
-            </Link>
+          <div class="footer-groups">
+            <nav
+              class="footer-group"
+              aria-labelledby="footer-project-title"
+              data-testid="footer-group-project"
+            >
+              <span class="footer-group-title" id="footer-project-title">
+                Project
+              </span>
+              <div class="footer-links">
+                <a href="/developers">For developers</a>
+                <a href="/docs">API docs</a>
+              </div>
+            </nav>
+            <nav
+              class="footer-group"
+              aria-labelledby="footer-keys-title"
+              data-testid="footer-group-keys"
+            >
+              <span class="footer-group-title" id="footer-keys-title">
+                API keys
+              </span>
+              <div class="footer-links">
+                <Link href="/keys">Get an API key</Link>
+                <Link href="/keys/manage">My keys</Link>
+                <Link href="/keys/delete">Delete my data</Link>
+              </div>
+            </nav>
           </div>
-          <nav class="footer-links" aria-label="API keys">
-            <Link href="/keys">Get an API key</Link>
-            <Link href="/keys/manage">My keys</Link>
-            <Link href="/keys/delete">Delete my data</Link>
-          </nav>
         </div>
       </footer>
     </>

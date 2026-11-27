@@ -6,6 +6,7 @@ export function NotFound() {
   useTitle("Page not found — Sol Index");
   return (
     <EmptyState
+      level={1}
       title="Page not found"
       actions={
         <Link class="btn btn-sm btn-primary" href="/">

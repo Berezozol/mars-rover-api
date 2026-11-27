@@ -306,12 +306,14 @@ describe("Route map page", () => {
     expect(m.calls.filter((c) => c.pathname.endsWith("/location"))).toHaveLength(1);
   });
 
-  it("adds 'Route map' to the main navigation and the rover tabs; no Ingenuity tab", async () => {
+  it("offers 'Route map' in the views of the rover (not the header) and in the rover tabs; no Ingenuity tab", async () => {
     mapRoutes();
     open();
     await screen.findByRole("table");
     const nav = screen.getByRole("navigation", { name: "Main" });
-    const link = within(nav).getByRole("link", { name: "Route map" });
+    expect(within(nav).queryByRole("link", { name: "Route map" })).toBeNull();
+    const views = screen.getByTestId("view-tabs");
+    const link = within(views).getByRole("link", { name: "Route map" });
     expect(link.getAttribute("href")).toBe("/rovers/perseverance/map");
     expect(link.getAttribute("aria-current")).toBe("page");
     const tabs = screen.getByRole("navigation", { name: "Rover" });

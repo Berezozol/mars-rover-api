@@ -315,15 +315,53 @@ main {
   color: var(--text);
   background: var(--surface-2);
 }
-.theme-toggle {
-  border: 1px solid var(--border);
-  background: transparent;
+.theme-field {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  font-size: var(--fs-sm);
   color: var(--text-muted);
+}
+.theme-select {
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
   border-radius: var(--radius-sm);
-  padding: 6px 10px;
+  min-height: 0;
+  padding: 4px 6px;
   font: inherit;
   font-size: var(--fs-sm);
   cursor: pointer;
+}
+/* A strip that scrolls sideways: a fade at the edge that still has items behind it. */
+/* The fade would also cover the open Data menu (a descendant of the strip). */
+.nav[data-menu-open] {
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
+}
+[data-overflow="end"] {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+}
+[data-overflow="start"] {
+  -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent);
+}
+[data-overflow="both"] {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 28px,
+    #000 calc(100% - 28px),
+    transparent
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 28px,
+    #000 calc(100% - 28px),
+    transparent
+  );
 }
 
 .site-footer {
@@ -677,9 +715,41 @@ select:disabled {
     flex-wrap: nowrap;
     overflow-x: auto;
     overflow-y: hidden;
+    /* Room for the focus outline (3px + 2px offset) inside the clipped strip. */
+    padding: 5px;
+    /* The top padding overlaps the brand row (brand and theme stay above it); the bottom ends at the header. */
+    margin: -5px 0 0;
+    scrollbar-width: none;
   }
-  .theme-toggle {
+  .nav::-webkit-scrollbar {
+    display: none;
+  }
+  /* Slightly lower items keep the header from growing (tap targets stay above 24px). */
+  .nav a,
+  .nav-menu-btn {
+    padding-block: 6px;
+  }
+  .brand,
+  .theme-field {
+    position: relative;
+    z-index: 1;
+  }
+  /* Browsers drop the end padding of an overflowing flex row: a spacer keeps the last outline inside. */
+  .nav::after {
+    content: "";
+    flex: none;
+    width: 2px;
+  }
+  .theme-field {
     margin-left: auto;
+  }
+  .theme-field label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
   }
 }
 .card,

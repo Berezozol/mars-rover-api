@@ -535,9 +535,8 @@ table.wx-table td.flags-cell .flag + .flag {
   transform: rotate(180deg);
 }
 .nav-menu-list {
-  position: absolute;
-  top: 100%;
-  left: 0;
+  /* Fixed, placed by the layout from the button's position: the sideways-scrolling strip must not clip it. */
+  position: fixed;
   z-index: 20;
   min-width: 17rem;
   margin: 4px 0 0;

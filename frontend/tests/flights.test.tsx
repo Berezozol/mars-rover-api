@@ -161,17 +161,28 @@ describe("Flights page", () => {
     expect(screen.queryByRole("table")).toBeNull();
   });
 
-  it("other rovers have no flights, and the nav item appears only when Ingenuity is listed", async () => {
+  it("other rovers have no flights, and no tab or header item leads from them to Ingenuity's flights", async () => {
     routes();
     open("/rovers/perseverance/flights");
     expect(await screen.findByText("Perseverance has no flights")).toBeTruthy();
+    // since shell AC-1 Flights is a view of Ingenuity only, not a header item
     const nav = screen.getByRole("navigation", { name: "Main" });
-    expect(within(nav).getByRole("link", { name: "Flights" }).getAttribute("href")).toBe(
+    expect(within(nav).queryByRole("link", { name: "Flights" })).toBeNull();
+    const tabs = screen.queryByTestId("view-tabs");
+    if (tabs) expect(within(tabs).queryByRole("link", { name: "Flights" })).toBeNull();
+  });
+
+  it("Ingenuity's own pages offer the Flights tab, pointing at Ingenuity", async () => {
+    routes();
+    open();
+    await screen.findByRole("table");
+    const tabs = screen.getByTestId("view-tabs");
+    expect(within(tabs).getByRole("link", { name: "Flights" }).getAttribute("href")).toBe(
       "/rovers/ingenuity/flights",
     );
   });
 
-  it("has no Flights nav item when the API does not list Ingenuity", async () => {
+  it("has no Flights item in the header or in the tabs when the API does not list Ingenuity", async () => {
     mockApi({
       "/api/v2/rovers": { items: [perseverance] },
       "/api/v2/rovers/perseverance/photos": page([photo(1)]),
@@ -181,5 +192,7 @@ describe("Flights page", () => {
     await screen.findByRole("heading", { name: /Perseverance photos/ });
     const nav = screen.getByRole("navigation", { name: "Main" });
     expect(within(nav).queryByRole("link", { name: "Flights" })).toBeNull();
+    const tabs = await screen.findByTestId("view-tabs");
+    expect(within(tabs).queryByRole("link", { name: "Flights" })).toBeNull();
   });
 });

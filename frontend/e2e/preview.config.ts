@@ -15,6 +15,7 @@ export default defineConfig({
     "keys-flow.spec.ts",
     "ac32-keys.spec.ts",
     "url-state.spec.ts",
+    "shell-nav.spec.ts",
   ],
   use: { ...base.use, baseURL: "http://127.0.0.1:4173" },
   webServer: {

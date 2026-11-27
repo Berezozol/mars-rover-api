@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { api } from "../api/client";
 import type { Manifest, ManifestSol, Rover } from "../api/types";
 import { RoverTabs } from "../components/RoverTabs";
+import { ViewTabs } from "../components/ViewTabs";
 import { EmptyState, ErrorAlert, PageSkeleton } from "../components/States";
 import { fmt } from "../lib/format";
 import { useAsync, useRovers, useTitle } from "../lib/hooks";
@@ -43,6 +44,7 @@ export function Timeline({ roverId }: { roverId: string }) {
   if (!rover) {
     return (
       <EmptyState
+        level={1}
         title="Rover not found"
         actions={
           <Link class="btn btn-sm" href="/">
@@ -57,6 +59,7 @@ export function Timeline({ roverId }: { roverId: string }) {
   return (
     <>
       <RoverTabs rovers={rovers.data} current={rover.id} to={(id) => `/rovers/${id}/timeline`} />
+      <ViewTabs rover={rover.id} name={rover.name} current="timeline" />
       <h1>{rover.name} mission timeline</h1>
       <p class="muted">Photos received per sol since landing. Select a sol to browse its photos.</p>
       {rover.max_sol === null ? (
